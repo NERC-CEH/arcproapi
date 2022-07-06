@@ -6,8 +6,8 @@ import arcpy as _arcpy
 
 import arcapi as _arcapi
 
-import arcapi.common as _common
-from arcapi.errors import *  # noqa
+import arcproapi.common as _common
+from arcproapi.errors import *  # noqa
 
 
 def meta(datasource, mode="PREPEND", **args):

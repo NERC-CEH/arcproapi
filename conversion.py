@@ -20,7 +20,7 @@ class AreaUnits:
 def convertArea(x, from_unit, to_unit):
     """area conversion with error trapping
     Example:
-        >>> import arcapi.conversion as conversion
+        >>> import arcproapi.conversion as conversion
         >>> conversion.convertArea(12.3, conversion.AreaUnits.acre, conversion.AreaUnits.hectare)
         21.13 # figure just made up!
     """

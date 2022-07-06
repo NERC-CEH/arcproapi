@@ -2,7 +2,7 @@
 
 import arcpy as _arcpy
 
-import arcapi.http as _http
+import arcproapi.http as _http
 
 def epsg(epsgcode, form='esriwkt'):
     """Get spatial reference system by EPSG code as string.

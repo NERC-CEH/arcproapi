@@ -10,9 +10,9 @@ import funclite.iolib as iolib
 
 
 # import funclite.stringslib as stringslib
-import arcapi.connections as conn
-import arcapi.sql as sql
-from arcapi.connections import ESRICursorType
+import arcproapi.connections as conn
+import arcproapi.sql as sql
+from arcproapi.connections import ESRICursorType
 
 class Test(unittest.TestCase):
     """unittest for keypoints"""

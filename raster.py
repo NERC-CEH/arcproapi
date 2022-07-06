@@ -3,7 +3,7 @@ import os.path as _path
 
 import arcpy as _arcpy
 
-import arcapi.common as _common
+import arcproapi.common as _common
 
 # noinspection PyBroadException
 def int_to_float(raster, out_raster, decimals):

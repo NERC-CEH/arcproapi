@@ -24,7 +24,7 @@ __all__ = ['charts_stats', 'common', 'data', 'display', 'environ',
 
 from enum import Enum as _Enum
 
-from arcapi.errors import *
+from arcproapi.errors import *
 
 
 class Version(_Enum):

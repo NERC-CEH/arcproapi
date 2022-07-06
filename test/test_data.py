@@ -9,7 +9,7 @@ import arcpy
 
 import funclite.iolib as iolib
 
-import arcapi.data as data
+import arcproapi.data as data
 
 
 class Test(unittest.TestCase):

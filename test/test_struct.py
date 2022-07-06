@@ -8,7 +8,7 @@ import arcpy  # noqa
 
 import funclite.iolib as iolib
 
-import arcapi.struct as struct
+import arcproapi.struct as struct
 
 
 class Test(unittest.TestCase):

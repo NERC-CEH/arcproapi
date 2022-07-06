@@ -25,12 +25,12 @@ import unittest
 
 import arcpy
 
-import arcapi.charts_stats as _charts_stats
-import arcapi.common as _common
-import arcapi.data as _data
-import arcapi.http as http
-import arcapi.meta as meta
-from arcapi.errors import ArcapiError, MapNotFound, MapFrameNotFound, LayoutNotFound # noqa
+import arcproapi.charts_stats as _charts_stats
+import arcproapi.common as _common
+import arcproapi.data as _data
+import arcproapi.http as http
+import arcproapi.meta as meta
+from arcproapi.errors import ArcapiError, MapNotFound, MapFrameNotFound, LayoutNotFound # noqa
 
 
 class TestGlobalFunctions(unittest.TestCase):

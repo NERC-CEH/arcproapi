@@ -17,12 +17,12 @@ import fuckit as _fuckit
 import arcpy as _arcpy
 import arcpy.da as _da
 
-import arcapi.environ as _environ
-import arcapi.sql as _sql
-import arcapi.errors as _errors
+import arcproapi.environ as _environ
+import arcproapi.sql as _sql
+import arcproapi.errors as _errors
 
 
-from arcapi.common import FieldNamesSpecial, get_row_count2 as get_row_cnt, get_id_col  # noqa
+from arcproapi.common import FieldNamesSpecial, get_row_count2 as get_row_cnt, get_id_col  # noqa
 
 
 class SearchCursor(_da.SearchCursor):

@@ -7,8 +7,8 @@ See https://github.com/kayak/pypika
 
 from pypika import Query, Table, Schema
 
-from arcapi.common import columns_delim
-from arcapi.common import  FieldNamesSpecial as _FieldNamesSpecial
+from arcproapi.common import columns_delim
+from arcproapi.common import  FieldNamesSpecial as _FieldNamesSpecial
 from funclite.stringslib import get_between as _getb
 
 

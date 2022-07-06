@@ -8,7 +8,7 @@
 import _arcpy as _arcpy
 import numpy as _np
 
-from arcapi.errors import MapNotFound, MapFrameNotFound, LayoutNotFound
+from arcproapi.errors import MapNotFound, MapFrameNotFound, LayoutNotFound
 
 
 def create_pie_chart(fig, table, case_field, data_field='', fig_title='', x=8.5, y=8.5, rounding=0):

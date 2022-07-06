@@ -12,10 +12,10 @@ import arcpy as _arcpy
 import pyperclip as _clip
 import pandas as _pd
 
-import arcapi.struct as _struct
-import arcapi.errors as _errors
-import arcapi.crud as _crud
-import arcapi.common as _common
+import arcproapi.struct as _struct
+import arcproapi.errors as _errors
+import arcproapi.crud as _crud
+import arcproapi.common as _common
 
 import funclite.iolib as _iolib
 import funclite.baselib as _baselib
@@ -57,8 +57,8 @@ def class_def_to_clip(fname, workspace='None', composite_key_cols='()', short_su
 
 
      Examples:
-        >>> import arcapi.orm as orm
-        >>> import erammp.config as config
+        >>> import arcproapi.orm as orm
+        >>> import erammp.config as config  # noqa
         >>> orm.class_def_to_clip(config.GeoDatabaseLayersAndTables.address_crn_lpis_sq, ('crn', 'plotid'), config.GeoDatabasePaths.erampp)  # noqa
     """
     if short_super:
@@ -91,7 +91,7 @@ def class_def(fname: str, composite_key_cols: (str, list), workspace: str,
         Use class_def_to_clip to copy the definition to the clipboard, ready to be pasted.
 
     Examples:
-        >>> import arcapi.orm as orm
+        >>> import arcproapi.orm as orm
         >>> s = orm.class_def('c:/my.gdb/mytable', workspace='c:/my.gdb', composite_key_cols='myID')
         >>> print(s)
         'class AddressXlsxAddressJoinConsentForm(_orm.ORM): .....'
@@ -808,7 +808,7 @@ class ORM(_crud.CRUD):
         """list of editable cols"""
         lst = _baselib.list_not(self.db_cols_as_list, self.db_cols_as_list_read_only)
         if self.__dict__.get('action'):
-            lst.append('action')  # cludge for when we are writing logs
+            lst.append('action')  # noqa cludge for when we are writing logs
         return lst
 
     @property

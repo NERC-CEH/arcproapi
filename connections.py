@@ -15,7 +15,7 @@ import xlwings as _xlwings
 import fuckit as _fuckit
 
 import funclite.iolib as _iolib
-import arcapi.data as _data
+import arcproapi.data as _data
 
 
 class ESRICursorType(_Enum):

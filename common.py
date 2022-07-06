@@ -8,7 +8,7 @@ import sys as _sys
 import arcpy as _arcpy
 
 
-import arcapi.errors
+import arcproapi.errors
 
 
 lut_field_types = {

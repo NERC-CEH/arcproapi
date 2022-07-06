@@ -9,8 +9,8 @@ import fuckit as _fuckit
 
 import funclite.log as _log
 
-import arcapi.errors as _errors
-import arcapi.common as _common
+import arcproapi.errors as _errors
+import arcproapi.common as _common
 
 from arcapi import mp as _mp  # arcpy.mapping/arcpy.mp
 

@@ -11,12 +11,12 @@ import arcpy as _arcpy
 import funclite.iolib as _iolib
 import funclite.baselib as _baselib
 
-import arcapi.common as _common
-from arcapi.common import get_row_count2 as rowcnt  # noqa
+import arcproapi.common as _common
+from arcproapi.common import get_row_count2 as rowcnt  # noqa
 
 
-import arcapi.environ as _environ
-import arcapi.errors as _errors
+import arcproapi.environ as _environ
+import arcproapi.errors as _errors
 
 
 field_add = arcpy.management.AddField  # expose here

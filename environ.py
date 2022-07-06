@@ -3,7 +3,7 @@ import os.path as _path
 
 import arcpy as _arcpy
 
-import arcapi.common as _common
+import arcproapi.common as _common
 
 
 def environments_list(x=(), printit=False):

@@ -8,13 +8,13 @@ import arcpy as _arcpy
 import pandas as _pd
 import numpy as _np
 
-import arcapi.struct as _struct
-import arcapi.errors as _errors
-import arcapi.crud as _crud
-import arcapi.orm as _orm
-import arcapi.common as _common
-from arcapi.common import get_row_count2 as get_row_count2
-from arcapi.common import get_row_count as get_row_count  # noqa
+import arcproapi.struct as _struct
+import arcproapi.errors as _errors
+import arcproapi.crud as _crud
+import arcproapi.orm as _orm
+import arcproapi.common as _common
+from arcproapi.common import get_row_count2 as get_row_count2
+from arcproapi.common import get_row_count as get_row_count  # noqa
 
 import funclite.iolib as _iolib
 import funclite.baselib as _baselib
@@ -480,7 +480,7 @@ def table_as_dict(fname, cols=None, where=None, exclude_cols=('Shape', 'Shape_Le
         >>> df = table_as_dict('C:/my.gdb/fc', [OBJECTID, modified_date], where='OBJECTID>10')  # noqa
     """
     df = table_as_pandas2(fname, cols=cols, where=where, exclude_cols=exclude_cols, **kwargs)
-    return  df.to_dict()
+    return df.to_dict()
 
 
 def field_update_from_dict2(fname: str, key_dict: dict, update_dict: dict, where: str = '', na: any = None, case_insentive: bool = True) -> int:  # noqa

@@ -6,8 +6,10 @@ Very much still under development and subject to bugs etc.
 Took the arcapi repo and moved into modules and changed for both Python 3 compatibility and ArcGISPro arcpy
 
 Several modules are still left as-is from the original arcpro API because I have not yet had call to .. call them.
-<br>
-<br>
+<br><br>
+# ArcPy Dependancy
+This package is dependent on ESRIs ArcGISPro arcpy. You will need a working installation of ArcGISPro to use this package.
+<br><br>
 # docstrings
 Uses Google's Python Docstring standard. I am slowly sorting out docstrings on an adhoc database.
 

@@ -8,8 +8,8 @@ import os.path as _path
 
 import funclite.iolib as iolib
 
-import arcapi.crud as crud
-import arcapi.orm as orm
+import arcproapi.crud as crud
+import arcproapi.orm as orm
 
 
 class Test(unittest.TestCase):
