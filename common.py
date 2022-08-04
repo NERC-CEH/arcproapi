@@ -1,4 +1,5 @@
 """helper functions etc"""
+from enum import Enum as _Enum
 import time as _time
 import os as _os
 import os.path as _path
@@ -22,6 +23,10 @@ lut_field_types = {
     'Raster': 'RASTER'
 }
 
+class Version(_Enum):
+    """Version enumeration"""
+    ArcPro = 1
+    ArcMap = 2
 
 class FieldNamesSpecial:
     shape = 'SHAPE@'
@@ -710,3 +715,35 @@ def oid_max(fname: str) -> (int, None):
         for row in Cur:
             return int(row[2])
     return None
+
+
+def release() -> str:
+    """Get the release number.
+
+    Returns:
+        str: The release number
+
+    Notes:
+          This is also duplicated in root init
+
+    Example:
+        >>> release()
+        '3.0'
+    """
+    return _arcpy.GetInstallInfo()['Version']
+
+
+
+def version() -> Version:
+    """
+    Get version, ie ArcPro or ArcMap
+
+    Returns:
+        Version: Version as an enumeration.
+
+    Examples:
+        >>> version()
+        Version.ArcPro
+    """
+    d = _arcpy.GetInstallInfo()
+    return Version.ArcPro if d['ProductName'] == 'ArcGISPro' else Version.ArcMap

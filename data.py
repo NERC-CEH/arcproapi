@@ -5,7 +5,13 @@ import os.path as _path
 import fuckit as _fuckit
 
 import arcpy as _arcpy
-from arcpy.conversion import TableToDBASE, TableToExcel, TableToGeodatabase, TableToSAS, TableToTable, ExcelToTable, ExportTable  # noqa
+from arcpy.conversion import TableToDBASE, TableToExcel, TableToGeodatabase, TableToSAS, TableToTable, ExcelToTable  # noqa
+
+with _fuckit:
+    from arcproapi.common import release
+    if int(release()[0]) > 2 and _arcpy.GetInstallInfo()['ProductName'] == 'ArcGISPro':
+        from arcpy.conversion import ExportTable, ExportFeatures  # noqa
+
 
 import pandas as _pd
 import numpy as _np
