@@ -39,6 +39,7 @@ class SearchCursor(_da.SearchCursor):
 
     Notes:
         Unexpected 'A column was specified which does not exist' may be solved by using 'FID' instead of 'ObjectID'. Sometimes using OID@ doesnt even work.
+        A useful kwarg is where_clause, e.g. where_clause='OBJECTID=10'
 
     Examples:
         >>> with SearchCursor('c:/my.gdb/mytable', ['OBJECTID'], where_clause='OBJECTID=10', load_shape=True) as Cur:
@@ -49,12 +50,15 @@ class SearchCursor(_da.SearchCursor):
         23.223, 23.223
         """
 
-    def __init__(self, fname, field_names, load_shape=False, **kwargs):
+    def __init__(self, fname: str, field_names: (str, list, tuple), load_shape: bool = False, **kwargs):
         # no comments here, otherwise it breaks pycharms ctrl-Q documentation
         if fname[-4:] == '.shp' and 'objectid' in [s.lower() for s in field_names]:
             _warn('This may error with an unexpected "A column was specified which does not exist."'
                   'Shapefiles have their primary key named "FID", not "ObjectID". ObjectID is used in geodatabases.'
                   )
+
+        if 'where_clause' in kwargs.keys() and '"' in kwargs['where_clause']:
+            raise ValueError('where_clause IN text values should be single quoted. Found double quotes in %s.' % kwargs['where_clause'])
 
         fname = _path.normpath(fname)
         self._load_shape = load_shape
@@ -272,8 +276,7 @@ class _Row:
         """
         if 'SHAPE@' not in self._flds:
             return None
-        shp = self._row[self._flds.index('SHAPE@')]
-        assert isinstance(shp, _arcpy.Geometry)  # just for intellisense
+        shp: _arcpy.Geometry = self._row[self._flds.index('SHAPE@')]
         return shp
 
 
@@ -285,26 +288,18 @@ class CRUD:
 
     To roll back edits call tran_rollback.
 
-    Parameters:
+    Args:
         fname: path to shape file or file geodatabase layer
         workspace: A file geodatabase workspace, used to support transactions. Will use scratch space if workspace==None
         enable_transactions: Set to true if doing any edit work, Automatically starts an edit session.
 
-
-    Example 1 Working in an edit session:
-    >>> with CRUD('c:/my.gdb/mylyr', 'c:/my.gdb', True) as Crud:
-    >>>     Crud.upsert()
+    Examples:
+        Working in an edit session:\n
+        >>> with CRUD('c:/my.gdb/mylyr', 'c:/my.gdb', True) as Crud:
+        >>>     Crud.upsert()
     """
 
     def __init__(self, fname, workspace=None, enable_transactions=True):
-        """(str,str|None)->None
-        Open our feature class or table in workspace
-
-        Workspace allows us to transactionalise operations
-
-        Parameters:
-            workspace: Open the workspace, workspace is created if workspace doesnt exist, if workspace is None, uses a default temporary scratch workspace
-        """
         fname = _path.normpath(fname)
         self._workspace_txt = workspace
         self._fname = fname
@@ -315,7 +310,6 @@ class CRUD:
         self._editor = None
         if self._enable_transactions:
             self._editor = _da.Editor(self._workspace)
-
 
     def __enter__(self):
         """enter"""
@@ -334,9 +328,9 @@ class CRUD:
             commit: commit any edits, else rollsback any edits
 
         Notes:
-            This should be called with no using a context handler, so that the inheriting ORM classes
+            This should be called when not using a context handler, so that the inheriting ORM classes
             members can still be accessed without potentially holding a lock on the work
-            """
+        """
         if self._editor:
             with _fuckit:
                 if commit:
@@ -346,9 +340,19 @@ class CRUD:
                 del self._editor
                 del self._workspace
 
-    def exists_by_key(self, fld, v):
-        """(str, float|int|str)->bool
-        return bool indicating if  v exists in the field fld
+    def exists_by_key(self, fld: str, v: (int, float, str)) -> bool:
+        """
+        Test if value v exists in field fld.
+
+        Args:
+            fld (str): field name
+            v (int, float, str): Value to find
+
+        Returns:
+            bool: True if v exists in fld else False
+
+        Notes:
+            Also see exists_by_composite_key
         """
         # TODO check it works with dates
         where = _sql.query_where_in(fld, v)

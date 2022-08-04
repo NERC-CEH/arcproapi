@@ -64,15 +64,9 @@ class ConfigTextFile(_BaseFileSource):
 class ConfigESRIGeoDBTableOrFeatureClass(_BaseFileSource):
     """store for table and feature class database information
 
-    Parameters
-    fname:
-        path to the geodatabase, use config.GeoDatabasePathsXXXX
-    lyr_or_tbl_name:
-        layer or table name
-    EnumDataSourceType_:
-        Enumeration from config.EnumDataSourceType
-    fname:
-        The fully qualified layer or table file name
+    Args:
+        fname: path to the geodatabase, use config.GeoDatabasePaths
+        lyr_or_tbl_name: layer or table name
     """
 
     def __init__(self, fname, lyr_or_tbl_name):
@@ -80,6 +74,16 @@ class ConfigESRIGeoDBTableOrFeatureClass(_BaseFileSource):
         self.lyr_or_tbl_name = lyr_or_tbl_name
         self.lyr_or_tbl_name_fqn = _path.normpath(_path.join(self.fname, self.lyr_or_tbl_name))
         super(ConfigESRIGeoDBTableOrFeatureClass, self).__init__(self.fname)
+
+
+class ConfigESRISDE(_BaseFileSource):
+    """SDE connection"""
+    def __init__(self, sde_file, lyr_or_tbl_name):
+        self.sde_file = sde_file
+        self.fname = sde_file
+        self.lyr_or_tbl_name = lyr_or_tbl_name
+        self.lyr_or_tbl_name_fqn = _path.normpath(_path.join(self.sde_file, self.lyr_or_tbl_name))
+        super(ConfigESRISDE, self).__init__(self.sde_file)
 
 
 class ConfigESRIShp(_BaseFileSource):
@@ -275,14 +279,14 @@ class _ESRIFile(_BaseFileSource):
     def __init__(self, Config, cursor_type=ESRICursorType.SearchCursor, cols=(), exclude_cols=('Shape',), where_clause='', **kwargs):
         """init
         """
-        self.Config = Config  # type: [ConfigESRIShp, ConfigESRIGeoDBTableOrFeatureClass]
+        self.Config = Config  # type: [ConfigESRIShp, ConfigESRIGeoDBTableOrFeatureClass, ConfigESRISDE]
 
         if isinstance(Config, ConfigESRIShp):
             self._fqn = Config.fname
-        elif isinstance(Config, ConfigESRIGeoDBTableOrFeatureClass):
+        elif isinstance(Config, (ConfigESRIGeoDBTableOrFeatureClass, ConfigESRISDE)):
             self._fqn = Config.lyr_or_tbl_name_fqn
         else:
-            raise ValueError('Expected Config class instance of type permissions.ConfigESRIShp or permissions.ConfigESRIGeoDBTableOrFeatureClass')
+            raise ValueError('Expected Config class instance of type ConfigESRIShp, ConfigESRIGeoDBTableOrFeatureClass or ConfigESRISDE')
 
         self._cursor_type = cursor_type  # type: ESRICursorType
         self._where_clause = where_clause
@@ -322,7 +326,6 @@ class _ESRIFile(_BaseFileSource):
             # table_as_pandas errors on date types with nulls, hence replaced
             # self.df = _data.table_as_pandas(self._fqn, cols=self._cols, where=self._where_clause, **self._kwargs)
             self.df = _data.table_as_pandas2(self._fqn, cols=self._cols, exclude_cols=self._exclude_cols, where=self._where_clause, **self._kwargs)
-
         else:
             raise NotImplementedError
 
@@ -355,7 +358,7 @@ class ESRIShp(_ESRIFile):  # noqa
     https://github.com/kayak/pypika
 
     Args:
-        fname: fully qualified name to the feature class or layer
+        Config: ConfigESRIShp instance
         cols: tuple/list of columns to include in the connetion
         cursor_type: type of datasource to open. See the connections.ESRICursorType enumeration
         args: passed to the relevant connection call, e.g. arcpy.da.SearchCursor
@@ -364,7 +367,7 @@ class ESRIShp(_ESRIFile):  # noqa
 
 # See comment against ESRIShp
 class ESRIGeoDBFeatureClassOrTable(_ESRIFile):  # noqa
-    """    Open geodatabase feature layer
+    """Open geodatabase feature layer
     See https://pro.arcgis.com/en/pro-app/latest/arcpy/functions/searchcursor.htm
 
     Use pypika to generate complex where statements:
@@ -372,21 +375,34 @@ class ESRIGeoDBFeatureClassOrTable(_ESRIFile):  # noqa
 
 
     Args:
-        fname: fully qualified name to the feature class or layer
-        cols: tuple/list of columns to include in the connetion
-        cursor_type: type of datasource to open. See the connections.ESRICursorType enumeration
-        args: passed to the relevant connection call, e.g. arcpy.da.SearchCursor
+        Config (connections.ConfigESRIGeoDBTableOrFeatureClass): Instance of ConfigESRIGeoDBTableOrFeatureClass  # noqa
+        cols: tuple/list of columns to include in the connetion  # noqa
+        cursor_type: type of datasource to open. See the connections.ESRICursorType enumeration  # noqa
+        args: passed to the relevant connection call, e.g. arcpy.da.SearchCursor  # noqa
     """
 
 
-class SDE:
-    """spatial database engines"""
+class ESRISDE(_ESRIFile):  # noqa
+    """Open feature class or table. Instantiate with instance of connections.ConfigESRISDE
 
-    def __init__(self):
-        raise NotImplementedError
+    Args:
+        Config: ConfigESRISDE instance
+        cols: tuple/list of columns to include in the connetion  # noqa
+        cursor_type: type of datasource to open. See the connections.ESRICursorType enumeration  # noqa
+        args: passed to the relevant connection call, e.g. arcpy.da.SearchCursor  # noqa
+
+    Examples:
+        >>> Cfg = ConfigESRISDE('c:/my.sde', 'my_feature_class')
+        >>> with ESRISDE(Cfg) as SDE:
+        >>>     df: pandas.DataFrame = SDE.df  # noqa
+    """
 
 
 class Oracle:
-    """oracle"""
+    """Oracle tables.
+
+    Notes:
+        ESRI spatial features under SDE should be accessed using class ESRISDE.
+    """
     def __init__(self):
         raise NotImplementedError

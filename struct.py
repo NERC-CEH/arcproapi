@@ -3,6 +3,8 @@ import os.path as _path
 import fnmatch as _fnmatch
 
 import arcpy.management
+from arcpy.management import CreateFeatureclass, AddJoin, AddRelate, AddFields, AddField, DeleteField  # noqa Add other stuff as find using it
+
 import pandas as _pd
 import fuckit as _fuckit
 
@@ -19,13 +21,9 @@ import arcproapi.environ as _environ
 import arcproapi.errors as _errors
 
 
-field_add = arcpy.management.AddField  # expose here
-fields_add = arcpy.management.AddFields  # expose here
-
 def field_oid(fname):
     """Return name of the object ID field in table table"""
     return _arcpy.Describe(fname).OIDFieldName
-
 
 def field_shp(fname):
     """(str)->str
@@ -95,9 +93,6 @@ def fc_delete2(fname: str, err_on_not_exists: bool = False, data_type: str = Non
                 raise _arcpy.ExecuteError('%s does not exist' % fname) from e
         else:
             raise _arcpy.ExecuteError from e
-
-
-
 
 def fcs_delete(fnames, err_on_not_exists=False):
     """_arcpy.Delete_management(x) if _arcpy.Exists(x).
@@ -570,19 +565,17 @@ def fcs_field_sym_diff(fname1, fname2, ignore_case=True):
     return _baselib.list_sym_diff(lst1, lst2)
 
 
-def fc_schema_copy(template, new, sr=''):
+def fc_schema_copy(template: str, new: str, sr: str = ''):
     """Copy the schema (field definition) of a feature class or a table.
 
-    Required:
-    template -- template table or fc
-    new -- new output fc or table
-
-    Optional:
-    sr -- spatial reference (only applies if fc) If no sr
+    Args:
+        template (str): template table or fc
+        new (str): new output fc or table
+        sr (str): spatial reference (only applies if fc). If no sr
           is defined, it will default to sr of template.
 
-    Example:
-    >>> fc_schema_copy(r'C:\Temp\soils_city.shp', r'C:\Temp\soils_county.shp')
+    Examples:
+        >>> fc_schema_copy(r'C:\Temp\soils_city.shp', r'C:\Temp\soils_county.shp')
     """
     path, name = _path.split(new)
     desc = _arcpy.Describe(template)
@@ -780,7 +773,7 @@ def excel_import_worksheet(xls: str, fname: str, worksheet: str, header_row=1, o
     xls = _path.normpath(xls)
     fname = _path.normpath(fname)
 
-    if not _iolib.file_exists(xls):  # important we raise an error if file DOES NOT exists, otherwise we'd delete the table without anything the data to replace it
+    if not _iolib.file_exists(xls):  # important we raise an error if file DOES NOT exists, otherwise we'd delete the table without any data to replace it
         raise FileNotFoundError('Excel file %s does not exist' % xls)
 
     if overwrite:

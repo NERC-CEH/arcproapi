@@ -5,6 +5,8 @@ import os.path as _path
 import fuckit as _fuckit
 
 import arcpy as _arcpy
+from arcpy.conversion import TableToDBASE, TableToExcel, TableToGeodatabase, TableToSAS, TableToTable, ExcelToTable, ExportTable  # noqa
+
 import pandas as _pd
 import numpy as _np
 
@@ -760,7 +762,9 @@ def pandas_join(from_: _pd.DataFrame, to_: _pd.DataFrame, from_key: str, to_key:
 
 def features_copy(source: str, dest: str, workspace: str, where_clause: str = '*', fixed_values=None, copy_shape: bool = True, force_add: bool = True, fail_on_exists: bool = True,
                   expected_row_cnt: int = None, no_progress: bool = False, **kwargs) -> int:
-    """Copy features from one table or featureclass to another
+    """Copy features from one table or featureclass to another.
+
+    If you get an error, double check field names, nothing that field names are case sensitive.
 
     Args:
         source (str): path to source feature class/table
@@ -788,6 +792,8 @@ def features_copy(source: str, dest: str, workspace: str, where_clause: str = '*
 
         no_progress (bool): Suppress printing progress bar to the console
 
+        kwargs (any): Keyword arguments, where key is field in dest, and value is field in src. E.g. dest_field='src_field'
+
     Returns:
         int: Number of records added to dest
 
@@ -800,11 +806,14 @@ def features_copy(source: str, dest: str, workspace: str, where_clause: str = '*
         (e.g. because a duplicate row would be created and fail_on_exists==True), then all
         changes will be rolled back
 
-    Exmaples:
-        >>> features_copy('c@/my.gdb/world_counties', 'c:/my.gdb/euro_countries', 'c:/my.gdb', where='country="EU"',
-            copy_shape=True, fail_on_exists=True,
-            eu_country='world_country', population='population')
+    Examples:
+        >>> features_copy('c@/my.gdb/world_counties', 'c:/my.gdb/euro_countries', 'c:/my.gdb', where_clause='country="EU"',
+        >>>    copy_shape=True, fail_on_exists=True,
+        >>>    eu_country='world_country', population='population')
     """
+    if 'where' in map(str.lower, kwargs.keys()):
+        _warn('keyword "where" in kwargs.keys(), did you mean to set a where clause? If so, use where_clause=<MY QUERY>')
+
     source = _path.normpath(source)
     dest = _path.normpath(dest)
     workspace = _path.normpath(workspace)
@@ -849,4 +858,8 @@ def features_copy(source: str, dest: str, workspace: str, where_clause: str = '*
 
 if __name__ == '__main__':
     """quick debug calls here"""
+    src = r'S:\SPECIAL-ACL\ERAMMP2 Survey Restricted\2022\data\GIS\erammp.gdb\nrw_permissionable_clipped'
+    dst = r'S:\SPECIAL-ACL\ERAMMP2 Survey Restricted\2022\data\GIS\_arcpro_projects\drone_pilot_20220725\drone_pilot_20220725.gdb\parcels'
+    wsp = r'S:\SPECIAL-ACL\ERAMMP2 Survey Restricted\2022\data\GIS\_arcpro_projects\drone_pilot_20220725\drone_pilot_20220725.gdb'
+    features_copy(src, dst, wsp, where_clause='sq_id=34158', permission='permission', sq_id='sq_id')
     pass

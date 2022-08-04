@@ -92,5 +92,17 @@ class DataDeleteAllRowsWithNoWhere(Exception):
 # end data.py
 
 
+# display errors
+class DisplayFeatureClassNotFound(Exception):
+    """No feature class matched the feature class name"""
+
+class DisplayFeatureClassNameMatchedMultipleLayers(Exception):
+    """The feature class name matched more than one feature layer"""
+# end display errors
 
 
+########
+# geom #
+########
+class GeomInvalidTypeString(Exception):
+    """Geometry type string invalid. Geometry strings are IN [point, polygon, polyline, or multipoint."""

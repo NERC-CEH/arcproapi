@@ -388,24 +388,43 @@ class Map:
         lyr.setDefinition(cim_layer)
 
 
-    def layer_definition_query_set(self, lyrname, query):
-        """(str, str) -> None
-        set a definition query
-
-        Example
-        >>Map.layer_definition_query_set('mylayer', 'SQ_ID IN (123,1234)')
+    def layer_definition_query_set(self, lyrname: str, query: str) -> None:
         """
+        Set a definition query for a layer.
+
+        Args:
+            lyrname (str): Name of the layer.
+            query (str): An SQL query, compatible with ArcPro query definition language
+
+        Raises:
+            errors.DisplayFeatureClassNotFound: If no feature matched lyrname
+            errors.DisplayFeatureClassNameMatchedMultipleLayers: If multiple layers matched lyrname
+
+        Examples:
+            >>> Map.layer_definition_query_set('mylayer', 'SQ_ID IN (123,1234)')
+        """
+        lyrs = self.Map.listLayers(lyrname)
+        if not lyrs:
+            raise _errors.DisplayFeatureClassNotFound('Failed to set the layer definition query. No feature class matched the layer name %s.' % lyrname)
+
+        if len(lyrs) > 1:
+            raise _errors.DisplayFeatureClassNameMatchedMultipleLayers('Failed to set the layer definition query. Multiple feature classes matched layer name %s.' % lyrname)
+
         lyr = self.Map.listLayers(lyrname)[0]
         lyr.definitionQuery = query
 
-    def element_set_text(self, element_name, txt):
-        """(str, str) -> None
-        Set text for text element
+    def element_set_text(self, element_name: str, txt: str) -> None:
+        """
+        Set text for text element with name element_name
 
-        element_name:
-            the name of the text element
-        txt:
-            txt to set the text element to
+        Args:
+            element_name (str): the name of the text element
+            txt (str): txt to set the text element to
+
+        Returns: None
+
+        Examples:
+            >>> Map.element_set_text('txt_box_name', 'This is the text')
         """
         e = self.Layout.listElements('TEXT_ELEMENT', element_name)[0]
         e.text = txt

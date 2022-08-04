@@ -4,7 +4,7 @@ import os.path as _path
 
 import arcpy as _arcpy
 
-import arcapi as _arcapi
+import arcproapi as _arcapi
 
 import arcproapi.common as _common
 from arcproapi.errors import *  # noqa
