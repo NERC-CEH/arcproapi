@@ -57,7 +57,9 @@ class SearchCursor(_da.SearchCursor):
                   'Shapefiles have their primary key named "FID", not "ObjectID". ObjectID is used in geodatabases.'
                   )
 
-        if 'where_clause' in kwargs.keys() and '"' in kwargs['where_clause']:
+        if kwargs.get('where_clause') and '"' in kwargs['where_clause']:
+            # It is likely that different ESRI feature classes will use double quotes for strings in the where
+            # But this works for geodatabases and shapefiles ...
             raise ValueError('where_clause IN text values should be single quoted. Found double quotes in %s.' % kwargs['where_clause'])
 
         fname = _path.normpath(fname)
