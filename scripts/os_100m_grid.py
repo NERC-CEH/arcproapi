@@ -31,6 +31,8 @@ def main():
     cmdline.add_argument('os_1km_shp', type=path.normpath, help='Official OS shape file of 1km grids')
     cmdline.add_argument('file_out', type=path.normpath, help='Shapefile to create. Must not exist')
     cmdline.add_argument('-o', '--overwrite', help='Allow overwriting existing file_out', action='store_true')
+    cmdline.add_argument('-w', '--wales', help='Export for 100km tiles intersecting Wales only', action='store_true')
+
     args = cmdline.parse_args()
     arcpy.env.overwriteOutput = args.overwrite
 
@@ -47,13 +49,17 @@ def main():
     struct.AddField(args.file_out, 'tile_name', field_type='TEXT', field_length=2)
     struct.DeleteField(args.file_out, 'Id')  # Don't ask to create an Id, but there it is, and doesnt accept null. So kill the fucker
 
-    where_wales = "tile_name in ('SH', 'SJ', 'SM', 'SN', 'SO', 'SR', 'SS', 'ST')"
-    PP = iolib.PrintProgress(maximum=data.get_row_count2(args.os_1km_shp, where=where_wales))
+    if args.wales:
+        where = "tile_name in ('SH', 'SJ', 'SM', 'SN', 'SO', 'SR', 'SS', 'ST')"
+    else:
+        where = None
+
+    PP = iolib.PrintProgress(maximum=data.get_row_count2(args.os_1km_shp, where=where))
 
     try:
         insCur = arcpy.da.InsertCursor(args.file_out, ['grid_ref', 'SHAPE@', 'tile_name'])
 
-        with crud.SearchCursor(args.os_1km_shp, field_names=['PLAN_NO', 'tile_name'], load_shape=True, where_clause=where_wales) as Cur:
+        with crud.SearchCursor(args.os_1km_shp, field_names=['PLAN_NO', 'tile_name'], load_shape=True, where_clause=where) as Cur:
             for R in Cur:
                 root_ref = R.PLAN_NO
                 if len(root_ref) != 6:
