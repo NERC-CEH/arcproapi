@@ -8,12 +8,19 @@ a field called tile_name, which is the 2 letter 100km tile, e.g. 'HP', 'SV' etc.
 
 For a clear explanation of grid refs see https://getoutside.ordnancesurvey.co.uk/guides/beginners-guide-to-grid-references/
 
+Notes:
+    An export failure during the process may be caused by hitting the shapefile size limit of 2Gb.
+    Check you export options and test with a reduced tile set to verify.
+
 Examples:
     Wales only tiles (for efficiency), with additional filter to check that all 100m grids intersect Wales. Very Slow!\n
-    > python.exe os_100m_grid "S:\SPECIAL-ACL\ERAMMP2 Survey Restricted\2022\data\1 third_party\OS\grids\OSGB_Grid_1km.shp" "S:\SPECIAL-ACL\ERAMMP2 Survey Restricted\2022\data\1 third_party\OS\grids\OSGB_Grid_Wales_100m.shp" -c "S:\SPECIAL-ACL\ERAMMP2 Survey Restricted\2022\data\1 third_party\OS\countries\Countries_(December_2019)_Boundaries_UK_BFC.shp" -o --tiles wales --country_filter wales
-    \nAll 100km tiles that intersect Wales
-    > python.exe os_100m_grid "S:\SPECIAL-ACL\ERAMMP2 Survey Restricted\2022\data\1 third_party\OS\grids\OSGB_Grid_1km.shp" "S:\SPECIAL-ACL\ERAMMP2 Survey Restricted\2022\data\1 third_party\OS\grids\OSGB_Grid_Wales_100m.shp" -o --tiles wales
+    > python.exe os_100m_grid.py "S:\SPECIAL-ACL\ERAMMP2 Survey Restricted\2022\data\1 third_party\OS\grids\OSGB_Grid_1km.shp" "S:\SPECIAL-ACL\ERAMMP2 Survey Restricted\2022\data\1 third_party\OS\grids\OSGB_Grid_Wales_100m.shp" -c "S:\SPECIAL-ACL\ERAMMP2 Survey Restricted\2022\data\1 third_party\OS\countries\Countries_(December_2019)_Boundaries_UK_BFC.shp" -o --tiles wales --country_filter wales
 
+    \nAll 100km tiles that are in a 1km tile that intersect Wales
+    > python.exe os_100m_grid.py "S:\SPECIAL-ACL\ERAMMP2 Survey Restricted\2022\data\1 third_party\OS\grids\OSGB_Grid_1km.shp" "S:\SPECIAL-ACL\ERAMMP2 Survey Restricted\2022\data\1 third_party\OS\grids\OSGB_Grid_Wales_100m.shp" -c "S:\SPECIAL-ACL\ERAMMP2 Survey Restricted\2022\data\1 third_party\OS\countries\Countries_(December_2019)_Boundaries_UK_BFC.shp" -o --tiles wales --country_filter_quick wales
+
+    \nAll 100km tiles that intersect Wales
+    > python.exe os_100m_grid.py "S:\SPECIAL-ACL\ERAMMP2 Survey Restricted\2022\data\1 third_party\OS\grids\OSGB_Grid_1km.shp" "S:\SPECIAL-ACL\ERAMMP2 Survey Restricted\2022\data\1 third_party\OS\grids\OSGB_Grid_Wales_100m.shp" -o --tiles wales
 """
 import argparse
 import os.path as path
@@ -50,6 +57,8 @@ def main():
     cmdline.add_argument('-t', '--tiles', type=f, help='Export these tiles, or accepts "wales", "england" or "scotland" eg -l SJ,SM   -l wales', required=True)
 
     cmdline.add_argument('-f', '--country_filter', type=str.capitalize, help='SLOW, SLOW, SLOW!! Prefilter each 100m tile for intersect with country (layer countries). Accepts "wales", "england" or "scotland" eg -f wales.', required=False)
+    cmdline.add_argument('-q', '--country_filter_quick', type=str.capitalize, help='Prefilter at the 1km grid level for intersect with country (layer countries). Accepts "wales", "england" or "scotland" eg -q wales. This will contain some 100m grids outside of the country boundary.', required=False)
+
     cmdline.add_argument('-c', '--countries_shp', type=path.normpath, help='OS Country Boundaries polygon layer. The official layer embeds the country name in field ctry19nm. ctry19nm IN ["England", "Scotland", "Wales"]', required=False)
 
     args = cmdline.parse_args()
@@ -62,7 +71,7 @@ def main():
     if len(args.tiles) > len(ENGLAND):
         raise ValueError('Tiles are limited to %s distinct values (nr. of tiles intersecting England). Otherwise the exported shapefile could exceed 2Gb.' % len(ENGLAND))
 
-    if args.country_filter:
+    if args.country_filter or args.country_filter_quick:
         if not args.countries_shp:
             raise ValueError('A country filter was given, but no positional argument for the countries shapefile was provided.')
         elif not iolib.file_exists(args.countries_shp):
@@ -99,13 +108,26 @@ def main():
         with crud.CRUD(args.countries_shp, enable_transactions=False) as Country:
             country_geom: arcpy.Polygon = Country.lookup(['SHAPE@'], {'ctry19nm': args.country_filter})[0]
 
+    # TODO Debug the quick filter
+    country_geom_quick = None  # noqa
+    if args.country_filter_quick:
+        with crud.CRUD(args.countries_shp, enable_transactions=False) as Country:
+            country_geom_quick: arcpy.Polygon = Country.lookup(['SHAPE@'], {'ctry19nm': args.country_filter_quick})[0]
+
     PP = iolib.PrintProgress(maximum=data.get_row_count2(args.os_1km_shp, where=where))
 
     try:
         insCur = arcpy.da.InsertCursor(args.file_out, ['grid_100m', 'SHAPE@', 'tile_name', 'grid_1km'])
 
         with crud.SearchCursor(args.os_1km_shp, field_names=['PLAN_NO', 'tile_name'], load_shape=True, where_clause=where) as Cur:
+
             for R in Cur:
+                # This is a less intensive filter at the 1km square level, so will contains some 100m grids outside of the requested country boundary
+                if args.country_filter_quick:
+                    if country_geom_quick and R['SHAPE@'].disjoint(country_geom_quick):
+                        PP.increment()
+                        continue
+
                 root_ref = R.PLAN_NO
                 if len(root_ref) != 6:
                     raise ValueError('Unexpected PLAN_NO (OS reference) value %s' % root_ref)
