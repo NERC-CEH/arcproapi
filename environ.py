@@ -30,28 +30,48 @@ def environments_list(x=(), printit=False):
     return ret
 
 
-def workspace_in_memory_str():
-    """get an in-memory workspace"""
+def workspace_in_memory_str() -> str:
+    """Get an in-memory workspace.  Aide memoir.
+
+    Returns:
+        str: string for in memory workspace
+
+    Notes:
+        Use workspace_in_memory_set instead!
+
+    Examples:
+        >>> arcpy.env.workspace = workspace_in_memory_str()  # noqa
+    """
     return 'in_memory'
 
+def workspace_in_memory_set() -> None:
+    """Set in-memory workspace. Aide memoir.
+    i.e.
 
+    Returns:
+        None
 
-def workspace_set(ws=None):
+    Examples:
+        >>> workspace_in_memory_set()  # noqa
+    """
+    _arcpy.env.workspace = workspace_in_memory_str()
+
+def workspace_set(ws: (str, None) = None) -> str:
     """Get or set _arcpy.env.workspace and return its path.
 
-    If ws is None and _arcpy.env.workspace is None, this function will set
-    _arcpy.env.workspace to _arcpy.env.scratchGDB and return its path.
+    Creates a new workspace if ws does not exist.
 
-    Optional:
-    ws -- path to workspace, default is None.
-        If ws is a non-existing file geodatabse, it will be created.
+    If ws is None and _arcpy.env.workspace is None, sets
+    _arcpy.env.workspace to _arcpy.env.scratchGDB and returns its path.
 
-    Example:
-    >>> # if executed in order
-    >>> ev = _arcpy.env
-    >>> workspace_set() # sets env.workspace = ec.scratchGDB if ev.workspace is None
-    >>> workspace_set('c:\\temp') # sets ev.workspace = 'c:\\temp', returns 'c:\\temp'
-    >>> workspace_set() # now returns 'c:\\temp'
+    Args:
+        ws (str): path to workspace, default is None.
+
+    Examples:
+        >>> env = _arcpy.env
+        >>> workspace_set() # sets env.workspace = ec.scratchGDB if ev.workspace is None
+        >>> workspace_set('c:\\temp') # sets ev.workspace = 'c:\\temp', returns 'c:\\temp'
+        >>> workspace_set() # now returns 'c:\\temp'
     """
     if ws is None:
         ws = _arcpy.env.workspace

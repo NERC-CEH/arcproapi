@@ -386,14 +386,12 @@ class CRUD:
         in a 2d list.
 
         Args:
-        table:
-            the name of the table
-        cols_to_read:
-            column name or iterable for multiple columns, Use '*' to retreive all columns, except BLOBS
-        key_val_dict:
-            a dictionary of key value pairs, e.g. {'id':1, 'country':'UK'}
+            table: the name of the table
+            cols_to_read (str, list, tuple): column name or iterable for multiple columns, Use '*' to retreive all columns, except BLOBS
+            key_val_dict: a dictionary of key value pairs, e.g. {'id':1, 'country':'UK'}
+            allow_multi: Raise an error if multiple rows match the criteria defined by key_val_dict
 
-        returns:
+        Returns:
             If allow_multi is false, returns a 1d-list of the column values of cols_to_read.
             Uf allow_muliti is true, returns a 2d-list of crud.Row types,
 
@@ -407,22 +405,27 @@ class CRUD:
             2) If you are getting an unexpected error 'An invalid sql statement....', check that the featureclass is not storing integers as text
             3) Raises an error if more than 1 record matches
 
-        Exmaple - Found Record:
-        >>> with CRUD('c:/my.gdb', enable_transactions=True) as C:
-        >>>     ord_nr, ord_total = C.lookup(['onumber', 'total'], {'company':'Amazon', 'region':'UK'})
-        >>> 'ON1235', 24000.123
+        Examples:
+            Found Record\n
+            >>> with CRUD('c:/my.gdb', enable_transactions=True) as C:
+            >>>     ord_nr, ord_total = C.lookup(['onumber', 'total'], {'company':'Amazon', 'region':'UK'})
+            >>> 'ON1235', 24000.123
 
-        Example - no record
-        >>> with CRUD('c:/my.gdb', enable_transactions=True) as C:
-        >>>     C.lookup(['onumber', 'total'], {'company':'NoCompany', 'region':'Lala Land'})
-        >>> [None, None]
+            Get as polygon\n
+            >>> row = Crud.lookup('SHAPE@', {'ctry19nm':'Wales'})
+            >>> type(row[0])
+            <Polygon object at 0x1f70dcf7a00[0x1f70dcf7a80]>
 
-        Example - allow_multi=True
-        >>> with CRUD('c:/my.gdb', enable_transactions=False) as C:
-        >>>     rows = C.lookup(['orders', 'total'], {'company':'Amazon', 'region':'UK'})
-        >>>     print(rows[0])
-        'ON1235', 24000.123
+            No record\n
+            >>> with CRUD('c:/my.gdb', enable_transactions=True) as C:
+            >>>     C.lookup(['onumber', 'total'], {'company':'NoCompany', 'region':'Lala Land'})
+            >>> [None, None]
 
+            Allow_multi=True\n
+            >>> with CRUD('c:/my.gdb', enable_transactions=False) as C:
+            >>>     rows = C.lookup(['orders', 'total'], {'company':'Amazon', 'region':'UK'})
+            >>>     print(rows[0])
+            'ON1235', 24000.123
         """
         if isinstance(cols_to_read, str):
             if not cols_to_read == '*':

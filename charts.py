@@ -5,7 +5,7 @@
 # and is in a non-working state
 
 
-import _arcpy as _arcpy
+import arcpy as _arcpy
 import numpy as _np
 
 from arcproapi.errors import MapNotFound, MapFrameNotFound, LayoutNotFound

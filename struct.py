@@ -59,7 +59,7 @@ def field_delete_not_in(fname, not_in):
 def fc_delete(fname: str) -> bool:
     """Deletes a table or feature class
 
-    Returns: bool: False if x does not exist, True if x exists and was deleted.
+    Returns: bool: False if fname does not exist, True if fname exists and was deleted.
     """
     deletted = False
     if _arcpy.Exists(fname):
@@ -94,8 +94,26 @@ def fc_delete2(fname: str, err_on_not_exists: bool = False, data_type: str = Non
         else:
             raise _arcpy.ExecuteError from e
 
+
+def fc_field_types_get(fname, filterer=None) -> list:
+    """Return list of column types of a table.
+
+    Args:
+        fname -- input table or table view
+
+    Optional:
+    filterer -- function, only fields where filterer returns True are listed
+
+    Example:
+    >>> types('c:\\foo\\bar.shp', lambda f: f.name.startswith('eggs'))  # noqa
+    """
+    flds = _arcpy.ListFields(fname)
+    if filterer is None: filterer = lambda a: True
+    return [f.type for f in flds if filterer(f)]
+
+
 def fcs_delete(fnames, err_on_not_exists=False):
-    """_arcpy.Delete_management(x) if _arcpy.Exists(x).
+    """_arcpy.Delete_management(fname) if _arcpy.Exists(fname).
     Args:
         fnames (list, tuple): iterable of feature class or table path names
         err_on_not_exists (bool): raise an error if field does not exist in fname
@@ -114,14 +132,14 @@ def fcs_delete(fnames, err_on_not_exists=False):
 
 
 def cleanup(fname_list, verbose=False, **args):
-    """Delete items in x and return number of items that could not be deleted.
+    """Delete items in fname and return number of items that could not be deleted.
 
     This function uses the dlt function, which in turn uses
     _arcpy. Exists and _arcpy.management.Delete. The deletion is wrapped in a try
     statement so failed deletions are skipped silently.
 
     Required:
-    x -- iterable of items to delete
+    fname -- iterable of items to delete
 
     Optional:
     verbose -- suppress messages if False (default), otherwise print messages
@@ -526,7 +544,7 @@ def fcs_schema_compare(fname1, fname2, sortfield, as_df=True):
     fname2 = _path.normpath(fname2)
     if as_df:
         out_name = _iolib.get_temp_fname()
-        out = _arcpy.management.TableCompare(fname1, fname2, sortfield, 'SCHEMA_ONLY',
+        _ = _arcpy.management.TableCompare(fname1, fname2, sortfield, 'SCHEMA_ONLY',
                                              ignore_options=['IGNORE_EXTENSION_PROPERTIES', 'IGNORE_SUBTYPES ', 'IGNORE_RELATIONSHIPCLASSES', 'IGNORE_FIELDALIAS'],
                                              continue_compare=True, out_compare_file=out_name)
         df = _pd.read_csv(out_name)
@@ -538,12 +556,14 @@ def fcs_schema_compare(fname1, fname2, sortfield, as_df=True):
                                              continue_compare=True)
         return out.getMessages()
 
-def fcs_field_sym_diff(fname1, fname2, ignore_case=True):
+
+def fcs_field_sym_diff(fname1: str, fname2: str, ignore_case=True) -> dict:
     """Show field differences
 
     Args:
         fname1 (str): feature class 1
-        fname2 (str) feature class 2
+        fname2 (str): feature class 2
+        ignore_case (bool): Case insensitive comparison
 
     Returns:
         dict: Dictionary of items in 1 not in 2, items in 1 and 2, items in 2 not in 1. See example.
@@ -559,8 +579,8 @@ def fcs_field_sym_diff(fname1, fname2, ignore_case=True):
         lst1 = fields_get(fname1)
         lst2 = fields_get(fname2)
     else:
-        lst1 = [s.lower() for s in fields_get(fname1, match='*')]
-        lst2 = [s.lower() for s in fields_get(fname2, match='*')]
+        lst1 = [s.lower() for s in fields_get(fname1, match='*')]  # noqa
+        lst2 = [s.lower() for s in fields_get(fname2, match='*')]  # noqa
 
     return _baselib.list_sym_diff(lst1, lst2)
 
@@ -597,7 +617,7 @@ def table_to_points(tbl, out_fc, xcol, ycol, sr, zcol='#', w=''):
     Required:
     tbl -- input table or table view
     out_fc -- path to output feature class
-    xcol -- name of a column in tbl that stores x coordinates
+    xcol -- name of a column in tbl that stores fname coordinates
     ycol -- name of a column in tbl that stores y coordinates
     sr -- spatial reference for out_fc
         sr can be either _arcpy.SpatialReference object or a well known id as int
@@ -757,7 +777,7 @@ def excel_import_worksheet(xls: str, fname: str, worksheet: str, header_row=1, o
         xls (str): path to excel
         fname (str): fully qualified path to the table to create
         worksheet (str): excel worksheet name
-        header_row (int): header row
+        header_row (int): header row, set to 0 if there are no cols.
         overwrite (bool): Allow overwrite. If false and fname exists, an error will be raised
         data_type (str): Passed to arcpy.management.Delete, required if expecting more than 1 layer with the same name in the geodb.
         kwargs: keyword args passed to arcpy.conversion.ExcelToTable
@@ -768,7 +788,8 @@ def excel_import_worksheet(xls: str, fname: str, worksheet: str, header_row=1, o
     Returns: None
 
     Notes:
-        See See https://pro.arcgis.com/en/pro-app/latest/tool-reference/data-management/delete.htm for data_type values.
+        See https://pro.arcgis.com/en/pro-app/latest/tool-reference/data-management/delete.htm for data_type values.
+        See https://pro.arcgis.com/en/pro-app/latest/tool-reference/conversion/excel-to-table.htm for kwargs and header_row information
     """
     xls = _path.normpath(xls)
     fname = _path.normpath(fname)
@@ -779,5 +800,4 @@ def excel_import_worksheet(xls: str, fname: str, worksheet: str, header_row=1, o
     if overwrite:
         with _fuckit:
             _arcpy.management.Delete(fname, data_type=data_type)
-
-    _arcpy.conversion.ExcelToTable(xls, fname, worksheet, 1, '', **kwargs)
+            ExcelToTable(xls, fname, worksheet, 1, '', field_names_row=header_row, **kwargs)  # noqa

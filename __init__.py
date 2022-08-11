@@ -18,7 +18,7 @@ both. (Graham Monkman 9/3/2022)
 import arcpy as _arcpy
 
 
-__all__ = ['charts_stats', 'common', 'data', 'display', 'environ',
+__all__ = ['charts.py', 'common', 'data', 'display', 'environ',
            'errors', 'http', 'meta', 'projections', 'raster', 'sql',
            'struct']
 

@@ -25,7 +25,7 @@ import unittest
 
 import arcpy
 
-import arcproapi.charts_stats as _charts_stats
+import arcproapi.charts as _charts_stats
 import arcproapi.common as _common
 import arcproapi.data as _data
 import arcproapi.http as http

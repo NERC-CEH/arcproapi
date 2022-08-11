@@ -5,11 +5,12 @@ import os as _os
 import os.path as _path
 import datetime as _datetime
 import sys as _sys
+import math as _math
 
 import arcpy as _arcpy
 
 
-import arcproapi.errors
+import arcproapi.errors as _errors
 
 
 lut_field_types = {
@@ -118,7 +119,7 @@ def msg(x, timef='%Y-%m-%d %H:%M:%S', verbose=True, log=None, level='message'):
             doexit = True
         else:
             em = "Level %s not in 'message'|'warning'|'error'|0|1|2." % level
-            raise arcapi.errors.ArcapiError(em)
+            raise _errors.ArcapiError(em)
 
     if log not in ("", None):
         with open(log, "a") as fl:
@@ -316,23 +317,23 @@ def list_data(top, **options):
             yield item
 
 
-def head(tbl, n=10, t=True, delimiter="; ", geoms=None, cols=("*",), w="", verbose=True):
+def head(tbl: str, n: int = 10, as_rows: bool = True, delimiter: str = "; ", geoms=None, cols: (list, tuple) = ("*",), w: str = "", verbose: bool = True):
     """Return top rows of table tbl.
-
 
     Returns a list where the first element is a list of tuples representing
     first n rows of table tbl, second element is a dictionary like:
     {i: {"name":f.name, "values":[1,2,3,4 ...]}} for each field index i.
 
 
-    Optional:
-    n -- number of rows to read, default is 10
-    t -- if True (default), columns are printed as rows, otherwise as columns
-    delimiter -- string to be used to separate values (if t is True)
-    geoms -- if None (default), print geometries 'as is', else as str(geom).
-    cols -- list of columns to include, include all by default, case insensitive
-    w, where clause to limit selection from tbl
-    verbose -- suppress printing if False, default is True
+    Args:
+        tbl (str): The feature class or table
+        n (int): number of rows to read, default is 10
+        as_rows (bool): if True (default), columns are printed as rows, otherwise as columns
+        delimiter (str): string to be used to separate values (if t is True)
+        geoms: if None (default), print geometries 'as is', else as str(geom).
+        cols (list, tuple): list of columns to include, include all by default, case insensitive
+        w (str): where clause to limit selection from tbl
+        verbose (bool): suppress printing if False, default is True
 
     Example:
         >>> tmp = head('c:\\foo\\bar.shp', 5, True, "|", " ")
@@ -360,7 +361,7 @@ def head(tbl, n=10, t=True, delimiter="; ", geoms=None, cols=("*",), w="", verbo
             for j in range(nflds):
                 fs[j]["values"].append(row[j])
 
-    if t:
+    if as_rows:
         labels = []
         values = []
         for fld in range(nflds):
@@ -489,23 +490,6 @@ def print_tuples(x, delim=" ", tbl=None, geoms=None, fillchar=" ", padding=1, ve
     return ret
 
 
-def types(x, filterer=None):
-    """Return list of column types of a table.
-
-    Required:
-    x -- input table or table view
-
-    Optional:
-    filterer -- function, only fields where filterer returns True are listed
-
-    Example:
-    >>> types('c:\\foo\\bar.shp', lambda f: f.name.startswith('eggs'))  # noqa
-    """
-    flds = _arcpy.ListFields(x)
-    if filterer is None: filterer = lambda a: True
-    return [f.type for f in flds if filterer(f)]
-
-
 def nrow(x):
     """Return number of rows in a table as integer.
 
@@ -554,7 +538,7 @@ def get_row_count2(fname: str, where: (str, None) = None) -> int:
     """
     n = 0
     with _arcpy.da.SearchCursor(fname, ['OID@'], where_clause=where) as Cur:
-        for row in Cur:
+        for _ in Cur:
             n += 1
     return n
 
@@ -584,7 +568,7 @@ def is_locked(fname: str) -> (bool, None):
     """
     fname = _path.normpath(fname)
     if not _arcpy.Exists(fname):
-        return None
+        return None  # noqa
     return not _arcpy.TestSchemaLock(fname)
 
 
@@ -669,7 +653,7 @@ def is_gdb(fname):
     return '.gdb' in fname
 
 
-# this is reproduced in stuct, but don't import as will end up with circular reference issues
+# this is reproduced in stuct, but don'as_rows import as will end up with circular reference issues
 def oid_field(fname):
     """(str)->str
     Get the primary key field names
@@ -682,9 +666,9 @@ def oid_field(fname):
     """
     return _arcpy.Describe(fname).OIDFieldName
 
-# this is reproduced in stuct, but don't import as will end up with circular reference issues
-def shape_field(fname):
-    """(str)->str
+# this is reproduced in stuct. Dont refactor or will risk ending up with circular references
+def shape_field(fname: str) -> str:
+    """
     Return name of the Shape (Geometry) field in feature class fname
 
     Args:
@@ -717,6 +701,104 @@ def oid_max(fname: str) -> (int, None):
     return None
 
 
+
+def extent(in_file: str, buffer_length=0, align=False):
+    """
+    Extracts the ext of a feature class, and applies an optional buffer
+    and/or rounds coordinates to a suitable alignment.
+
+    Args:
+        in_file (str):  The file to be processed.
+        buffer_length (int): The distance to buffer the file by, in the files units.
+        align (bool): Align the coordinates to sensible values.
+
+    Returns:
+        square_extent (tuple): An ext array for use as an input to create_grid.
+    """
+
+    # Set initial ext from arcpy Describe object, and convert to int. Min
+    # coordinates are rounded down, whilst max coordinates are rounded up.
+    desc = _arcpy.Describe(in_file)
+    min_x = (int(desc.Extent.XMin))
+    min_y = (int(desc.Extent.YMin))
+    max_x = (int(_math.ceil(desc.Extent.XMax)))
+    max_y = (int(_math.ceil(desc.Extent.YMax)))
+
+    # Adjust extents with buffer.
+    if buffer_length:
+        buffer_length = int(buffer_length)
+        min_x -= buffer_length
+        min_y -= buffer_length
+        max_x += buffer_length
+        max_y += buffer_length
+
+    # Create ext array.
+    min_xy = (min_x, min_y)
+    max_xy = (max_x, max_y)
+    square_extent = (min_xy, max_xy)
+
+    # Adjust ext further to align to suitable coordinates.
+    if align:
+        return extent_round(square_extent)
+    else:
+        return square_extent
+
+
+def extent_round(ext: (list, tuple), digits: (int, None) = None):
+    """
+    Rounds an ext array to a set number of digits, with minimum coordinates
+    rounded down, and maximum coordinates rounded up, effectivly buffering the
+    ext. The number of digits is the number of "places" to be rounded to.
+    For example, an input ext with xy values of min_x=123456, min_y=321654,
+    max_x=321654, max_y=123456, and digits set to 2, the output would be
+    min_x=123400, min_y=321600, max_x=321700, max_y=124500.
+
+    Args:
+        ext (sequence):
+            An array that must be formatted with two sub-sequences, the first
+            containing the min x and min y coordinates of the ext, and the
+            second the max equivalents. For example:
+            ext = ((min_x, min_y)), ((max_x, max_y)).
+
+        digits (int):
+            The number of "places" to set the ext to. If set to zero, this
+            will return an ext array rounded to integers.
+
+    Returns:
+        square_extent (tuple): An ext array for use as an input to create_grid.
+    """
+
+    # Read ext corner values.
+    min_x = ext[0][0]
+    min_y = ext[0][1]
+    max_x = ext[1][0]
+    max_y = ext[1][1]
+
+    # Read the length and height of the ext rectangle.
+    length = max_x - min_x
+    height = max_y - min_y
+
+    # If no value is set for the digits (0 counts as a value here), select a
+    # digits value of half the length of the longest rectangle side. For
+    # example, a length of 100000 would produce a digits value of 3.
+    if digits is None:
+        if len(str(int(length))) >= len(str(int(height))):
+            digits = len(str(int(length)))
+        else:
+            digits = len(str(int(height)))
+        digits /= 2
+
+    # Round the input values to the required number of places (digits).
+    min_x = int(round(min_x, -digits))
+    min_y = int(round(min_y, -digits))
+    max_x = int(round(max_x, -digits))
+    max_y = int(round(max_y, -digits))
+
+    # Create a new ext array and return.
+    square_extent = ((min_x, min_y), (max_x, max_y))
+    return square_extent
+
+
 def release() -> str:
     """Get the release number.
 
@@ -731,7 +813,6 @@ def release() -> str:
         '3.0'
     """
     return _arcpy.GetInstallInfo()['Version']
-
 
 
 def version() -> Version:
