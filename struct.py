@@ -801,4 +801,4 @@ def excel_import_worksheet(xls: str, fname: str, worksheet: str, header_row=1, o
     if overwrite:
         with _fuckit:
             _arcpy.management.Delete(fname, data_type=data_type)
-    ExcelToTable(xls, fname, worksheet, 1, '', field_names_row=header_row, **kwargs)  # noqa
+    ExcelToTable(xls, fname, Sheet=worksheet, field_names_row=header_row, **kwargs)
