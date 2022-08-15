@@ -2,8 +2,8 @@
 import os.path as _path
 import fnmatch as _fnmatch
 
-import arcpy.management
-from arcpy.management import CreateFeatureclass, AddJoin, AddRelate, AddFields, AddField, DeleteField  # noqa Add other stuff as find using it
+from arcpy.management import CreateFeatureclass, AddJoin, AddRelate, AddFields, AddField, DeleteField   # noqa Add other stuff as find it useful ...
+from arcpy.conversion import ExcelToTable, TableToExcel, TableToGeodatabase, TableToDBASE, TableToSAS  # noqa Add other stuff as find it useful ...
 
 import pandas as _pd
 import fuckit as _fuckit
@@ -772,6 +772,7 @@ def geodb_find_cols(gdb, col_name, partial_match=False):
 def excel_import_worksheet(xls: str, fname: str, worksheet: str, header_row=1, overwrite: bool = False, data_type: str = '', **kwargs) -> None:
     """
     Import an excel spreadsheet as a table into a gdb.
+    Just a wrapper around arcpy.conversion.ExcelToTable.
 
     Args:
         xls (str): path to excel
@@ -800,4 +801,4 @@ def excel_import_worksheet(xls: str, fname: str, worksheet: str, header_row=1, o
     if overwrite:
         with _fuckit:
             _arcpy.management.Delete(fname, data_type=data_type)
-            ExcelToTable(xls, fname, worksheet, 1, '', field_names_row=header_row, **kwargs)  # noqa
+    ExcelToTable(xls, fname, worksheet, 1, '', field_names_row=header_row, **kwargs)  # noqa
