@@ -379,7 +379,7 @@ def fields_exist(fname: str, *args) -> bool:
 
     Args:
         fname (str): Feature class or table
-        *args: The fields to check if exists in fname. Pass as string arguments.
+        *args: The fields to check if exists in fname. Pass as arguments.
 
     Returns:
         bool: True if all exist, else false
@@ -395,14 +395,9 @@ def fields_exist(fname: str, *args) -> bool:
         >>> fields_exist('C:/my.gdb/countries', 'country', 'DOESNT_EXIST', 'area', 'population')
         False
     """
-    d = field_list_compare(fname, args)
-    return args and len(d['a_and_b]) == len(args)
+    d = field_list_compare(fname, args)  # noqa
+    return args and (len(d['a_and_b']) == len(args))
 
-
-
-        return any()
-        return field_name.lower() in map(str.lower, fields_get(fname))
-    return field_name in fields_get(fname)
 
 
 def fields_get(fname, wild_card='*', field_type='All', no_error_on_multiple: bool = True, as_objs: bool = False) -> (list[str], list[_arcpy.Field], None):
@@ -762,7 +757,7 @@ def field_copy_definition(fc_src: str, fc_dest: str, source_field_name: str, ren
         if not field:
             raise ValueError('Field %s does not exist in %s' % (source_field_name, fc_src))
 
-    ftype =  field_property_overrides.get('type') if field_property_overrides.get('type') else field.type
+    ftype = field_property_overrides.get('type') if field_property_overrides.get('type') else field.type
     length = field_property_overrides.get('length') if field_property_overrides.get('length') else field.length
     pres = field_property_overrides.get('precision') if field_property_overrides.get('precision') else field.precision
     scale = field_property_overrides.get('scale') if field_property_overrides.get('scale') else field.scale
