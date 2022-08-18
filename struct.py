@@ -1,8 +1,7 @@
 """Structural stuff, like deleting or renaming cols, and functions that query structure related properties"""
 import os.path as _path
-import fnmatch as _fnmatch
 
-from arcpy.management import CreateFeatureclass, AddJoin, AddRelate, AddFields, AddField, DeleteField   # noqa Add other stuff as find it useful ...
+from arcpy.management import CreateFeatureclass, AddJoin, AddRelate, AddFields, AddField, DeleteField, AlterField   # noqa Add other stuff as find it useful ...
 from arcpy.conversion import ExcelToTable, TableToExcel, TableToGeodatabase, TableToDBASE, TableToSAS  # noqa Add other stuff as find it useful ...
 
 import pandas as _pd
@@ -352,47 +351,103 @@ def field_type_get(in_field, fc=''):
     else:
         return None
 
+def field_exists(fname: str, field_name: str, case_insensitive: bool = True) -> bool:
+    """
+    Does field field_name exist in feature class/table fname
 
-def fields_get(table_or_list, match='*', multi: bool = True):
+    Args:
+        fname (str): The layer or table
+        field_name (str): The field name
+        case_insensitive (bool): Case insensitive check
+
+    Returns:
+        bool: Does it exist?
+
+    Examples:
+        >>> field_exists('C:\my.gdb\coutries', 'country_name')
+        True
+    """
+    fname = _path.normpath(fname)
+    if case_insensitive:
+        return field_name.lower() in map(str.lower, fields_get(fname))
+    return field_name in fields_get(fname)
+
+
+def fields_exist(fname: str, *args) -> bool:
+    """
+    Do all fields exist in a data store. Names passed as args, NOT a list.
+
+    Args:
+        fname (str): Feature class or table
+        *args: The fields to check if exists in fname. Pass as string arguments.
+
+    Returns:
+        bool: True if all exist, else false
+
+    Notes:
+        Calls field_list_compare and checks the intersection.
+        Use file_list_compare directly to get the symetric difference and intersect
+        between a list of field names and a feature class/table of interest.
+
+    Examples:
+        >>> fields_exist('C:/my.gdb/countries', 'country', 'fips', 'area', 'population')
+        True
+        >>> fields_exist('C:/my.gdb/countries', 'country', 'DOESNT_EXIST', 'area', 'population')
+        False
+    """
+    d = field_list_compare(fname, args)
+    return args and len(d['a_and_b]) == len(args)
+
+
+
+        return any()
+        return field_name.lower() in map(str.lower, fields_get(fname))
+    return field_name in fields_get(fname)
+
+
+def fields_get(fname, wild_card='*', field_type='All', no_error_on_multiple: bool = True, as_objs: bool = False) -> (list[str], list[_arcpy.Field], None):
+
     """Return a list of field objects where name matches the specified pattern.
 
     Args:
-        table_or_list: input table or feature class or list of fields
-        match (str):pattern to match to field
-        multi (bool): If True, will return a list of all matches, if false, will raise ValueError
+        fname (str): input table or feature class
+        wild_card (str):pattern to match to field, * represents zero or more characters
+        field_type (str): Field type filter. IN ('All', 'BLOB', 'Date', 'Double', 'Geometry', 'GlobalID', 'GUID', 'Integer', 'OID', 'Raster', 'Single', 'SmallInteger', 'String'
+        no_error_on_multiple (bool): If True and multiple fields match, will return a list of all matches. If false, will raise StructMultipleFieldMatches on multiple matches
+        as_objs (bool): Return as arcpy Fields, not str.
 
     Returns:
-        (list, None, arcpy.Field): Returns a list of Fields, a single Field or None.
+        list[arcpy.Field]: Matched field objectsm as_objs=True
+        list[str]: Matched field name(s), as_objs=False
+        None: No matching fields
 
     Raises:
         StructMultipleFieldMatches: If multi was False and more than one field matched 'match'
 
+    Notes:
+        Calls ListFields, https://pro.arcgis.com/en/pro-app/latest/arcpy/functions/listfields.htm
+        This function is now largely superflous with the improvements in arcgispro, but is here to support legacy code.
+
     Examples:
-        >>> fields_get(r'C:\Temp\Counties.shp', 'county_*', multi=True)
+        >>> fields_get(r'C:\Temp\Counties.shp', 'county_*', no_error_on_multiple=True)
         ['COUNTY_CODE', 'COUNTY_FIPS']
 
-        >>> fields_get(r'C:\Temp\Counties.shp', 'county_*', multi=False)
+        >>> fields_get(r'C:\Temp\Counties.shp', 'county_*', no_error_on_multiple=False)
         Traceback (most recent call last):
             File: ....
         StructMultipleFieldMatches ...
     """
-    if isinstance(table_or_list, list):
-        fields = table_or_list
-    else:
-        fields = [f.name for f in _arcpy.ListFields(table_or_list)]
+    # TODO Test fields_get
+    fields = _arcpy.ListFields(fname, wild_card=wild_card, field_type=field_type)
 
-    all_mats = []
-    for f in fields:
-        if _fnmatch.fnmatch(f, match):
-            all_mats.append(f)
-
-    if not all_mats: return None
-    if multi: return all_mats
-
-    if len(all_mats) > 1:
+    if fields and len(fields) > 1 and not no_error_on_multiple:
         raise _errors.StructMultipleFieldMatches('Multiple fields matched, expected a single field match')
 
-    return all_mats[0]
+    if not as_objs:
+        fields_str = [f.name for f in fields]
+        return fields_str
+
+    return fields
 
 
 def fields_add_from_table(target, source, add_fields):
@@ -579,8 +634,8 @@ def fcs_field_sym_diff(fname1: str, fname2: str, ignore_case=True) -> dict:
         lst1 = fields_get(fname1)
         lst2 = fields_get(fname2)
     else:
-        lst1 = [s.lower() for s in fields_get(fname1, match='*')]  # noqa
-        lst2 = [s.lower() for s in fields_get(fname2, match='*')]  # noqa
+        lst1 = [s.lower() for s in fields_get(fname1, wild_card='*')]  # noqa
+        lst2 = [s.lower() for s in fields_get(fname2, wild_card='*')]  # noqa
 
     return _baselib.list_sym_diff(lst1, lst2)
 
@@ -644,6 +699,110 @@ def table_to_points(tbl, out_fc, xcol, ycol, sr, zcol='#', w=''):
     return _arcpy.Describe(out_fc).catalogPath
 
 
+def field_copy_definition(fc_src: str, fc_dest: str, source_field_name: str, rename_as: (str, None) = None, ignore_case: bool = True, silent_skip_on_exists: bool = False, **field_property_overrides) -> None:
+    """
+    Copy a field definition from one table/feature class to another
+
+    Args:
+        fc_src (str):
+        fc_dest (str):
+        source_field_name (str):
+        rename_as (str, None): If None (or '') create as field_name in fc_dest, else rename to rename_as
+        ignore_case (bool): Ignore case matches
+        silent_skip_on_exists (bool): If True, just skip the add silently. If false, and field is in dest, the raises StructFieldExists.
+
+        **field_property_overrides:
+            kwargs used to override field properties, e.g. length=50, to force the a text field length to be 50.
+            Valid keywords are:
+                type (str), length (int), precision (int), scale (int),
+                aliasName (str), domain (str), isNullable (bool), required (bool)
+
+    Returns:
+        None
+
+    Raises:
+        errors.StructFieldExists: If the field exists in the destination
+        errors.StructMultipleFieldMatches: If the source table has multiple field matches to field_name. This is an edge case, but may occur depending on enterprise geodatabase support for case sensitivity.
+
+    Notes:
+        If we rename the field by setting rename_as, then the alias name is updated.
+
+    Examples:
+        Copy myfield to dest.shp
+        >>> field_copy_definition('C:\src.shp', 'C:\dest.shp', 'myfield')
+        \nCopy myfield to dest.shp, renaming to mynewfield
+        >>> field_copy_definition('C:\src.shp', 'C:\dest.shp', 'myfield', rename_as='mynewfield')
+    """
+    fc_dest = _path.normpath(fc_dest)
+    fc_src = _path.normpath(fc_src)
+    # Populate with all names as used to do some validatin
+    fields_src = _arcpy.ListFields(fc_src)
+
+    fields_dest = fields_get(fc_dest, as_objs=False)
+
+    was_rename = True
+    if not rename_as:
+        was_rename = False
+        rename_as = source_field_name
+
+    if any([s.lower() == rename_as.lower() for s in fields_dest]):  # noqa
+        if silent_skip_on_exists:
+            return
+        raise _errors.StructFieldExists('Field %s already exists in %s' % (rename_as, fc_dest))
+
+    if ignore_case:
+        fields = [fld for fld in fields_src if fld.name.lower() == source_field_name.lower()]
+        if not fields:
+            raise ValueError('Field %s does not exist in source %s' % (source_field_name, fc_src))
+        if fields and len(fields) > 1:
+            raise _errors.StructMultipleFieldMatches('Ignoring case caused multiple field matches to %s in source %s' % (source_field_name, fc_src))
+        field = fields[0]
+    else:
+        field = [fld for fld in fields_src if fld == source_field_name][0]
+        if not field:
+            raise ValueError('Field %s does not exist in %s' % (source_field_name, fc_src))
+
+    ftype =  field_property_overrides.get('type') if field_property_overrides.get('type') else field.type
+    length = field_property_overrides.get('length') if field_property_overrides.get('length') else field.length
+    pres = field_property_overrides.get('precision') if field_property_overrides.get('precision') else field.precision
+    scale = field_property_overrides.get('scale') if field_property_overrides.get('scale') else field.scale
+    domain = field_property_overrides.get('domain') if field_property_overrides.get('domain') else field.domain
+
+    # Lets use the new field name as the alias
+    if was_rename:
+        alias = field_property_overrides.get('aliasName') if field_property_overrides.get('aliasName') else rename_as
+    else:
+        alias = field_property_overrides.get('aliasName') if field_property_overrides.get('aliasName') else field.aliasName
+
+    # Errorhandled, as some geo storages do not support nullable or required, so let us just silently work.
+    nullable = field_property_overrides.get('isNullable')
+    if not nullable:
+        try:
+            if field.isNullable:
+                nullable = 'NULLABLE'
+            else:
+                nullable = 'NOT_NULLABLE'
+        except:
+            nullable = 'NOT_NULLABLE'
+
+    req = field_property_overrides.get('required')
+    if not req:
+        try:
+            if field.required:
+                req = 'REQUIRED'
+            else:
+                req = 'NON_REQUIRED'
+        except:
+            req = 'NON_REQUIRED'
+
+    _arcpy.management.AddField(fc_dest, rename_as, ftype,
+                               field_precision=pres, field_scale=scale,
+                               field_length=length, field_alias=alias,
+                               field_is_nullable=nullable, field_is_required=req,
+                               field_domain=domain)
+
+
+
 def field_rename(tbl, col, newcol, alias=''):
     """Rename column in table tbl and return the new name of the column.
 
@@ -681,19 +840,20 @@ def field_rename(tbl, col, newcol, alias=''):
     return newcol
 
 
-def field_get_property(fld, property_):
-    """(Obj, str)->any|None
-    This gets a property from an arcpy field describe object from a string.
-    Field describe objects are simply the objects returned from a ListFields call
-
-    This is necessary to support other lib functions to get the property with late binding,
-    because the Describe object exposes nothing! No __dict__, getattr() etc
+def field_get_property(fld: _arcpy.Field, property_: str) -> any:  # noqa
+    """
+    Get property value from an arcpy field describe object using a string rather than a property.
 
     Args:
-        param fld: The field object (ListField outputs)
-        param property_: The property name, eg. 'isNullable'. See https://pro.arcgis.com/en/pro-app/latest/arcpy/classes/field.htm
+        fld (arcpy.Field): The field object (e.g. fields returned from ListField )
+        property_ (str): The property name, eg. 'isNullable'. See https://pro.arcgis.com/en/pro-app/latest/arcpy/classes/field.htm
 
-    Returns: any (the value of the property), or None of property is not a member of fld
+    Returns:
+        any: the value of the property, or None of property_ is not a member of fld
+
+    Notes:
+        This is necessary to support other lib functions to get a field property with late binding,
+        because the Describe object does not expose __dict__ or getattr()
 
     Examples:
         >>> field_get_property(field_list('c:/my.shp', objects=True)[0], 'type')
@@ -715,18 +875,21 @@ def field_get_property(fld, property_):
     return None
 
 
-def geodb_dump_struct(gdb: str, wild_lyr: str = '*', ftype='All'):
+def geodb_dump_struct(gdb: str, wild_lyr: str = '*', ftype='All'):  # noqa
     """dump the structure of a geodb to excel"""
     # TODO Implement geodb_dump_struct
+
+    raise NotImplementedError
+
     out = {'lyr': [], 'fld': [], 'type': []}
 
-    def _add_fld(fc_, fld_):
+    def _add_fld(fc_, fld_):  # noqa
         out['lyr'].append(fc_)
         out['fld'].append(fld_.name)
         out['type'].append(fld_.type)
 
     for fc in fcs_list_all(gdb, wild=wild_lyr, ftype=ftype, rel=False):
-        for fld in field_list(fc, objects=True):
+        for fld in field_list(fc, objects=True):  # noqa
             pass
 
 

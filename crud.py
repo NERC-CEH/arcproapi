@@ -119,7 +119,6 @@ class SearchCursor(_da.SearchCursor):
         self.reset()
         return i
 
-
 class UpdateCursor(_da.UpdateCursor):
     """Wrapper around arcpy.da.SearchCursor. The rows yielded are of class crud.Row,
     which supports accessing values as a property of the Row instance or using indexing

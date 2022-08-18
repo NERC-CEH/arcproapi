@@ -77,12 +77,18 @@ class CompositeKeyColumnsInvalid(Exception):
 # struct.py errors
 class StructMultipleFieldMatches(Exception):
     """Multiple fields matched, expected a single field match"""
+
+class StructFieldExists(Exception):
+    """Field already exists in table or featureclass"""
 # end struct.py
 
 
 # data.py errors
 class DataNoRowsMatched(Exception):
     """No rows matched the query"""
+
+class DataFieldValuesNotUnique(Exception):
+    """Field values were not unique"""
 
 class DataUnexpectedRowCount(Exception):
     """Expected a fixed rowcount, got different rowcount"""

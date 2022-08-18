@@ -9,9 +9,9 @@ from arcpy.conversion import TableToDBASE, TableToExcel, TableToGeodatabase, Tab
 
 with _fuckit:
     from arcproapi.common import release
+
     if int(release()[0]) > 2 and _arcpy.GetInstallInfo()['ProductName'] == 'ArcGISPro':
         from arcpy.conversion import ExportTable, ExportFeatures  # noqa
-
 
 import pandas as _pd
 import numpy as _np
@@ -28,80 +28,143 @@ import funclite.iolib as _iolib
 import funclite.baselib as _baselib
 
 
-def fields_copy_by_join(fc_dest: str, fc_dest_key_col: str, fc_src: str, fc_src_key_col: str, cols_to_copy: (list, tuple) = ()):
-    """Join values from one table to another using dictionary.
+def fields_copy_by_join(fc_dest: str, fc_dest_key_col: str, fc_src: str, fc_src_key_col: str, cols_to_copy: (str, list, tuple), rename_to: (str, tuple, list, None) = None,
+                        error_if_dest_cols_exists: bool = True, show_progress: bool = True) -> int:
+    """
+    Add fields from one table to another using a shared candidate key field.
 
-    Arcpy supports extending tables using numpy arrays:
-    https://pro.arcgis.com/en/pro-app/latest/arcpy/data-access/extendtable.htm
+    This can also be used to copy data between existing fields by setting
+    error_if_dest_cols_exists = False. It will also work with a mix of
+    destination fields that already exist and dont exist.
 
-    Add fields from one table to another by using a dictionary rather
-    than joining tables.  There must be a field with common values between the
-    two tables to enable attribute matching.  Values from "join_key" field in
-    "join_table" should be unique.  This function can be faster than a standard
-    Join Tool for tables with only couple of hundreds or thousands of records.
-    This function alters the input source_table.
-    Returns path to the altered source table.
+    Args:
+        fc_dest (str): table to add fields to
+        fc_dest_key_col (str): Foreign key field name in destination
+        fc_src (str): Table with source data
+        fc_src_key_col (str): Primary key field name in source, matched with fc_dest_key_col
+        cols_to_copy (str, list, tuple): String or iterable of field names in src to copy to dest.
+        rename_to (str, list, tuple, None): Rename cols_to_copy to this name or list of names.\n
+        If this argument is included, its length must match len(cols_to_copy)
+        error_if_dest_cols_exists: If True and any cols_to_copy already exists, then raises StructFieldExists
+        show_progress (bool): Show progress messages and indicator
 
-    source_table (str): table to add fields
-    in_field (str): join field with common values from join_table
-    join_table (str): table containing fields to add
-    join_key (str): common field to match values to source_table
-    join_values (list, tuple): fields to add from join_table to source_table
+    Returns:.
+        int: Number of rows updated in dest
 
-    Returns: None
+    Raises:
+        errors.DataFieldValuesNotUnique: If field values in the source field were not unique.
+        errors.StructFieldExists: If error_if_dest_col_exists and any col already exists in the destination
 
+    Notes:
+        Arcpy supports extending tables using numpy arrays, consider using this for improved performance (can be finiky)
+        https://pro.arcgis.com/en/pro-app/latest/arcpy/data-access/extendtable.htm
 
     Examples:
-        >>> parcels = r'C:\Temp\Parcels.gdb\Parcels'
-        >>> permits = r'C:\Temp\Parcels.gdb\Permits'
-        >>> add_flds = ['PERMIT_NUM', 'PERMIT_DATE', 'NOTE']
-        >>> fields_copy_by_join(parcels, 'PIN', 'permits', 'PARCEL_ID', add_flds)
+        \nSimple copy of country_name to wards, assuming wards share a countryid foreign key
+        >>> fields_copy_by_join(r'C:\my.gdb\countries', 'countryid', 'C:\my.gdb\wards', 'countryid', 'country_name')
+        123
+        \n\nSimple copy as above, but rename the country_name field to country
+        >>> fields_copy_by_join(r'C:\my.gdb\countries', 'countryid', 'C:\my.gdb\wards', 'countryid', 'country_name', rename_to='country')
+        123
+        \n\nCopy multiple fields and rename them to country and area_km2
+        >>> fields_copy_by_join(r'C:\my.gdb\countries', 'countryid', 'C:\my.gdb\wards', 'countryid', ['country_name', 'area'], rename_to=['country', 'area_km2'])
+        123
+        \n\nField SQ_ID already exists in destination, but setting error_if_dest_cols_exists=False copies
+        \ndata from SRC.CEH_ID to DEST.SQ_ID with relationship SRC.SQ_ID --< DEST.WEB_ID
+        >>> fields_copy_by_join(DEST, 'WEB_ID', SRC, 'SQ_ID', 'CEH_ID', 'SQ_ID', error_if_dest_cols_exists=False)
+        300
     """
-    # Needs debugging
+    # TODO Needs testing for multiple fields
+    # TODO Also support compound primary keys in src
+    fc_dest = _path.normpath(fc_dest)
+    fc_src = _path.normpath(fc_src)
 
-    # Get Catalog path (for feature layers and table views)
-    cat_path = _arcpy.Describe(fc_dest).catalogPath
+    if isinstance(cols_to_copy, str):
+        cols_to_copy = [cols_to_copy]
 
-    # Find out if source table is NULLABLE
-    if not _path.splitext(cat_path)[1] in ['.dbf', '.shp']:
-        nullable = 'NULLABLE'
-    else:
-        nullable = 'NON_NULLABLE'
+    if isinstance(rename_to, str):
+        rename_to = [rename_to]
 
-    # Add fields to be copied
-    update_fields = []
-    join_list = _arcpy.ListFields(fc_src)
-    for field in join_list:
-        ftype = field.type
-        name = field.name
-        length = field.length
-        pres = field.precision
-        scale = field.scale
-        alias = field.aliasName
-        domain = field.domain
-        for fldb in cols_to_copy:
-            if fldb == name:
-                name = _struct.field_name_create(fc_dest, fldb)
-                _arcpy.AddField_management(fc_dest, name, ftype, pres, scale, length, alias, nullable, '', domain)
-                update_fields.insert(cols_to_copy.index(fldb), name.encode('utf-8'))
+    was_rename = True
+    if not rename_to:
+        was_rename = False
+        rename_to = list(cols_to_copy)  # make a proper copy
 
-    path_dict = {}
-    cols_to_copy.insert(0, fc_src_key_col)
+    # Some basic validation, so we error early.
+    if show_progress: print('\nPerforming some validation steps ...')
+
+    if len(rename_to) != len(cols_to_copy):
+        raise ValueError('If rename_to is passed, then assert len(cols_to_copy) == len(rename_to)')
+
+    if not _struct.field_exists(fc_src, fc_src_key_col, case_insensitive=False):
+        raise ValueError('The primary key field %s does not exist in source %s. This is case sensitive' % (fc_src_key_col, fc_src))
+
+    if not _struct.field_exists(fc_dest, fc_dest_key_col, case_insensitive=False):
+        raise ValueError('The foreign key field %s does not exist in destination %s. This is case sensitive' % (fc_dest_key_col, fc_dest))
+
+    if error_if_dest_cols_exists:
+        d = _struct.field_list_compare(fc_src, rename_to)['a_and_b']  # noqa TODO Check this works
+        if d:
+            raise _errors.StructFieldExists('error_if_dest_cols_exists was True and field(s) %s already exist in destination %s' % (fc_dest, str(d)))
+
+    if field_has_duplicates(fc_src, fc_src_key_col):
+        raise _errors.DataFieldValuesNotUnique('Field values in the data source field %s must be unique.' % fc_src_key_col)
+
+    # join_list may now be out of order with rename_to
+    join_list_temp = [f for f in _arcpy.ListFields(fc_src) if f.name in cols_to_copy]
+    if len(join_list_temp) != len(cols_to_copy):
+        raise ValueError(
+            'Expected %s fields in source, got %s. Check the names of the columns you have asked to copy. Field name comparisons are case sensitive here.' % (len(cols_to_copy), len(join_list_temp)))
+
+    # create join_list, restoring order, so our source data cols match order of rename_to
+    join_list = [None] * len(cols_to_copy)
+    for f in join_list_temp:
+        join_list[cols_to_copy.index(f.name)] = f
+
+    # ######################################
+    # Add fields to be copied to destination
+    # ######################################
+    if show_progress:
+        PP = _iolib.PrintProgress(iter_=join_list, init_msg='Copying field definitions to destination (as required) ...')
+
+    for i, f in enumerate(join_list):
+        _struct.field_copy_definition(fc_src, fc_dest, f.name, rename_to[i], silent_skip_on_exists=not error_if_dest_cols_exists)  # noqa
+        if show_progress:
+            PP.increment()  # noqa
+
+    # #################################
+    # Now read src records into a dict
+    # #################################
+    src_rows_dict = {}
+    cols_to_copy.insert(0, fc_src_key_col)  # just add the src primary key to the start of cols_to_copy
+
+    if show_progress:
+        PP = _iolib.PrintProgress(maximum=get_row_count(fc_src), init_msg='2 of 3. Reading data from source ...')
+
     with _arcpy.da.SearchCursor(fc_src, cols_to_copy) as srows:
         for srow in srows:
-            path_dict[srow[0]] = tuple(srow[1:])
+            # create dict .... {'row 1 key value': (row 1 field 1 value, row 1 field 2 value ...), 'row key value 2': (...)}
+            src_rows_dict[srow[0]] = tuple(srow[1:])
+            if show_progress:
+                PP.increment()  # noqa
 
-    # Update Cursor
-    update_index = list(range(len(update_fields)))
-    row_index = list(x + 1 for x in update_index)
-    update_fields.insert(0, fc_dest_key_col)
-    with _arcpy.da.UpdateCursor(fc_dest, update_fields) as urows:
+    ####################################################
+    # Write the records from the dict to the destination
+    ####################################################
+    if show_progress:
+        PP = _iolib.PrintProgress(maximum=get_row_count(fc_dest), init_msg='3 of 3. Writing data to destination ...')
+
+    rename_to.insert(0, fc_dest_key_col)  # noqa Insert the source key field at list[0]
+    n = 0
+    with _arcpy.da.UpdateCursor(fc_dest, rename_to) as urows:
         for row in urows:
-            if row[0] in path_dict:
-                the_val = [path_dict[row[0]][i] for i in update_index]
-                for r, v in zip(row_index, the_val):
-                    row[r] = v
+            if row[0] in src_rows_dict.keys():
+                for i, v in enumerate(src_rows_dict[row[0]]):
+                    row[i + 1] = v  # first row is the foreign key col we inserted earlier. So shift index up 1
                 urows.updateRow(row)
+                n += 1
+            PP.increment()
+    return n
 
 
 def poly_from_extent(ext, sr):
@@ -277,15 +340,37 @@ def field_values(fname: str, col: (str, list), where: (str, None) = None, order_
     return ret
 
 
-def field_get_dup_values(fname, col, value_list_only=True, f=lambda v: v) -> (list, dict):
+def field_has_duplicates(fname: str, col: str, f: any = lambda v: v) -> bool:
     """
     Check a col for duplicates
 
     Args:
-        fname:
+        fname (str): table or feature class
+        col (str): col to check
+        f: function passed to map, typical use would be f=str.lower to make duplicate checks case insensitive
+
+    Returns:
+        bool: True if duplicates found in field col.
+
+    Examples:
+        >>> field_get_dup_values('c:/my.gdb/everyones_fave_colour', 'colour', f=str.lower)
+        True
+    """
+    s = field_get_dup_values(fname, col, value_list_only=True, f=f)
+    if s:
+        return True
+    return False
+
+
+def field_get_dup_values(fname: str, col: str, value_list_only: bool = False, f: any = lambda v: v):
+    """
+    Check a col for duplicates
+
+    Args:
+        fname (str): Feature class or table
         col (str): col to check
         value_list_only (bool): Get as simple list rather than dict
-        f: function passed to map, typical use would be f=str.lower to make duplicate checks case insensitive
+        f (any): function passed to map, typical use would be f=str.lower to make duplicate checks case insensitive
 
     Returns:
         list: Simple list of values which have duplicates
@@ -492,7 +577,7 @@ def table_as_dict(fname, cols=None, where=None, exclude_cols=('Shape', 'Shape_Le
 
 
 def field_update_from_dict2(fname: str, key_dict: dict, update_dict: dict, where: str = '', na: any = None, case_insentive: bool = True) -> int:  # noqa
-    """Update columns in a table which match values ib key_dict.
+    """Update columns in a table which match values in key_dict.
 
     Differs from field_update_from_dict as dicts are in long form and column updates.
 
