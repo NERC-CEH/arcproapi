@@ -516,7 +516,7 @@ def pandas_to_table2(df: _pd.DataFrame, workspace: str, tablename: str, overwrit
     _iolib.file_delete(tmp_file)
 
 
-def table_as_pandas2(fname: str, cols: (str, list) = None, where: str = None, exclude_cols: (str, list) = ('Shape', 'Shape_Length', 'Shape_Area'), **kwargs):
+def table_as_pandas2(fname: str, cols: (str, list) = None, where: str = None, exclude_cols: (str, list) = ('Shape', 'Shape_Length', 'Shape_Area'), as_int: (list, tuple) = (), as_float: (list, tuple) = (), **kwargs):
     """Export data in feature class/table fname to a pandas DataFrame
 
     Args:
@@ -524,6 +524,8 @@ def table_as_pandas2(fname: str, cols: (str, list) = None, where: str = None, ex
         cols (str, list, tuple): column list to retrieve.
         where (str): where clause, passed as-is to SearchCursor
         exclude_cols (str, list, tuple): list of cols to exclude
+        as_int (list, tuple, None): List of cols by name to force to int
+        as_float (list, tuple, None): list of cols by name to force to float64
         kwargs: keyword args passed to pandas.DataFrame.from_records
 
     Returns:
@@ -532,9 +534,12 @@ def table_as_pandas2(fname: str, cols: (str, list) = None, where: str = None, ex
     Notes:
         The primay key of fname is used as the dataframes index.
         For performance reasons and erroneous errors when viewing the data (e.g. in xlwings), exclude the shape column if not needed.
+        The as_int as as_float allows forcing of col to int or float, by default this data is interpreted as objects by pandas (read as strings by SearchCursor).
+        "where" is called on arcpy SearchCursor, hence ignores any type conversions forced by as_int and as_float.
 
     Examples:
-        >>> df = table_as_pandas2('C:/my.gdb/fc', ['OBJECTID', 'modified_date'], where='OBJECTID>10')  # noqa
+        Get from feature class fc, forcing objectid to be an int
+        >>> df = table_as_pandas2('C:/my.gdb/fc', ['OBJECTID', 'modified_date'], as_int='OBJECTID', where='OBJECTID>10')  # noqa
     """
 
     if isinstance(exclude_cols, str): exclude_cols = [exclude_cols]
@@ -548,6 +553,19 @@ def table_as_pandas2(fname: str, cols: (str, list) = None, where: str = None, ex
         cols = list(filter(lambda f: _filt(f, exclude_cols), flds))
 
     df = _pd.DataFrame.from_records(data=_arcpy.da.SearchCursor(fname, cols, where_clause=where), columns=cols, **kwargs)
+
+    if isinstance(as_int, str):
+        as_int = (as_int,)
+
+    if isinstance(as_float, str):
+        as_float = (as_float,)
+
+    for s in as_int:
+        df[s] = df[s].astype(str).astype(int)
+
+    for s in as_float:
+        df[s] = df[s].astype(str).astype(float)
+
     return df
 
 

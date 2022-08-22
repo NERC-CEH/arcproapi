@@ -124,6 +124,11 @@ class UpdateCursor(_da.UpdateCursor):
     which supports accessing values as a property of the Row instance or using indexing
     on column name.
 
+    STRICT **** Use R['SHAPE@'], or R.SHAPEat to set the shape. ****
+
+    We can still access the shape with R.Shapeat
+    ***
+
     Args:
         fname (str): name of feature class or table
         field_names (list, str): string or iterable of field names to retreive
@@ -138,6 +143,7 @@ class UpdateCursor(_da.UpdateCursor):
         >>> with UpdateCursor('c:/my.gdb/mytable', ['OBJECTID', 'CITY'], where_clause='OBJECTID = 10', load_shape=True) as Cur:
         >>>     for R in Cur:
         >>>         R['CITY'] = 'London'  # noqa
+        >>>         R.SHAPEat = <polygon object>
         >>>         Cur.update(R)  # noqa
         10,10
         23.223, 23.223
@@ -249,7 +255,10 @@ class _Row:
         """write things back to row, so we can use it for the update"""
         for k, v in self.__dict__.items():
             if k == '_row' or k == '_flds': continue
-            self._row[self._flds.index(k)] = v
+            if k.lower() == 'shapeat':
+                self._row[self._flds.index('SHAPE@')] = v
+            else:
+                self._row[self._flds.index(k)] = v
 
     def fields(self):
         """Generator which yields crud._Row fields
