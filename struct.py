@@ -11,6 +11,7 @@ import arcpy as _arcpy
 
 import funclite.iolib as _iolib
 import funclite.baselib as _baselib
+import funclite.stringslib as _stringslib
 
 import arcproapi.common as _common
 from arcproapi.common import get_row_count2 as rowcnt  # noqa
@@ -335,12 +336,12 @@ def field_type_get(in_field, fc=''):
     fc -- feature class or table.  If no feature class is specified,
         the in_field paramter should be a describe of a field.type
 
-    Example
-    >>> # field type of 'String' needs to be 'TEXT' to be added to table
-    >>> # This is a text type field
-    >>> # now get esri field type
-    >>> print getFieldType(table, 'PARCEL_ID') #esri field.type return is 'String', we want 'TEXT'  # noqa
-    TEXT
+    Examples:
+        >>> # field type of 'String' needs to be 'TEXT' to be added to table
+        >>> # This is a text type field
+        >>> # now get esri field type
+        >>> print getFieldType(table, 'PARCEL_ID') #esri field.type return is 'String', we want 'TEXT'  # noqa
+        TEXT
     """
     if fc:
         field = [f.type for f in _arcpy.ListFields(fc) if f.name == in_field][0]
@@ -348,8 +349,8 @@ def field_type_get(in_field, fc=''):
         field = in_field
     if field in _common.lut_field_types:
         return _common.lut_field_types[field]
-    else:
-        return None
+    return None
+
 
 def field_exists(fname: str, field_name: str, case_insensitive: bool = True) -> bool:
     """
@@ -400,6 +401,99 @@ def fields_exist(fname: str, *args) -> bool:
 
 
 
+def field_retype(fname: str, field_name: str, change_to: str, default_on_none=None, show_progress=False, **kwargs_override):
+    """
+    Retype a field. Currently experimental. Should work with between ints, floats and text. Probably dates
+    but other types are likely to fail.
+
+    Args:
+        fname (str): fname
+        field_name (str): field name
+        change_to (str):
+            In TEXT, FLOAT, DOUBLE, SHORT, LONG, DATE, BLOB, RASTER, GUID.
+            Also support python's int, float and str types. NB int translates to LONG
+        show_progress (bool): Print out progress to the console
+        **kwargs_override: kwargs passed to the addfield.
+        default_on_none: default value to set if a source value evaluates to False. This may be an empty string, 0, or <null>
+
+    Returns:
+        None
+
+    Raises:
+        BlockingIOError: If we detect that the layer is locked.
+
+    Notes:
+        Use with care, this alters the source.
+        In its current state will probably fail with BLOB and RASTER, and perhaps DATE and GUID. Needs testing
+        See https://pro.arcgis.com/en/pro-app/latest/tool-reference/data-management/add-field.htm
+        For converting to TEXT, field_length defaults to 50, override by specifying the field_length keyword arg
+
+    Examples:
+        Retype a field from text to int (using python type int), set alias to country_nr_int and set nulls to 0
+        >>> field_retype('C:/my.gdb/country', 'country_nr', change_to=int, default_on_none=0, field_alias='country_nr_int')  # noqa
+        \nint to string, setting field length to 50 chars
+        >>> field_retype('C:/my.gdb/country', 'country_population', change_to='TEXT', default_on_none='', field_length=50)  # noqa
+    """
+    # TODO Test with DATE, BLOB, RASTER, GUID. Expect to fail in current state.
+    fname = _path.normpath(fname)
+    if show_progress:
+        print('\nChecking if %s is locked' % fname)
+    if _common.is_locked(fname): raise BlockingIOError('The layer %s is locked. It must be closed in all applications.' % fname)  # unpredictable results if open
+
+    # I forget the correct text args, so change_to supports inbuilt types for int, str and float conversion
+    f = ''
+    if str(change_to) == "<class 'str'>":
+        field_type = 'TEXT'
+        f = 'str'
+    elif str(change_to) == "<class 'int'>":
+        field_type = 'LONG'
+        f = 'int'
+    elif str(change_to) == "<class 'float'>":
+        field_type = 'FLOAT'
+        f = 'float'
+    else:
+        field_type = change_to.upper()
+
+
+    fld: _arcpy.Field = fields_get(fname, field_name, no_error_on_multiple=False, as_objs=True)[0]  # noqa
+    temp_name = _stringslib.get_random_string(from_=_stringslib.string.ascii_lowercase)
+
+    fn = lambda v: None if v == 0 else v
+    if not kwargs_override.get('field_alias'): kwargs_override['field_alias'] = fld.aliasName
+    if not kwargs_override.get('field_is_nullable'): kwargs_override['field_is_nullable'] = fld.isNullable
+    if not kwargs_override.get('field_length'): kwargs_override['field_length'] = 50 if field_type == 'TEXT' and fld.length in [0, None] else fld.length
+    if not kwargs_override.get('field_scale'): kwargs_override['field_scale'] = fn(fld.scale)
+    if not kwargs_override.get('field_precision'): kwargs_override['field_precision'] = fn(fld.precision)
+    if not kwargs_override.get('field_is_required'): kwargs_override['field_is_required'] = fld.required
+    if not kwargs_override.get('field_domain'): kwargs_override['field_domain'] = fld.domain
+    if show_progress: print('Adding temporary field ....')
+    AddField(fname, temp_name, field_type=field_type, **kwargs_override)
+    try:
+        if show_progress: print('Converting values and copying to temporary field ....')
+        if f:
+            _arcpy.management.CalculateField(fname, temp_name, 'f(!%s!)' % field_name, 'PYTHON3', """def f(v):
+            if v:
+                return %s(v)
+            return %s""" % (f, default_on_none), field_type, 'NO_ENFORCE_DOMAINS')
+        else:
+            # Let arcgis try implicit conversion for stuff like BLOB, RASTER and DATE
+            _arcpy.management.CalculateField(fname, temp_name, 'f(!%s!)' % field_name, 'PYTHON3', """def f(v):
+            if v:
+                return v
+            return %s""" % f, field_type, 'NO_ENFORCE_DOMAINS')
+    except Exception as e:
+        # try and fix if we error, then bail out
+        with _fuckit:
+            DeleteField(fname, temp_name)
+        raise e
+    if show_progress: print('Deleting the old field ...')
+    DeleteField(fname, field_name)
+    if show_progress: print('Renaming the temporary field to the old field name ...')
+    AlterField(fname, temp_name, field_name)
+    if show_progress: print('Done')
+
+
+
 def fields_get(fname, wild_card='*', field_type='All', no_error_on_multiple: bool = True, as_objs: bool = False) -> (list[str], list[_arcpy.Field], None):
 
     """Return a list of field objects where name matches the specified pattern.
@@ -426,7 +520,7 @@ def fields_get(fname, wild_card='*', field_type='All', no_error_on_multiple: boo
     Examples:
         >>> fields_get(r'C:\Temp\Counties.shp', 'county_*', no_error_on_multiple=True)
         ['COUNTY_CODE', 'COUNTY_FIPS']
-
+        \nError raised on multiple matches
         >>> fields_get(r'C:\Temp\Counties.shp', 'county_*', no_error_on_multiple=False)
         Traceback (most recent call last):
             File: ....
@@ -798,31 +892,38 @@ def field_copy_definition(fc_src: str, fc_dest: str, source_field_name: str, ren
 
 
 
-def field_rename(tbl, col, newcol, alias=''):
+def field_rename(tbl: str, col: str, newcol: str, skip_name_validation: bool = False, alias='') -> str:
     """Rename column in table tbl and return the new name of the column.
 
     This function first adds column newcol, re-calculates values of col into it,
     and deletes column col.
     Uses _arcpy.ValidateFieldName to adjust newcol if not valid.
-    Raises ArcapiError if col is not found or if newcol already exists.
 
-    Required:
-    :param tbl: -- table with the column to rename
-    :param col: -- name of the column to rename
-    :param newcol:  -- new name of the column
 
-    Optional:
-    :param alias: -- field alias for newcol, default is '' to use newcol for alias too
-    :return name of new column
-    :rtype: str
-    :raises ArcapiError: If col does not exist or newcol already exists
+    Args:
+        tbl: table with the column to rename
+        col: name of the column to rename
+        newcol: new name of the column
+        alias: field alias for newcol, default is '' to use newcol for alias too
+        skip_name_validation: Do not call arpy.ValidateFieldName to get a valid name. Useful as this can truncate perfectly valid names
+
+    Returns:
+        str: name of new column
+
+    Raises:
+        error.ArcapiError: If col does not exist or newcol already exists
+
+    Notes:
+         Provided largely for compatibility "historical" arcproapi functions.
+         ArcPro provides the function arcpy.management.AlterField (exposed in this module), which is recommended.
     """
     if col != newcol:
         d = _arcpy.Describe(tbl)
         dcp = d.catalogPath
         flds = _arcpy.ListFields(tbl)
         fnames = [f.name.lower() for f in flds]
-        newcol = _arcpy.ValidateFieldName(newcol, tbl)  # _path.dirname(dcp))
+        if skip_name_validation:
+            newcol = _arcpy.ValidateFieldName(newcol, tbl)  # _path.dirname(dcp))
         if col.lower() not in fnames:
             raise _errors.ArcapiError("Field %s not found in %s." % (col, dcp))
         if newcol.lower() in fnames:
