@@ -47,10 +47,43 @@ def points_translate(fname: str, where: str = '', x_offset: float = 0, y_offset:
         raise _errors.DataUnexpectedRowCount('expected rows was %s, but got %s matching rows' % (expected_rows, mx))
 
     i = 0
-    with _arcpy.da.UpdateCursor(fname, ["SHAPE@XY"], where=where) as cursor:
+    with _arcpy.da.UpdateCursor(fname, ["SHAPE@XY"], where_clause=where) as cursor:
         for row in cursor:
-            cursor.updateRow([[row[0][0] + x, row[0][1] + y]])
+            cursor.updateRow([[row[0][0] + x_offset, row[0][1] + y_offset]])
             i += 1
             if show_progress:
                 PP.increment()
     return i
+
+
+def point_move(fname: str, where: str, x: (float, int, None), y: (float, int, None)):
+    """
+    Move a point. The where must specify a single point, otherwise DataUnexpectedRowCount is rasied
+
+    Args:
+        fname (str): feature class
+        where (str): where clause, must select a single record
+        x (int, float, None): x coord, if None, use current point x
+        y (int, float, None): y coord, if None, use current point y
+
+    Returns:
+        None
+
+    Raises:
+        errors.DataUnexpectedRowCount: If more than one record matched the where
+
+    Examples:
+        >>> point_move('C:/my.gdb/centroids', "OBJECTID=12", 100, 100)
+    """
+
+    fname = _iolib._path.normpath(fname)  # noqa
+    mx = _data.get_row_count2(fname, where)
+
+    if mx != 0:
+        raise _errors.DataUnexpectedRowCount('More than one record matched "where" %s' % where)
+
+    with _arcpy.da.UpdateCursor(fname, ["SHAPE@XY"], where=where) as cursor:
+        for row in cursor:
+            x = x if x else row[0][0]
+            y = y if y else row[0][1]
+            cursor.updateRow([[x, y]])
