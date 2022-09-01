@@ -28,7 +28,7 @@ import arcpy
 import arcproapi.charts as _charts_stats
 import arcproapi.common as _common
 import arcproapi.data as _data
-import arcproapi.http as http
+import arcproapi.httplib as http
 import arcproapi.meta as meta
 from arcproapi.errors import ArcapiError, MapNotFound, MapFrameNotFound, LayoutNotFound # noqa
 

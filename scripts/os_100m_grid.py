@@ -30,7 +30,7 @@ import arcpy
 
 import funclite.iolib as iolib
 import arcproapi.crud as crud
-import arcproapi.struct as struct
+import arcproapi.structure as struct
 import arcproapi.data as data
 import arcproapi.geom as geom
 import arcproapi.environ as environ

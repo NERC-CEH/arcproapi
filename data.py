@@ -16,7 +16,7 @@ with _fuckit:
 import pandas as _pd
 import numpy as _np
 
-import arcproapi.struct as _struct
+import arcproapi.structure as _struct
 import arcproapi.errors as _errors
 import arcproapi.crud as _crud
 import arcproapi.orm as _orm
@@ -28,8 +28,10 @@ import funclite.iolib as _iolib
 import funclite.baselib as _baselib
 
 
+
+
 def fields_copy_by_join(fc_dest: str, fc_dest_key_col: str, fc_src: str, fc_src_key_col: str, cols_to_copy: (str, list, tuple), rename_to: (str, tuple, list, None) = None,
-                        error_if_dest_cols_exists: bool = True, show_progress: bool = True) -> int:
+                        error_if_dest_cols_exists: bool = True, ignore_type_on_lookup: bool = False, show_progress: bool = True) -> int:
     """
     Add fields from one table to another using a shared candidate key field.
 
@@ -46,6 +48,7 @@ def fields_copy_by_join(fc_dest: str, fc_dest_key_col: str, fc_src: str, fc_src_
         rename_to (str, list, tuple, None): Rename cols_to_copy to this name or list of names.\n
         If this argument is included, its length must match len(cols_to_copy)
         error_if_dest_cols_exists: If True and any cols_to_copy already exists, then raises StructFieldExists
+        ignore_type_on_lookup (bool): Some clever people mixed types on pk-fk tables across data sources. This will do its best to ignore this kind of stupidity
         show_progress (bool): Show progress messages and indicator
 
     Returns:.
@@ -58,6 +61,7 @@ def fields_copy_by_join(fc_dest: str, fc_dest_key_col: str, fc_src: str, fc_src_
     Notes:
         Arcpy supports extending tables using numpy arrays, consider using this for improved performance (can be finiky)
         https://pro.arcgis.com/en/pro-app/latest/arcpy/data-access/extendtable.htm
+        ignore_types_on_lookup. If True then null fields in the primary key will be treated the same as the text 'None'
 
     Examples:
         \nSimple copy of country_name to wards, assuming wards share a countryid foreign key
@@ -70,8 +74,9 @@ def fields_copy_by_join(fc_dest: str, fc_dest_key_col: str, fc_src: str, fc_src_
         >>> fields_copy_by_join(r'C:\my.gdb\countries', 'countryid', 'C:\my.gdb\wards', 'countryid', ['country_name', 'area'], rename_to=['country', 'area_km2'])
         123
         \n\nField SQ_ID already exists in destination, but setting error_if_dest_cols_exists=False copies
-        \ndata from SRC.CEH_ID to DEST.SQ_ID with relationship SRC.SQ_ID --< DEST.WEB_ID
-        >>> fields_copy_by_join(DEST, 'WEB_ID', SRC, 'SQ_ID', 'CEH_ID', 'SQ_ID', error_if_dest_cols_exists=False)
+        \ndata from SRC.CEH_ID to DEST.SQ_ID with relationship SRC.SQ_ID --< DEST.WEB_ID, overwriting what is
+        \nalready there. Data type mismatches may also cause an error.
+        >>> fields_copy_by_join(DEST, 'WEB_ID', SRC, 'SQ_ID', 'CEH_ID', 'SQ_ID', error_if_dest_cols_exists=False)  # noqa
         300
     """
     # TODO Needs testing for multiple fields
@@ -85,9 +90,7 @@ def fields_copy_by_join(fc_dest: str, fc_dest_key_col: str, fc_src: str, fc_src_
     if isinstance(rename_to, str):
         rename_to = [rename_to]
 
-    was_rename = True
     if not rename_to:
-        was_rename = False
         rename_to = list(cols_to_copy)  # make a proper copy
 
     # Some basic validation, so we error early.
@@ -103,7 +106,7 @@ def fields_copy_by_join(fc_dest: str, fc_dest_key_col: str, fc_src: str, fc_src_
         raise ValueError('The foreign key field %s does not exist in destination %s. This is case sensitive' % (fc_dest_key_col, fc_dest))
 
     if error_if_dest_cols_exists:
-        d = _struct.field_list_compare(fc_src, rename_to)['a_and_b']  # noqa TODO Check this works
+        d = _struct.field_list_compare(fc_dest, rename_to)['a_and_b']  # noqa TODO Check this works
         if d:
             raise _errors.StructFieldExists('error_if_dest_cols_exists was True and field(s) %s already exist in destination %s' % (fc_dest, str(d)))
 
@@ -136,6 +139,11 @@ def fields_copy_by_join(fc_dest: str, fc_dest_key_col: str, fc_src: str, fc_src_
     # Now read src records into a dict
     # #################################
     src_rows_dict = {}
+    if ignore_type_on_lookup:
+        f_ignore = lambda vv: str(vv)
+    else:
+        f_ignore = lambda vv: vv
+
     cols_to_copy.insert(0, fc_src_key_col)  # just add the src primary key to the start of cols_to_copy
 
     if show_progress:
@@ -144,7 +152,7 @@ def fields_copy_by_join(fc_dest: str, fc_dest_key_col: str, fc_src: str, fc_src_
     with _arcpy.da.SearchCursor(fc_src, cols_to_copy) as srows:
         for srow in srows:
             # create dict .... {'row 1 key value': (row 1 field 1 value, row 1 field 2 value ...), 'row key value 2': (...)}
-            src_rows_dict[srow[0]] = tuple(srow[1:])
+            src_rows_dict[f_ignore(srow[0])] = tuple(srow[1:])  # f_ignore making all keys strings if we want to ignore type matching on PK/FK
             if show_progress:
                 PP.increment()  # noqa
 
@@ -156,10 +164,12 @@ def fields_copy_by_join(fc_dest: str, fc_dest_key_col: str, fc_src: str, fc_src_
 
     rename_to.insert(0, fc_dest_key_col)  # noqa Insert the source key field at list[0]
     n = 0
+
     with _arcpy.da.UpdateCursor(fc_dest, rename_to) as urows:
         for row in urows:
-            if row[0] in src_rows_dict.keys():
-                for i, v in enumerate(src_rows_dict[row[0]]):
+            if f_ignore(row[0]) in map(f_ignore,
+                                       src_rows_dict.keys()):  # map is just so we convert everything to a string for comparisons, ignoring stuff like one PK field is an int and the FK field is a string.
+                for i, v in enumerate(src_rows_dict[f_ignore(row[0])]):
                     row[i + 1] = v  # first row is the foreign key col we inserted earlier. So shift index up 1
                 urows.updateRow(row)
                 n += 1
@@ -516,7 +526,8 @@ def pandas_to_table2(df: _pd.DataFrame, workspace: str, tablename: str, overwrit
     _iolib.file_delete(tmp_file)
 
 
-def table_as_pandas2(fname: str, cols: (str, list) = None, where: str = None, exclude_cols: (str, list) = ('Shape', 'Shape_Length', 'Shape_Area'), as_int: (list, tuple) = (), as_float: (list, tuple) = (), **kwargs):
+def table_as_pandas2(fname: str, cols: (str, list) = None, where: str = None, exclude_cols: (str, list) = ('Shape', 'Shape_Length', 'Shape_Area'), as_int: (list, tuple) = (),
+                     as_float: (list, tuple) = (), **kwargs):
     """Export data in feature class/table fname to a pandas DataFrame
 
     Args:
@@ -545,8 +556,8 @@ def table_as_pandas2(fname: str, cols: (str, list) = None, where: str = None, ex
     if isinstance(exclude_cols, str): exclude_cols = [exclude_cols]
     if isinstance(cols, str): cols = [cols]
 
-    def _filt(s, col_list):
-        return s.lower() not in map(str.lower, col_list)
+    def _filt(ss, col_list):
+        return ss.lower() not in map(str.lower, col_list)
 
     flds = _struct.field_list(fname)
     if not cols:
@@ -871,7 +882,7 @@ def pandas_join(from_: _pd.DataFrame, to_: _pd.DataFrame, from_key: str, to_key:
 
 def features_copy(source: str, dest: str, workspace: str, where_clause: str = '*', fixed_values=None, copy_shape: bool = True, force_add: bool = True, fail_on_exists: bool = True,
                   expected_row_cnt: int = None, no_progress: bool = False, **kwargs) -> int:
-    """Copy features from one table or featureclass to another.
+    """Copy features from one table or featureclass to another. i.e. The shape and fields as given as kwargs.
 
     If you get an error, double check field names, nothing that field names are case sensitive.
 
@@ -966,9 +977,19 @@ def features_copy(source: str, dest: str, workspace: str, where_clause: str = '*
 
 
 if __name__ == '__main__':
-    """quick debug calls here"""
-    src = r'S:\SPECIAL-ACL\ERAMMP2 Survey Restricted\2022\data\GIS\erammp.gdb\nrw_permissionable_clipped'
-    dst = r'S:\SPECIAL-ACL\ERAMMP2 Survey Restricted\2022\data\GIS\_arcpro_projects\drone_pilot_20220725\drone_pilot_20220725.gdb\parcels'
-    wsp = r'S:\SPECIAL-ACL\ERAMMP2 Survey Restricted\2022\data\GIS\_arcpro_projects\drone_pilot_20220725\drone_pilot_20220725.gdb'
-    features_copy(src, dst, wsp, where_clause='sq_id=34158', permission='permission', sq_id='sq_id')
+    # quick debugging
+
+    # features copy
+    # src = r'S:\SPECIAL-ACL\ERAMMP2 Survey Restricted\2022\data\GIS\erammp.gdb\nrw_permissionable_clipped'
+    # dst = r'S:\SPECIAL-ACL\ERAMMP2 Survey Restricted\2022\data\GIS\_arcpro_projects\drone_pilot_20220725\drone_pilot_20220725.gdb\parcels'
+    # wsp = r'S:\SPECIAL-ACL\ERAMMP2 Survey Restricted\2022\data\GIS\_arcpro_projects\drone_pilot_20220725\drone_pilot_20220725.gdb'
+    # features_copy(src, dst, wsp, where_clause='sq_id=34158', permission='permission', sq_id='sq_id')
+
+    # fields_copy_by_join
+    fields_copy_by_join(r'\\nerctbctdb\shared\shared\PROJECTS\WG ERAMMP2 (06810)\2 Field Survey\Data Management\Processed Datasets\pollinators\pollinators.gdb\gmep_transect_bng', 'SQ_ID_ROOT',
+                        r'S:\GMEP_Restricted\WP3_Restricted\WG_Data_Handover\EIDC_GMEP_SPATIAL\GMEP_SPATIAL_v2.gdb\SQUARES_CEH_ID_LOOKUP', 'CEH_ID',
+                        cols_to_copy='SQ_ID', rename_to='WEBID',
+                        ignore_type_on_lookup=True, error_if_dest_cols_exists=False
+                        )
+
     pass

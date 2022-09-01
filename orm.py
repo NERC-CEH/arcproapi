@@ -12,7 +12,7 @@ import arcpy as _arcpy
 import pyperclip as _clip
 import pandas as _pd
 
-import arcproapi.struct as _struct
+import arcproapi.structure as _struct
 import arcproapi.errors as _errors
 import arcproapi.crud as _crud
 import arcproapi.common as _common

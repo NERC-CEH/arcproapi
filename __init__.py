@@ -19,8 +19,8 @@ import arcpy as _arcpy
 
 
 __all__ = ['charts.py', 'common', 'data', 'display', 'environ',
-           'errors', 'http', 'meta', 'projections', 'raster', 'sql',
-           'struct']
+           'errors', 'httplib.py', 'meta', 'projections', 'raster', 'sql',
+           'structure.py']
 
 from enum import Enum as _Enum
 
