@@ -12,7 +12,7 @@ import funclite.log as _log
 import arcproapi.errors as _errors
 import arcproapi.common as _common
 
-from arcapi import mp as _mp  # arcpy.mapping/arcpy.mp
+from arcproapi import mp as _mp  # arcpy.mapping/arcpy.mp
 
 
 class Map:

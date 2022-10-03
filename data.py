@@ -15,6 +15,7 @@ with _fuckit:
 
 import pandas as _pd
 import numpy as _np
+import xlwings as _xlwings
 
 import arcproapi.structure as _struct
 import arcproapi.errors as _errors
@@ -26,8 +27,7 @@ from arcproapi.common import get_row_count as get_row_count  # noqa
 
 import funclite.iolib as _iolib
 import funclite.baselib as _baselib
-
-
+import funclite.stringslib as _stringslib
 
 
 def fields_copy_by_join(fc_dest: str, fc_dest_key_col: str, fc_src: str, fc_src_key_col: str, cols_to_copy: (str, list, tuple), rename_to: (str, tuple, list, None) = None,
@@ -433,7 +433,6 @@ def pandas_to_table(df: _pd.DataFrame, fname: str, overwrite=False, max_str_len=
     """
 
     Args:
-
         max_str_len (int): pandas dataframes usually stores strings as objects.
             If max_str_len is 0, then the length of the max string will be used to convert the object type to a byte field,
             else max_str_len will be used, allowing for longer strings to be stored in the created table
@@ -441,7 +440,6 @@ def pandas_to_table(df: _pd.DataFrame, fname: str, overwrite=False, max_str_len=
         fname (str): table name to write
         overwrite (bool): Overwrite fname, otherwise an error will be raised if fname exists
         max_str_len (int): fix the string length
-        .
         fix_ascii_errors:
             remove none ascii characters if they exist in object cols
             (work around for bugged arcpy.da.NumpyArrayToTable
@@ -520,6 +518,7 @@ def pandas_to_table2(df: _pd.DataFrame, workspace: str, tablename: str, overwrit
     if overwrite:
         _struct.fc_delete2(fname)
     _arcpy.conversion.TableToTable(tmp_file, workspace, tablename)  # noqa
+
     if del_cols:
         with _fuckit:
             _arcpy.DeleteField_management(fname, del_cols)
@@ -545,7 +544,7 @@ def table_as_pandas2(fname: str, cols: (str, list) = None, where: str = None, ex
     Notes:
         The primay key of fname is used as the dataframes index.
         For performance reasons and erroneous errors when viewing the data (e.g. in xlwings), exclude the shape column if not needed.
-        The as_int as as_float allows forcing of col to int or float, by default this data is interpreted as objects by pandas (read as strings by SearchCursor).
+        The as_int and as_float allows forcing of col to int or float, by default this data is interpreted as objects by pandas (read as strings by SearchCursor).
         "where" is called on arcpy SearchCursor, hence ignores any type conversions forced by as_int and as_float.
 
     Examples:
@@ -974,6 +973,63 @@ def features_copy(source: str, dest: str, workspace: str, where_clause: str = '*
                     PP.increment()  # noqa
         Dest.tran_commit()
     return i
+
+
+def excel_import_sheets(fname: str, gdb: str, match_sheet: (list, tuple, str) = (), exclude_sheet: (list, tuple, str) = (), allow_overwrite: bool = False, show_progress: bool = False) -> list:
+    """
+    Import worksheets from excel file fname into file geodatabase gdb.
+
+    Args:
+        fname (str): Excel workbook
+        gdb ():
+        match_sheet (): Case insensitive
+        exclude_sheet (): Case insensitive. Overrides match_sheet on clash.
+        allow_overwrite (bool): Performs a delete prior to importing into gdb, otherwise raises standard arcpy error
+        show_progress (bool): Show progress bar
+
+    Returns:
+        list of new gdb tables
+
+    Notes:
+        Forces all names to lowercase
+    """
+    fname = _path.normpath(fname)
+    # Lets construct the list of sheets then close excel to avoid any potential "read only/file in use" moans
+    if isinstance(match_sheet, str):
+        match_sheet = [match_sheet]
+
+    if isinstance(exclude_sheet, str):
+        exclude_sheet = [exclude_sheet]
+
+    sheets = []
+    with _xlwings.App(visible=False) as xl:
+        workbook: _xlwings.Book = xl.books.open(_xlwings.Book(fname), read_only=True)
+        for sheet in workbook.sheets:
+            if not _baselib.list_member_in_str(sheet, match_sheet, ignore_case=True):  # always true of match is empty/None
+                continue
+
+            if _baselib.list_member_in_str(sheet, exclude_sheet, ignore_case=True):
+                continue
+
+            sheets += [sheet.lower()]
+
+    if show_progress:
+        PP = _iolib.PrintProgress(iter_=sheets)
+
+    added = []
+    for sheet in sheets:
+        # The out_table is based on the input Excel file name
+        # an underscore (_) separator followed by the sheet name
+        safe_name = _arcpy.ValidateTableName(sheet, gdb)
+        out_table = _iolib.fixp(gdb, safe_name)
+        if allow_overwrite:
+            _struct.fc_delete2(_iolib.fixp(gdb, out_table))
+
+        _arcpy.conversion.ExcelToTable(fname, out_table, sheet)
+        added += out_table
+        if show_progress:
+            PP.increment()  # noqa
+    return added
 
 
 if __name__ == '__main__':

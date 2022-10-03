@@ -755,27 +755,28 @@ def fc_schema_copy(template: str, new: str, sr: str = ''):
     return new
 
 
-def table_to_points(tbl, out_fc, xcol, ycol, sr, zcol='#', w=''):
+def table_to_points(tbl, out_fc, xcol, ycol, sr, zcol='#', w='') -> str:
     """Convert table to point feature class, return path to the feature class.
 
-    Required:
-    tbl -- input table or table view
-    out_fc -- path to output feature class
-    xcol -- name of a column in tbl that stores fname coordinates
-    ycol -- name of a column in tbl that stores y coordinates
-    sr -- spatial reference for out_fc
-        sr can be either _arcpy.SpatialReference object or a well known id as int
+    Args:
+        tbl (str): input table or table view
+        out_fc (str): path to output feature class
+        xcol (str): name of a column in tbl that stores fname coordinates
+        ycol (str): name of a column in tbl that stores y coordinates
+        sr (str): spatial reference for out_fc
+            sr can be either _arcpy.SpatialReference object or a well known id as int
+        zcol (str): name of a column in tbl that stores y coordinates, default is '#'
+        w (str): where clause to limit the rows of tbl considered, default is ''
 
-    Optional:
-    zcol -- name of a column in tbl that stores y coordinates, default is '#'
-    w -- where clause to limit the rows of tbl considered, default is ''
+    Returns:
+        str: Path to the new feature class
 
-    Example:
-    >>> t = 'c:\\foo\\bar.shp'
-    >>> o = 'c:\\foo\\bar_pts.shp'
-    >>> table_to_points(t, o, "XC", "YC", 4326, zcol='#', w='"FID" < 10')  # noqa
-    >>> table_to_points(t, o, "XC", "YC", _arcpy.SpatialReference(27700))  # noqa
-    >>> table_to_points(t, o, "XC", "YC", _arcpy.describe(tbl).spatialReference)  # noqa
+    Examples:
+        >>> t = 'c:\\foo\\bar.shp'
+        >>> o = 'c:\\foo\\bar_pts.shp'
+        >>> table_to_points(t, o, "XC", "YC", 4326, zcol='#', w='"FID" < 10')  # noqa
+        >>> table_to_points(t, o, "XC", "YC", _arcpy.SpatialReference(27700))  # noqa
+        >>> table_to_points(t, o, "XC", "YC", _arcpy.describe(tbl).spatialReference)  # noqa
     """
     lrnm = _common.tstamp('lr', '%m%d%H%M%S', '')
     if type(sr) != _arcpy.SpatialReference:
@@ -1061,3 +1062,83 @@ def excel_import_worksheet(xls: str, fname: str, worksheet: str, header_row=1, o
         with _fuckit:
             _arcpy.management.Delete(fname, data_type=data_type)
     ExcelToTable(xls, fname, Sheet=worksheet, field_names_row=header_row, **kwargs)
+
+
+def gdb_tables_and_fcs_list(gdb: str, full_path: bool = False, include_dataset: bool = True) -> tuple:
+    """
+
+    Args:
+        gdb (str): Path to file geodatabase
+        full_path (bool): Return as full path, i.e. with the gdb path prepended
+        include_dataset (bool): Include the dataset. If full_path is True, the dataset will always be included. Only feature classes can be members of datasets.
+
+    Returns:
+        list: A depth-2 tuple, of feature class names and table names, i.e. ([feature classes], [tables])
+
+    Examples:
+        >>> gdb_tables_and_fcs_list('C:/my.gdb')
+        [[coutries, roads], [population, junctions]]
+        \nUsing full_path=True
+        >>> gdb_tables_and_fcs_list('C:/my.gdb', full_path=True)
+        [['C:/my.gdb/coutries', 'C:/my.gdb/roads'], ['C:/my.gdb/population', 'C:/my.gdb/junctions']]
+    """
+    gdb = _path.normpath(gdb)
+    if not _common.is_gdb(gdb):
+        raise ValueError('%s is not a valid file geodatabase path' % gdb)
+
+    _environ.workspace_set(gdb)
+
+    fcs, tbls = [], []
+    for fds in _arcpy.ListDatasets(feature_type='feature') + ['']:  # list in datasets and stuff not in datasets, i.e. dateset=''
+        for fc in _arcpy.ListFeatureClasses(feature_dataset=fds):
+            if full_path:
+                fcs.append(_path.join(_arcpy.env.workspace, fds, fc))
+            elif include_dataset:
+                fcs.append(_iolib.fixp(fds, fc))
+            else:
+                fcs.append(fc)
+
+    tbl_list = _arcpy.ListTables()
+
+    if tbl_list:
+        for tbl in tbl_list:
+            if full_path:
+                tbls.append(_iolib.fixp(_arcpy.env.workspace, tbl))
+            else:
+                tbls.append(tbl)
+
+    return fcs, tbls  # noqa
+
+
+def gdb_tables_list(gdb: str, full_path: bool = False) -> list:
+    """
+    Get list of tables in file geodatabase.
+
+    Args:
+        gdb (str): File Geodatabase path
+        full_path (bool): Return as full path, i.e. with the gdb path prepended
+
+    Returns:
+        list: list
+
+    Notes:
+        Calls gdb_tables_and_fcs_list. See gdb_tables_and_fcs_list for examples.
+    """
+    return gdb_tables_and_fcs_list(gdb, full_path)[1]
+
+
+def gdb_fc_list(gdb: str, full_path: bool = False) -> list:
+    """
+    Get list of feature classes in file geodatabase.
+
+    Args:
+        gdb (str): File Geodatabase path
+        full_path (bool): Return as full path, i.e. with the gdb path prepended
+
+    Returns:
+        list: list
+
+    Notes:
+        Calls gdb_tables_and_fcs_list. See gdb_tables_and_fcs_list for examples.
+    """
+    return gdb_tables_and_fcs_list(gdb, full_path)[0]

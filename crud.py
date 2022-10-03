@@ -274,7 +274,8 @@ class _Row:
 
         """
         ff = zip(self._flds, self._row)
-        for i, f, v in enumerate(ff):
+        for i, fv in enumerate(ff):
+            f, v = fv
             F = _Row.Field(f, v, i)
             yield F
 
