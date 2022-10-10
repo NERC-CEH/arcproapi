@@ -1,7 +1,7 @@
 """Structural stuff, like deleting or renaming cols, and functions that query structure related properties"""
 import os.path as _path
 
-from arcpy.management import CreateFeatureclass, AddJoin, AddRelate, AddFields, AddField, DeleteField, AlterField   # noqa Add other stuff as find it useful ...
+from arcpy.management import CreateFeatureclass, AddJoin, AddRelate, AddFields, AddField, DeleteField, AlterField  # noqa Add other stuff as find it useful ...
 from arcpy.conversion import ExcelToTable, TableToExcel, TableToGeodatabase, TableToDBASE, TableToSAS  # noqa Add other stuff as find it useful ...
 
 import pandas as _pd
@@ -16,7 +16,6 @@ import funclite.stringslib as _stringslib
 import arcproapi.common as _common
 from arcproapi.common import get_row_count2 as rowcnt  # noqa
 
-
 import arcproapi.environ as _environ
 import arcproapi.errors as _errors
 
@@ -24,6 +23,7 @@ import arcproapi.errors as _errors
 def field_oid(fname):
     """Return name of the object ID field in table table"""
     return _arcpy.Describe(fname).OIDFieldName
+
 
 def field_shp(fname):
     """(str)->str
@@ -233,6 +233,7 @@ def fcs_list_all(gdb, wild='*', ftype='All', rel=False):
     else:
         return sorted([_path.join(gdb, ft) for ft in feats])
 
+
 def field_list_compare(fname: str, col_list: list, **kwargs):
     """Compare the field list from fname with col_list
     returning the symetric difference as a dic
@@ -400,7 +401,6 @@ def fields_exist(fname: str, *args) -> bool:
     return args and (len(d['a_and_b']) == len(args))
 
 
-
 def field_retype(fname: str, field_name: str, change_to: str, default_on_none=None, show_progress=False, **kwargs_override):
     """
     Retype a field. Currently experimental. Should work with between ints, floats and text. Probably dates
@@ -454,7 +454,6 @@ def field_retype(fname: str, field_name: str, change_to: str, default_on_none=No
     else:
         field_type = change_to.upper()
 
-
     fld: _arcpy.Field = fields_get(fname, field_name, no_error_on_multiple=False, as_objs=True)[0]  # noqa
     temp_name = _stringslib.get_random_string(from_=_stringslib.string.ascii_lowercase)
 
@@ -493,9 +492,7 @@ def field_retype(fname: str, field_name: str, change_to: str, default_on_none=No
     if show_progress: print('Done')
 
 
-
 def fields_get(fname, wild_card='*', field_type='All', no_error_on_multiple: bool = True, as_objs: bool = False) -> (list[str], list[_arcpy.Field], None):
-
     """Return a list of field objects where name matches the specified pattern.
 
     Args:
@@ -689,8 +686,8 @@ def fcs_schema_compare(fname1, fname2, sortfield, as_df=True):
     if as_df:
         out_name = _iolib.get_temp_fname()
         _ = _arcpy.management.TableCompare(fname1, fname2, sortfield, 'SCHEMA_ONLY',
-                                             ignore_options=['IGNORE_EXTENSION_PROPERTIES', 'IGNORE_SUBTYPES ', 'IGNORE_RELATIONSHIPCLASSES', 'IGNORE_FIELDALIAS'],
-                                             continue_compare=True, out_compare_file=out_name)
+                                           ignore_options=['IGNORE_EXTENSION_PROPERTIES', 'IGNORE_SUBTYPES ', 'IGNORE_RELATIONSHIPCLASSES', 'IGNORE_FIELDALIAS'],
+                                           continue_compare=True, out_compare_file=out_name)
         df = _pd.read_csv(out_name)
         _iolib.file_delete(out_name)
         return df
@@ -789,7 +786,8 @@ def table_to_points(tbl, out_fc, xcol, ycol, sr, zcol='#', w='') -> str:
     return _arcpy.Describe(out_fc).catalogPath
 
 
-def field_copy_definition(fc_src: str, fc_dest: str, source_field_name: str, rename_as: (str, None) = None, ignore_case: bool = True, silent_skip_on_exists: bool = False, **field_property_overrides) -> None:
+def field_copy_definition(fc_src: str, fc_dest: str, source_field_name: str, rename_as: (str, None) = None, ignore_case: bool = True, silent_skip_on_exists: bool = False,
+                          **field_property_overrides) -> None:
     """
     Copy a field definition from one table/feature class to another
 
@@ -892,7 +890,6 @@ def field_copy_definition(fc_src: str, fc_dest: str, source_field_name: str, ren
                                field_domain=domain)
 
 
-
 def field_rename(tbl: str, col: str, newcol: str, skip_name_validation: bool = False, alias='') -> str:
     """Rename column in table tbl and return the new name of the column.
 
@@ -972,9 +969,34 @@ def field_get_property(fld: _arcpy.Field, property_: str) -> any:  # noqa
     return None
 
 
-def geodb_dump_struct(gdb: str, wild_lyr: str = '*', ftype='All'):  # noqa
+def gdb_csv_import(csv_source: str, gdb_dest: str, **kwargs) -> None:
+    """
+    Import a csv into a geodatabase. Gets a safename from csv filename using arcpy.ValidateTableName
+    Normpaths everything.
+
+    Args:
+        csv_source (str): CSV name
+        gdb_dest (str): gdb name. Is normpathed
+        **kwargs (any): keyword args passed to arcpy.conversion.ExportTable. Supports where_clause, field_info and use_field_alias_as_name.
+        See https://pro.arcgis.com/en/pro-app/latest/tool-reference/conversion/export-table.htm
+
+    Returns:
+        arcpy Result object, passed from arcpy.conversion.ExportTable.
+
+    Examples:
+        >>> gdb_csv_import('C:/my.csv', 'C:/my.gdb')
+        <Result '\\ ....>
+    """
+    csv_source = _path.normpath(csv_source)
+    gdb_dest = _path.normpath(gdb_dest)
+    fname = _iolib.get_file_parts(csv_source)[1]
+    res = _arcpy.conversion.ExportTable(csv_source, _iolib.fixp(gdb_dest, _arcpy.ValidateTableName(fname)), **kwargs)
+    return res
+
+
+def gdb_dump_struct(gdb: str, wild_lyr: str = '*', ftype='All'):  # noqa
     """dump the structure of a geodb to excel"""
-    # TODO Implement geodb_dump_struct
+    # TODO Implement gdb_dump_struct
 
     raise NotImplementedError
 
@@ -990,7 +1012,7 @@ def geodb_dump_struct(gdb: str, wild_lyr: str = '*', ftype='All'):  # noqa
             pass
 
 
-def geodb_find_cols(gdb, col_name, partial_match=False):
+def gdb_find_cols(gdb, col_name, partial_match=False):
     """
     List cols in a geodb that match col_name, useful for "soft" relationships
 
@@ -1002,7 +1024,7 @@ def geodb_find_cols(gdb, col_name, partial_match=False):
     Returns: dict: Dictionary like {'lyr':[...], 'col':[...], 'type':[...]}
 
     Examples:
-        >>> geodb_find_cols('c:/my.gdb', 'OBJECTID')
+        >>> gdb_find_cols('c:/my.gdb', 'OBJECTID')
         {'lyr': ['lyr1', 'lyr2'], 'col': ['OBJECTID', 'OBJECTID'], 'type': ['integer','integer']}
     """
     out = {'lyr': [], 'fld': [], 'type': []}
@@ -1110,30 +1132,31 @@ def gdb_tables_and_fcs_list(gdb: str, full_path: bool = False, include_dataset: 
     return fcs, tbls  # noqa
 
 
-def gdb_tables_list(gdb: str, full_path: bool = False) -> list:
+def gdb_tables_list(gdb: str, full_path: bool = False, include_dataset: bool = True) -> list:
     """
     Get list of tables in file geodatabase.
 
     Args:
         gdb (str): File Geodatabase path
         full_path (bool): Return as full path, i.e. with the gdb path prepended
-
+        include_dataset (bool): Include the dataset qualification (full_path will always include this)
     Returns:
         list: list
 
     Notes:
         Calls gdb_tables_and_fcs_list. See gdb_tables_and_fcs_list for examples.
     """
-    return gdb_tables_and_fcs_list(gdb, full_path)[1]
+    return gdb_tables_and_fcs_list(gdb, full_path, include_dataset)[1]
 
 
-def gdb_fc_list(gdb: str, full_path: bool = False) -> list:
+def gdb_fc_list(gdb: str, full_path: bool = False, include_dataset: bool = True) -> list:
     """
     Get list of feature classes in file geodatabase.
 
     Args:
         gdb (str): File Geodatabase path
         full_path (bool): Return as full path, i.e. with the gdb path prepended
+        include_dataset (bool): Include the dataset qualification (full_path will always include this)
 
     Returns:
         list: list
@@ -1141,4 +1164,42 @@ def gdb_fc_list(gdb: str, full_path: bool = False) -> list:
     Notes:
         Calls gdb_tables_and_fcs_list. See gdb_tables_and_fcs_list for examples.
     """
-    return gdb_tables_and_fcs_list(gdb, full_path)[0]
+    return gdb_tables_and_fcs_list(gdb, full_path, include_dataset)[0]
+
+
+def gdb_merge(source: str, dest: str, allow_overwrite=False, show_progress: bool = False) -> dict:
+    """
+    Merge one gdb into another, copying all feature sets.
+
+    Args:
+        source (str): The source
+        dest (str):  The destination
+        allow_overwrite (bool): Allow overwriting, passed to arcpy.env.overwriteOutput
+        show_progress (bool): Show progress in console
+
+    Returns:
+        Dictionary listing features and tables copied.
+        \n{'tables': ['t1','t2', ...], 'feature_classes': ['fc1','fc2', ...]}
+
+    TODO: Enable prechecking of layers to refine overwriting/deleting options
+    """
+    _environ.workspace_set(source)
+    _arcpy.env.overwriteOutput = allow_overwrite
+
+    source = _path.normpath(source)
+    dest = _path.normpath(dest)
+    if show_progress:
+        print('Getting list of tables and geodatabases from source')
+    src_tbls, src_fcs = gdb_tables_and_fcs_list(source, full_path=False, include_dataset=True)
+
+    src_fcs_str = ";".join(src_fcs)
+    # arcpy.conversion.FeatureClassToGeodatabase(r"overlay\Squares\GMEP_300;'AGOL_BACKUPS\River Erosion\2021\Artificial_rep'", r"\\nerctbctdb\shared\shared\PROJECTS\WG ERAMMP2 (06810)\2 Field Survey\Data Management\Processed Datasets\_arcgispro\erammp_processed_datasets_scratch.gdb")
+    if show_progress:
+        print('Doing the conversions ....')
+    _arcpy.conversion.FeatureClassToGeodatabase(src_fcs_str, dest)
+    return {'tables': src_tbls, 'feature_classes': src_fcs}
+
+
+if __name__ == '__main__':
+    #  Quick debugging here
+    pass

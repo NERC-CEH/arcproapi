@@ -18,6 +18,8 @@ import numpy as _np
 import xlwings as _xlwings
 
 import arcproapi.structure as _struct
+from arcproapi.structure import gdb_csv_import as csv_to_table  # noqa -- for convieniance
+
 import arcproapi.errors as _errors
 import arcproapi.crud as _crud
 import arcproapi.orm as _orm
@@ -27,7 +29,32 @@ from arcproapi.common import get_row_count as get_row_count  # noqa
 
 import funclite.iolib as _iolib
 import funclite.baselib as _baselib
-import funclite.stringslib as _stringslib
+
+
+
+class Excel:
+    """
+    Work with excel workbooks.
+    """
+
+    @staticmethod
+    def excel_worksheets_get(workbook: str) -> list:
+        """
+        List of worksheets in workbook
+
+        Args:
+            workbook (str): The workbook (xlsx)
+
+        Returns:
+            list: list of workbooks
+        """
+        workbook = _path.normpath(workbook)
+        fld, fname = _iolib.get_file_parts2(workbook)[0:2]
+        with _xlwings.App(visible=False) as App:
+            _ = App.books.open(workbook)
+            out = [sht.name for sht in App.books[fname].sheets]
+        return out
+
 
 
 def fields_copy_by_join(fc_dest: str, fc_dest_key_col: str, fc_src: str, fc_src_key_col: str, cols_to_copy: (str, list, tuple), rename_to: (str, tuple, list, None) = None,
@@ -649,11 +676,12 @@ def field_update_from_dict(fname: str, dict_: dict, col_to_update: str, key_col:
     Examples:
         >>> fc = 'c:\\foo\\bar.shp'
         >>> d = {1: 'EN', 2:'ST', 3:'WL', 4:'NI'}
-        .
-        Dictionary keys are table index numbers (ObjectID, OID etc)
+        \n.
+        Dictionary keys are table index numbers (ObjectID, OID etc), no need to pass key_col as objectid is assumed
         >>> field_update_from_dict(fc, d, 'country_code')
-        .
-        Explicit declaration of update and key columns
+        \n.
+        Explicit declaration of update and key columns. Here we assume the numerics in d are "country_num"
+        and we update country_code accordingly.
         >>> field_update_from_dict(fc, d, col_to_update='country_code', key_col='country_num', na='Other')
     """
     fname = _path.normpath(fname)
@@ -883,7 +911,7 @@ def features_copy(source: str, dest: str, workspace: str, where_clause: str = '*
                   expected_row_cnt: int = None, no_progress: bool = False, **kwargs) -> int:
     """Copy features from one table or featureclass to another. i.e. The shape and fields as given as kwargs.
 
-    If you get an error, double check field names, nothing that field names are case sensitive.
+    If you get an error, double check field names, noting that field names are case sensitive.
 
     Args:
         source (str): path to source feature class/table

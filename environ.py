@@ -67,6 +67,12 @@ def workspace_set(ws: (str, None) = None) -> str:
     Args:
         ws (str): path to workspace, default is None.
 
+    Returns:
+        str: path to workspace
+
+    Notes:
+        Calls normpath on ws if ws is not None
+
     Examples:
         >>> env = _arcpy.env
         >>> workspace_set() # sets env.workspace = ec.scratchGDB if ev.workspace is None
@@ -82,6 +88,8 @@ def workspace_set(ws: (str, None) = None) -> str:
         if ws[-4:].lower() == '.gdb' and not _arcpy.Exists(ws):
             import re
             ws = _arcpy.management.CreateFileGDB(_path.dirname(ws), re.sub(".gdb", "", _path.basename(ws), re.IGNORECASE), "CURRENT").getOutput(0)
+        else:
+            ws = _path.normpath(ws)
         _arcpy.env.workspace = ws
     return _arcpy.env.workspace
 
