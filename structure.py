@@ -14,7 +14,10 @@ import funclite.baselib as _baselib
 import funclite.stringslib as _stringslib
 
 import arcproapi.common as _common
-from arcproapi.common import get_row_count2 as rowcnt  # noqa
+#  Functions, imported for convieniance
+from arcproapi.common import get_row_count2 as rowcnt  # noqa kept to not break code
+from arcproapi.common import get_row_count2 as get_row_count2  # noqa
+from arcproapi.common import get_row_count as get_row_count  # noqa
 
 import arcproapi.environ as _environ
 import arcproapi.errors as _errors
@@ -537,7 +540,7 @@ def fields_get(fname, wild_card='*', field_type='All', no_error_on_multiple: boo
 
 
 def fields_add_from_table(target, source, add_fields):
-    """Add fields (schema only) from one table to another
+    """Add field SCHEMA from one table to another
 
     Args:
         target (str): target table to which the field will be added
@@ -1181,6 +1184,9 @@ def gdb_merge(source: str, dest: str, allow_overwrite=False, show_progress: bool
         Dictionary listing features and tables copied.
         \n{'tables': ['t1','t2', ...], 'feature_classes': ['fc1','fc2', ...]}
 
+    Notes:
+        **Changes the workspace to source. Reset it after the call if you need to**
+
     TODO: Enable prechecking of layers to refine overwriting/deleting options
     """
     _environ.workspace_set(source)
@@ -1190,13 +1196,22 @@ def gdb_merge(source: str, dest: str, allow_overwrite=False, show_progress: bool
     dest = _path.normpath(dest)
     if show_progress:
         print('Getting list of tables and geodatabases from source')
-    src_tbls, src_fcs = gdb_tables_and_fcs_list(source, full_path=False, include_dataset=True)
+    src_fcs, src_tbls = gdb_tables_and_fcs_list(source, full_path=False, include_dataset=True)
 
     src_fcs_str = ";".join(src_fcs)
     # arcpy.conversion.FeatureClassToGeodatabase(r"overlay\Squares\GMEP_300;'AGOL_BACKUPS\River Erosion\2021\Artificial_rep'", r"\\nerctbctdb\shared\shared\PROJECTS\WG ERAMMP2 (06810)\2 Field Survey\Data Management\Processed Datasets\_arcgispro\erammp_processed_datasets_scratch.gdb")
     if show_progress:
-        print('Doing the conversions ....')
+        print('Importing feature classes ....')
     _arcpy.conversion.FeatureClassToGeodatabase(src_fcs_str, dest)
+
+    if show_progress:
+        PP = _iolib.PrintProgress(iter_=src_tbls, init_msg='Importing tables ...')
+    for tbl in src_tbls:
+        srctbl = _iolib.fixp(source, tbl)
+        _arcpy.conversion.TableToTable(srctbl, dest, tbl)
+        if show_progress:
+            PP.increment()  # noqa
+
     return {'tables': src_tbls, 'feature_classes': src_fcs}
 
 

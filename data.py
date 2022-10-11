@@ -15,20 +15,30 @@ with _fuckit:
 
 import pandas as _pd
 import numpy as _np
-import xlwings as _xlwings
+
+# If on linux, wont have xlwings, so fuckit
+with _fuckit:
+    import xlwings as _xlwings
+
+import funclite.iolib as _iolib
+import funclite.baselib as _baselib
 
 import arcproapi.structure as _struct
-from arcproapi.structure import gdb_csv_import as csv_to_table  # noqa -- for convieniance
+#  The following are data-like operations defined in structure. They
+#  are imported here for convieniance
+from arcproapi.structure import gdb_csv_import as csv_to_table  # noqa
+
 
 import arcproapi.errors as _errors
 import arcproapi.crud as _crud
 import arcproapi.orm as _orm
+
+
 import arcproapi.common as _common
+#  More data-like functions, imported for convieniance
 from arcproapi.common import get_row_count2 as get_row_count2
 from arcproapi.common import get_row_count as get_row_count  # noqa
 
-import funclite.iolib as _iolib
-import funclite.baselib as _baselib
 
 
 
@@ -55,153 +65,6 @@ class Excel:
             out = [sht.name for sht in App.books[fname].sheets]
         return out
 
-
-
-def fields_copy_by_join(fc_dest: str, fc_dest_key_col: str, fc_src: str, fc_src_key_col: str, cols_to_copy: (str, list, tuple), rename_to: (str, tuple, list, None) = None,
-                        error_if_dest_cols_exists: bool = True, ignore_type_on_lookup: bool = False, show_progress: bool = True) -> int:
-    """
-    Add fields from one table to another using a shared candidate key field.
-
-    This can also be used to copy data between existing fields by setting
-    error_if_dest_cols_exists = False. It will also work with a mix of
-    destination fields that already exist and dont exist.
-
-    Args:
-        fc_dest (str): table to add fields to
-        fc_dest_key_col (str): Foreign key field name in destination
-        fc_src (str): Table with source data
-        fc_src_key_col (str): Primary key field name in source, matched with fc_dest_key_col
-        cols_to_copy (str, list, tuple): String or iterable of field names in src to copy to dest.
-        rename_to (str, list, tuple, None): Rename cols_to_copy to this name or list of names.\n
-        If this argument is included, its length must match len(cols_to_copy)
-        error_if_dest_cols_exists: If True and any cols_to_copy already exists, then raises StructFieldExists
-        ignore_type_on_lookup (bool): Some clever people mixed types on pk-fk tables across data sources. This will do its best to ignore this kind of stupidity
-        show_progress (bool): Show progress messages and indicator
-
-    Returns:.
-        int: Number of rows updated in dest
-
-    Raises:
-        errors.DataFieldValuesNotUnique: If field values in the source field were not unique.
-        errors.StructFieldExists: If error_if_dest_col_exists and any col already exists in the destination
-
-    Notes:
-        Arcpy supports extending tables using numpy arrays, consider using this for improved performance (can be finiky)
-        https://pro.arcgis.com/en/pro-app/latest/arcpy/data-access/extendtable.htm
-        ignore_types_on_lookup. If True then null fields in the primary key will be treated the same as the text 'None'
-
-    Examples:
-        \nSimple copy of country_name to wards, assuming wards share a countryid foreign key
-        >>> fields_copy_by_join(r'C:\my.gdb\countries', 'countryid', 'C:\my.gdb\wards', 'countryid', 'country_name')
-        123
-        \n\nSimple copy as above, but rename the country_name field to country
-        >>> fields_copy_by_join(r'C:\my.gdb\countries', 'countryid', 'C:\my.gdb\wards', 'countryid', 'country_name', rename_to='country')
-        123
-        \n\nCopy multiple fields and rename them to country and area_km2
-        >>> fields_copy_by_join(r'C:\my.gdb\countries', 'countryid', 'C:\my.gdb\wards', 'countryid', ['country_name', 'area'], rename_to=['country', 'area_km2'])
-        123
-        \n\nField SQ_ID already exists in destination, but setting error_if_dest_cols_exists=False copies
-        \ndata from SRC.CEH_ID to DEST.SQ_ID with relationship SRC.SQ_ID --< DEST.WEB_ID, overwriting what is
-        \nalready there. Data type mismatches may also cause an error.
-        >>> fields_copy_by_join(DEST, 'WEB_ID', SRC, 'SQ_ID', 'CEH_ID', 'SQ_ID', error_if_dest_cols_exists=False)  # noqa
-        300
-    """
-    # TODO Needs testing for multiple fields
-    # TODO Also support compound primary keys in src
-    fc_dest = _path.normpath(fc_dest)
-    fc_src = _path.normpath(fc_src)
-
-    if isinstance(cols_to_copy, str):
-        cols_to_copy = [cols_to_copy]
-
-    if isinstance(rename_to, str):
-        rename_to = [rename_to]
-
-    if not rename_to:
-        rename_to = list(cols_to_copy)  # make a proper copy
-
-    # Some basic validation, so we error early.
-    if show_progress: print('\nPerforming some validation steps ...')
-
-    if len(rename_to) != len(cols_to_copy):
-        raise ValueError('If rename_to is passed, then assert len(cols_to_copy) == len(rename_to)')
-
-    if not _struct.field_exists(fc_src, fc_src_key_col, case_insensitive=False):
-        raise ValueError('The primary key field %s does not exist in source %s. This is case sensitive' % (fc_src_key_col, fc_src))
-
-    if not _struct.field_exists(fc_dest, fc_dest_key_col, case_insensitive=False):
-        raise ValueError('The foreign key field %s does not exist in destination %s. This is case sensitive' % (fc_dest_key_col, fc_dest))
-
-    if error_if_dest_cols_exists:
-        d = _struct.field_list_compare(fc_dest, rename_to)['a_and_b']  # noqa TODO Check this works
-        if d:
-            raise _errors.StructFieldExists('error_if_dest_cols_exists was True and field(s) %s already exist in destination %s' % (fc_dest, str(d)))
-
-    if field_has_duplicates(fc_src, fc_src_key_col):
-        raise _errors.DataFieldValuesNotUnique('Field values in the data source field %s must be unique.' % fc_src_key_col)
-
-    # join_list may now be out of order with rename_to
-    join_list_temp = [f for f in _arcpy.ListFields(fc_src) if f.name in cols_to_copy]
-    if len(join_list_temp) != len(cols_to_copy):
-        raise ValueError(
-            'Expected %s fields in source, got %s. Check the names of the columns you have asked to copy. Field name comparisons are case sensitive here.' % (len(cols_to_copy), len(join_list_temp)))
-
-    # create join_list, restoring order, so our source data cols match order of rename_to
-    join_list = [None] * len(cols_to_copy)
-    for f in join_list_temp:
-        join_list[cols_to_copy.index(f.name)] = f
-
-    # ######################################
-    # Add fields to be copied to destination
-    # ######################################
-    if show_progress:
-        PP = _iolib.PrintProgress(iter_=join_list, init_msg='Copying field definitions to destination (as required) ...')
-
-    for i, f in enumerate(join_list):
-        _struct.field_copy_definition(fc_src, fc_dest, f.name, rename_to[i], silent_skip_on_exists=not error_if_dest_cols_exists)  # noqa
-        if show_progress:
-            PP.increment()  # noqa
-
-    # #################################
-    # Now read src records into a dict
-    # #################################
-    src_rows_dict = {}
-    if ignore_type_on_lookup:
-        f_ignore = lambda vv: str(vv)
-    else:
-        f_ignore = lambda vv: vv
-
-    cols_to_copy.insert(0, fc_src_key_col)  # just add the src primary key to the start of cols_to_copy
-
-    if show_progress:
-        PP = _iolib.PrintProgress(maximum=get_row_count(fc_src), init_msg='2 of 3. Reading data from source ...')
-
-    with _arcpy.da.SearchCursor(fc_src, cols_to_copy) as srows:
-        for srow in srows:
-            # create dict .... {'row 1 key value': (row 1 field 1 value, row 1 field 2 value ...), 'row key value 2': (...)}
-            src_rows_dict[f_ignore(srow[0])] = tuple(srow[1:])  # f_ignore making all keys strings if we want to ignore type matching on PK/FK
-            if show_progress:
-                PP.increment()  # noqa
-
-    ####################################################
-    # Write the records from the dict to the destination
-    ####################################################
-    if show_progress:
-        PP = _iolib.PrintProgress(maximum=get_row_count(fc_dest), init_msg='3 of 3. Writing data to destination ...')
-
-    rename_to.insert(0, fc_dest_key_col)  # noqa Insert the source key field at list[0]
-    n = 0
-
-    with _arcpy.da.UpdateCursor(fc_dest, rename_to) as urows:
-        for row in urows:
-            if f_ignore(row[0]) in map(f_ignore,
-                                       src_rows_dict.keys()):  # map is just so we convert everything to a string for comparisons, ignoring stuff like one PK field is an int and the FK field is a string.
-                for i, v in enumerate(src_rows_dict[f_ignore(row[0])]):
-                    row[i + 1] = v  # first row is the foreign key col we inserted earlier. So shift index up 1
-                urows.updateRow(row)
-                n += 1
-            PP.increment()
-    return n
 
 
 def poly_from_extent(ext, sr):
@@ -732,6 +595,160 @@ def field_update_from_dict(fname: str, dict_: dict, col_to_update: str, key_col:
                 cnt += 1
             PP.increment()
     return cnt
+
+
+def fields_copy_by_join(fc_dest: str, fc_dest_key_col: str, fc_src: str, fc_src_key_col: str, cols_to_copy: (str, list, tuple), rename_to: (str, tuple, list, None) = None,
+                        error_if_dest_cols_exists: bool = True, ignore_type_on_lookup: bool = False, allow_duplicates_in_pk: bool = False, show_progress: bool = True) -> int:
+    """
+    Add fields from one table to another using a shared candidate key field.
+
+    This can also be used to copy data between existing fields by setting
+    error_if_dest_cols_exists = False. It will also work with a mix of
+    destination fields that already exist and dont exist.
+
+    Args:
+        fc_dest (str): table to add fields to
+        fc_dest_key_col (str): Foreign key field name in destination
+        fc_src (str): Table with source data
+        fc_src_key_col (str): Primary key field name in source, matched with fc_dest_key_col
+        cols_to_copy (str, list, tuple): String or iterable of field names in src to copy to dest.
+
+        rename_to (str, list, tuple, None): Rename cols_to_copy to this name or list of names.\n
+        If this argument is included, its length must match len(cols_to_copy)
+
+        error_if_dest_cols_exists: If True and any cols_to_copy already exists, then raises StructFieldExists
+        ignore_type_on_lookup (bool): Some "clever" people mix types on pk-fk tables across data sources. This will do its best to ignore this kind of stupidity
+        allow_duplicates_in_pk (bool): Ignore duplicates values in the column fc_dest.fc_dest_key_col. Takes the row value in this instance
+        show_progress (bool): Show progress messages and indicator
+
+    Returns:.
+        int: Number of rows updated in dest
+
+    Raises:
+        errors.DataFieldValuesNotUnique: If field values in the source field were not unique.
+        errors.StructFieldExists: If error_if_dest_col_exists and any col already exists in the destination
+
+    Notes:
+        Arcpy supports extending tables using numpy arrays, consider using this for improved performance (can be finiky)
+        https://pro.arcgis.com/en/pro-app/latest/arcpy/data-access/extendtable.htm
+        ignore_types_on_lookup. If True then null fields in the primary key will be treated the same as the text 'None'
+
+    Examples:
+        \nSimple copy of country_name to wards, assuming wards share a countryid foreign key
+        >>> fields_copy_by_join(r'C:\my.gdb\countries', 'countryid', 'C:\my.gdb\wards', 'countryid', 'country_name')
+        123
+        \n\nSimple copy as above, but rename the country_name field to country
+        >>> fields_copy_by_join(r'C:\my.gdb\countries', 'countryid', 'C:\my.gdb\wards', 'countryid', 'country_name', rename_to='country')
+        123
+        \n\nCopy multiple fields and rename them to country and area_km2
+        >>> fields_copy_by_join(r'C:\my.gdb\countries', 'countryid', 'C:\my.gdb\wards', 'countryid', ['country_name', 'area'], rename_to=['country', 'area_km2'])
+        123
+        \n\nField SQ_ID already exists in destination, but setting error_if_dest_cols_exists=False copies
+        \ndata from SRC.CEH_ID to DEST.SQ_ID with relationship SRC.SQ_ID --< DEST.WEB_ID, overwriting what is
+        \nalready there. Data type mismatches may also cause an error.
+        >>> fields_copy_by_join(DEST, 'WEB_ID', SRC, 'SQ_ID', 'CEH_ID', 'SQ_ID', error_if_dest_cols_exists=False)  # noqa
+        300
+    """
+    # TODO Needs testing for multiple fields
+    # TODO Also support compound primary keys in src
+    fc_dest = _path.normpath(fc_dest)
+    fc_src = _path.normpath(fc_src)
+
+    if isinstance(cols_to_copy, str):
+        cols_to_copy = [cols_to_copy]
+
+    if isinstance(rename_to, str):
+        rename_to = [rename_to]
+
+    if not rename_to:
+        rename_to = list(cols_to_copy)  # make a proper copy
+
+    # Some basic validation, so we error early.
+    if show_progress: print('\nPerforming some validation steps ...')
+
+    if len(rename_to) != len(cols_to_copy):
+        raise ValueError('If rename_to is passed, then assert len(cols_to_copy) == len(rename_to)')
+
+    if not _struct.field_exists(fc_src, fc_src_key_col, case_insensitive=False):
+        raise ValueError('The primary key field %s does not exist in source %s. This is case sensitive' % (fc_src_key_col, fc_src))
+
+    if not _struct.field_exists(fc_dest, fc_dest_key_col, case_insensitive=False):
+        raise ValueError('The foreign key field %s does not exist in destination %s. This is case sensitive' % (fc_dest_key_col, fc_dest))
+
+    if error_if_dest_cols_exists:
+        d = _struct.field_list_compare(fc_dest, rename_to)['a_and_b']  # noqa TODO Check this works
+        if d:
+            raise _errors.StructFieldExists('error_if_dest_cols_exists was True and field(s) %s already exist in destination %s' % (fc_dest, str(d)))
+
+    if not allow_duplicates_in_pk:
+        if field_has_duplicates(fc_src, fc_src_key_col):
+            raise _errors.DataFieldValuesNotUnique('Field values in the data source field %s must be unique.' % fc_src_key_col)
+
+    # join_list may now be out of order with rename_to
+    join_list_temp = [f for f in _arcpy.ListFields(fc_src) if f.name in cols_to_copy]
+    if len(join_list_temp) != len(cols_to_copy):
+        raise ValueError(
+            'Expected %s fields in source, got %s. Check the names of the columns you have asked to copy. Field name comparisons are case sensitive here.' % (len(cols_to_copy), len(join_list_temp)))
+
+    # create join_list, restoring order, so our source data cols match order of rename_to
+    join_list = [None] * len(cols_to_copy)
+    for f in join_list_temp:
+        join_list[cols_to_copy.index(f.name)] = f
+
+    # ######################################
+    # Add fields to be copied to destination
+    # ######################################
+    if show_progress:
+        PP = _iolib.PrintProgress(iter_=join_list, init_msg='Copying field definitions to destination (as required) ...')
+
+    for i, f in enumerate(join_list):
+        _struct.field_copy_definition(fc_src, fc_dest, f.name, rename_to[i], silent_skip_on_exists=not error_if_dest_cols_exists)  # noqa
+        if show_progress:
+            PP.increment()  # noqa
+
+    # #################################
+    # Now read src records into a dict
+    # #################################
+    src_rows_dict = {}
+    if ignore_type_on_lookup:
+        f_ignore = lambda vv: str(vv)
+    else:
+        f_ignore = lambda vv: vv
+
+    cols_to_copy.insert(0, fc_src_key_col)  # just add the src primary key to the start of cols_to_copy
+
+    if show_progress:
+        PP = _iolib.PrintProgress(maximum=get_row_count(fc_src), init_msg='2 of 3. Reading data from source ...')
+
+    pkvalues = []
+    with _arcpy.da.SearchCursor(fc_src, cols_to_copy) as srows:
+        for srow in srows:
+            # create dict .... {'row 1 key value': (row 1 field 1 value, row 1 field 2 value ...), 'row key value 2': (...)}
+            if not srow[0] in pkvalues:  # don't add if we have duplicate primary key values, as can happen if allow_duplicates_in_pk == True
+                src_rows_dict[f_ignore(srow[0])] = tuple(srow[1:])  # f_ignore making all keys strings if we want to ignore type matching on PK/FK
+                pkvalues += [srow[0]]
+            if show_progress:
+                PP.increment()  # noqa
+
+    ####################################################
+    # Write the records from the dict to the destination
+    ####################################################
+    if show_progress:
+        PP = _iolib.PrintProgress(maximum=get_row_count(fc_dest), init_msg='3 of 3. Writing data to destination ...')
+
+    rename_to.insert(0, fc_dest_key_col)  # noqa Insert the source key field at list[0]
+    n = 0
+
+    with _arcpy.da.UpdateCursor(fc_dest, rename_to) as urows:
+        for row in urows:
+            if f_ignore(row[0]) in map(f_ignore,
+                                       src_rows_dict.keys()):  # map is just so we convert everything to a string for comparisons, ignoring stuff like one PK field is an int and the FK field is a string.
+                for i, v in enumerate(src_rows_dict[f_ignore(row[0])]):
+                    row[i + 1] = v  # first row is the foreign key col we inserted earlier. So shift index up 1
+                urows.updateRow(row)
+                n += 1
+            PP.increment()
+    return n
 
 
 # this could be extented to allow multi argument functions by providing named arguments

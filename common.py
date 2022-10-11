@@ -650,7 +650,7 @@ def is_gdb(fname):
     TODO:
         make is_shape and is_gdb robust
     """
-    return '.gdb' in fname
+    return fname[-4:] == '.gdb'
 
 
 # this is reproduced in stuct, but don'as_rows import as will end up with circular reference issues
