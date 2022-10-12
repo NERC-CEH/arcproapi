@@ -924,6 +924,35 @@ def pandas_join(from_: _pd.DataFrame, to_: _pd.DataFrame, from_key: str, to_key:
     return join
 
 
+def features_copy_to_new(source: str, dest: str, where_clause: (None, str) = None, **kwargs):
+    """
+    Copy features to a new source based on a where clause.
+    Calls arcpy.analysis.Select, which recieves kwargs
+
+    Args:
+        source (str): Source layer, normpathed
+        dest (str): Destination, normpathed
+        where_clause (None, str): Where clause to select records for copying
+        kwargs: Keyword arguments, passed to arcpy.analysis.Select
+
+    Returns:
+        None
+
+    # TODO Debug features_copy_to_new
+    """
+    source = _path.normpath(source)
+    dest = _path.normpath(dest)
+    oids_to_select = []
+    
+    with _arcpy.da.SearchCursor(source, ['OID@'], where_clause=where_clause) as cursor:
+        for row in cursor:
+            oids_to_select.append(row[0])
+
+    sql = "{0} IN {1}".format(_arcpy.AddFieldDelimiters(source, _arcpy.Describe(source).OIDFieldName), tuple(oids_to_select))
+    _arcpy.analysis.Select(source, dest, sql, **kwargs)  # noqa
+
+
+
 def features_copy(source: str, dest: str, workspace: str, where_clause: str = '*', fixed_values=None, copy_shape: bool = True, force_add: bool = True, fail_on_exists: bool = True,
                   expected_row_cnt: int = None, no_progress: bool = False, **kwargs) -> int:
     """Copy features from one table or featureclass to another. i.e. The shape and fields as given as kwargs.

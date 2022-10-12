@@ -1,4 +1,7 @@
-"""Structural stuff, like deleting or renaming cols, and functions that query structure related properties"""
+"""Structural stuff, like deleting or renaming cols, and functions that query structure related properties
+
+TODO: Migrate some of these functions to info, structure should be things that ALTER structure, and not query it. However, there would be some crossover risking circular references
+"""
 import os.path as _path
 
 from arcpy.management import CreateFeatureclass, AddJoin, AddRelate, AddFields, AddField, DeleteField, AlterField  # noqa Add other stuff as find it useful ...
@@ -516,6 +519,7 @@ def fields_get(fname, wild_card='*', field_type='All', no_error_on_multiple: boo
     Notes:
         Calls ListFields, https://pro.arcgis.com/en/pro-app/latest/arcpy/functions/listfields.htm
         This function is now largely superflous with the improvements in arcgispro, but is here to support legacy code.
+        I've seen this function fail  with no-good-reason when not qualifying with the full source path. failures observed where fname IN ['squares']
 
     Examples:
         >>> fields_get(r'C:\Temp\Counties.shp', 'county_*', no_error_on_multiple=True)
@@ -526,7 +530,7 @@ def fields_get(fname, wild_card='*', field_type='All', no_error_on_multiple: boo
             File: ....
         StructMultipleFieldMatches ...
     """
-    # TODO Test fields_get
+
     fields = _arcpy.ListFields(fname, wild_card=wild_card, field_type=field_type)
 
     if fields and len(fields) > 1 and not no_error_on_multiple:
@@ -997,22 +1001,6 @@ def gdb_csv_import(csv_source: str, gdb_dest: str, **kwargs) -> None:
     return res
 
 
-def gdb_dump_struct(gdb: str, wild_lyr: str = '*', ftype='All'):  # noqa
-    """dump the structure of a geodb to excel"""
-    # TODO Implement gdb_dump_struct
-
-    raise NotImplementedError
-
-    out = {'lyr': [], 'fld': [], 'type': []}
-
-    def _add_fld(fc_, fld_):  # noqa
-        out['lyr'].append(fc_)
-        out['fld'].append(fld_.name)
-        out['type'].append(fld_.type)
-
-    for fc in fcs_list_all(gdb, wild=wild_lyr, ftype=ftype, rel=False):
-        for fld in field_list(fc, objects=True):  # noqa
-            pass
 
 
 def gdb_find_cols(gdb, col_name, partial_match=False):
@@ -1091,6 +1079,10 @@ def excel_import_worksheet(xls: str, fname: str, worksheet: str, header_row=1, o
 
 def gdb_tables_and_fcs_list(gdb: str, full_path: bool = False, include_dataset: bool = True) -> tuple:
     """
+    Get a tuple containing 2 lists, of feature classes and tables in a geodatabase.
+    First list is names of feature classes, second list is names of tables.
+
+    See arguments for options.
 
     Args:
         gdb (str): Path to file geodatabase
@@ -1099,6 +1091,9 @@ def gdb_tables_and_fcs_list(gdb: str, full_path: bool = False, include_dataset: 
 
     Returns:
         list: A depth-2 tuple, of feature class names and table names, i.e. ([feature classes], [tables])
+
+    Notes:
+        *** Sets the workspace to gdb ***
 
     Examples:
         >>> gdb_tables_and_fcs_list('C:/my.gdb')
@@ -1199,7 +1194,7 @@ def gdb_merge(source: str, dest: str, allow_overwrite=False, show_progress: bool
     src_fcs, src_tbls = gdb_tables_and_fcs_list(source, full_path=False, include_dataset=True)
 
     src_fcs_str = ";".join(src_fcs)
-    # arcpy.conversion.FeatureClassToGeodatabase(r"overlay\Squares\GMEP_300;'AGOL_BACKUPS\River Erosion\2021\Artificial_rep'", r"\\nerctbctdb\shared\shared\PROJECTS\WG ERAMMP2 (06810)\2 Field Survey\Data Management\Processed Datasets\_arcgispro\erammp_processed_datasets_scratch.gdb")
+
     if show_progress:
         print('Importing feature classes ....')
     _arcpy.conversion.FeatureClassToGeodatabase(src_fcs_str, dest)
