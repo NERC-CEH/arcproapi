@@ -55,6 +55,11 @@ def field_delete_not_in(fname, not_in):
 
     Examples:
         >>> field_delete_not_in('c:\lyr.shp', ('cola', 'colb'))
+
+    Notes:
+        ArcGISPro now supports this natively, see management.DeleteField
+        https://pro.arcgis.com/en/pro-app/latest/tool-reference/data-management/delete-field.htm
+        This method retained to not break code.
      """
     not_in = [s.lower() for s in not_in]
     fname = _path.normpath(fname)

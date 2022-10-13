@@ -99,6 +99,7 @@ def gdb_dump_struct(gdb: str, save_to: (str, None) = None,
     Examples:
         Print all layers matching "*count*" (e.g. country, county), of field type "*int*" with name matching "*popula*" or "*people_*"
         >>> df_out = gdb_dump_struct('C:/my.gdb', 'C:/struct.xlsx', 'count', ['popula', 'people_'], 'int')
+
     """
     gdb = _path.normpath(gdb)
 
@@ -168,7 +169,7 @@ def gdb_dump_struct(gdb: str, save_to: (str, None) = None,
             if field_type_match and not _baselib.list_member_in_str(str(fld.type), field_type_match, ignore_case=True):
                 continue
 
-            _add_fld(tbl, 'table', fld)
+            _add_fld(_iolib.fixp(gdb, tbl), tbl, 'table', fld)
 
         if show_progress:
             PP.increment()  # noqa

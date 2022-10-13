@@ -32,7 +32,7 @@ from arcproapi.structure import gdb_csv_import as csv_to_table  # noqa
 import arcproapi.errors as _errors
 import arcproapi.crud as _crud
 import arcproapi.orm as _orm
-
+import arcproapi.sql as _sql
 
 import arcproapi.common as _common
 #  More data-like functions, imported for convieniance
@@ -399,7 +399,7 @@ def pandas_to_table2(df: _pd.DataFrame, workspace: str, tablename: str, overwrit
     workspace = _path.normpath(workspace)
     tmp_file = _iolib.get_temp_fname(suffix='.csv')
     df.replace('"', "'", inplace=True)
-    df.to_csv(tmp_file, sep=',', index=False, **kwargs)
+    df.to_csv(tmp_file, sep=',', index=False, **kwargs)  # noqa
     fname = _iolib.fixp(workspace, tablename)
 
     if _common.is_locked(fname):
@@ -951,6 +951,74 @@ def features_copy_to_new(source: str, dest: str, where_clause: (None, str) = Non
     sql = "{0} IN {1}".format(_arcpy.AddFieldDelimiters(source, _arcpy.Describe(source).OIDFieldName), tuple(oids_to_select))
     _arcpy.analysis.Select(source, dest, sql, **kwargs)  # noqa
 
+
+def key_info(parent: str, parent_field: str, child: str, child_field: str, as_oids: bool = False) -> dict:
+    """
+    Get dictionary listing:
+    primary key values not in child foreign key values
+    common values
+    foreign key values not in primary key values
+
+    TODO: Support compound keys
+
+    Args:
+        parent (str): Parent entity
+        parent_field (str): The key field in the parent
+        child (str): Child entity
+        child_field (str): key field in the child
+        as_oids (bool): Get unique oids instead of distinct values
+
+    Returns:
+        dict: dict{'parent_only': [..], 'both': [..], 'child_only': [..]
+
+    Notes:
+        The OIDs can be used for futher processing ...
+
+    Examples:
+        >>> key_info('C:/my.gdb/coutries', 'cname', 'C:/my.gdb/towns', 'cname')
+        {'parent_only': ['NoTownCountry',...], 'both': ['England',...,], 'child_only': ['NoCountryTown',...]}
+
+        \n\nNow with oids
+        >>> key_info('C:/my.gdb/coutries', 'cname', 'C:/my.gdb/towns', 'cname', as_oids=True)
+        {'parent_only': [232, 343], 'both': [1,2,...], 'child_only': [56,77,...]}
+    """
+
+    parent_values = field_values(parent, parent_field, distinct=True)
+    child_values = field_values(child, child_field, distinct=True)
+
+    if not as_oids:
+        d = _baselib.list_sym_diff(parent_values, child_values, rename_keys=('parent_only', 'both', 'child_only'))
+        return d
+
+    where = _sql.query_where_in(parent_field, parent_values)
+    parent_oids = field_values(parent, 'OID@', where=where)
+
+    where = _sql.query_where_in(child_field, child_values)
+    child_oids = field_values(child, 'OID@', where=where)
+
+    d = _baselib.list_sym_diff(parent_oids, child_oids, rename_keys=('parent_only', 'both', 'child_only'))
+    return d
+
+
+def features_delete_orphaned(parent: str, parent_field: str, child: str, child_field: str) -> None:
+    """
+    Delete orphaned features/table records
+
+    TODO: features_delete_orphaned support compound keys and test
+
+    Args:
+        parent (str):
+        parent_field (str):
+        child (str):
+        child_field (str):
+
+    Returns:
+        None
+    """
+    oids = key_info(parent, parent_field, child, child_field, as_oids=True)['child_only']
+    if oids:
+        with _crud.CRUD(child, enable_transactions=False) as crud:
+            crud.deletew(_sql.query_where_in('OID@', oids))
 
 
 def features_copy(source: str, dest: str, workspace: str, where_clause: str = '*', fixed_values=None, copy_shape: bool = True, force_add: bool = True, fail_on_exists: bool = True,
