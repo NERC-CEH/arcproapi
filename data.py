@@ -28,7 +28,6 @@ import arcproapi.structure as _struct
 #  are imported here for convieniance
 from arcproapi.structure import gdb_csv_import as csv_to_table  # noqa
 
-
 import arcproapi.errors as _errors
 import arcproapi.crud as _crud
 import arcproapi.orm as _orm
@@ -38,8 +37,6 @@ import arcproapi.common as _common
 #  More data-like functions, imported for convieniance
 from arcproapi.common import get_row_count2 as get_row_count2
 from arcproapi.common import get_row_count as get_row_count  # noqa
-
-
 
 
 class Excel:
@@ -64,7 +61,6 @@ class Excel:
             _ = App.books.open(workbook)
             out = [sht.name for sht in App.books[fname].sheets]
         return out
-
 
 
 def poly_from_extent(ext, sr):
@@ -469,7 +465,7 @@ def table_as_pandas2(fname: str, cols: (str, list) = None, where: str = None, ex
     return df
 
 
-def table_as_dict(fname, cols=None, where=None, exclude_cols=('Shape', 'Shape_Length', 'Shape_Area'), **kwargs) -> dict:
+def table_as_dict(fname, cols=None, where=None, exclude_cols=('Shape', 'Shape_Length', 'Shape_Area'), orient='list', **kwargs) -> dict:
     """(str, iter, iter)
     load data from an ESRI feature set or table and return as a dict.
 
@@ -478,6 +474,7 @@ def table_as_dict(fname, cols=None, where=None, exclude_cols=('Shape', 'Shape_Le
         cols: column list to retrieve.
         where: where clause, passed as-is to SearchCursor
         exclude_cols: list of cols to exclude
+        orient: passed to pandas.DataFrame.to_dict. See https://pandas.pydata.org/pandas-docs/stable/reference/api/pandas.DataFrame.to_dict.html
         **kwargs: keyword args passed to pandas.DataFrame.from_records
 
     Returns: dict
@@ -491,7 +488,7 @@ def table_as_dict(fname, cols=None, where=None, exclude_cols=('Shape', 'Shape_Le
         >>> df = table_as_dict('C:/my.gdb/fc', [OBJECTID, modified_date], where='OBJECTID>10')  # noqa
     """
     df = table_as_pandas2(fname, cols=cols, where=where, exclude_cols=exclude_cols, **kwargs)
-    return df.to_dict()
+    return df.to_dict(orient=orient)
 
 
 def field_update_from_dict2(fname: str, key_dict: dict, update_dict: dict, where: str = '', na: any = None, case_insentive: bool = True) -> int:  # noqa
@@ -776,18 +773,29 @@ def fields_apply_func(fc, cols, *args, where_clause=None, show_progress=False):
         PP = _iolib.PrintProgress(maximum=max_)
 
     if isinstance(cols, str): cols = [cols]
+    try:
+        if _arcpy.env.workspace:
+            edit = _arcpy.da.Editor(_arcpy.env.workspace)
+            edit.startEditing(False, False)
+            edit.startOperation()
 
-    with _arcpy.da.UpdateCursor(fc, cols, where_clause=where_clause) as cursor:
-        for i, row in enumerate(cursor):
-            vals = [row[j] for j in range(len(cols))]
-            for f in args:  # function chaining
-                vals = [f(v) for v in vals]  # pass in our function to correct the data
+        with _arcpy.da.UpdateCursor(fc, cols, where_clause=where_clause) as cursor:
+            for i, row in enumerate(cursor):
+                vals = [row[j] for j in range(len(cols))]
+                for f in args:  # function chaining
+                    vals = [f(v) for v in vals]  # pass in our function to correct the data
 
-            for k, v in enumerate(vals):
-                row[k] = v
+                for k, v in enumerate(vals):
+                    row[k] = v
                 cursor.updateRow(row)
-            if show_progress:
-                PP.increment()  # noqa
+                if show_progress:
+                    PP.increment()  # noqa
+    finally:
+        with _fuckit:
+            if _arcpy.env.workspace:
+                edit.stopOperation()
+                edit.stopEditing(save_changes=True)  # noqa
+                del edit
 
 
 def del_rows(fname: str, cols: any, vals: any, where: str = None, show_progress: bool = True, no_warn=False) -> int:
@@ -943,7 +951,7 @@ def features_copy_to_new(source: str, dest: str, where_clause: (None, str) = Non
     source = _path.normpath(source)
     dest = _path.normpath(dest)
     oids_to_select = []
-    
+
     with _arcpy.da.SearchCursor(source, ['OID@'], where_clause=where_clause) as cursor:
         for row in cursor:
             oids_to_select.append(row[0])

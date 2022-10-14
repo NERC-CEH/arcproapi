@@ -64,3 +64,24 @@ def project_coordinates(xys, in_sr, out_sr, datum_transformation=None):
         xyspr.append(xypr)
 
     return xyspr
+
+
+
+def spatial_ref_get(wkid: int = 27700):
+    """
+    Returns an arcpy SpatialReference object from the input WKID (set to
+    British National Grid by default). Use to set environments, or as an input
+    to certain arcpy tools.
+
+    Args:
+        wkid (int):  An ESRI Well Known ID (WKID) code for the required projection
+
+
+    Return
+        obj: An arcpy spatial reference object for the WKID.
+
+    """
+    sr = _arcpy.SpatialReference()
+    sr.factoryCode = wkid
+    sr.create()
+    return sr

@@ -15,6 +15,7 @@ from tqdm import tqdm
 
 import funclite.iolib as iolib
 
+
 def main():
     """main"""
     cmdline = argparse.ArgumentParser(description=__doc__)  # use the module __doc__

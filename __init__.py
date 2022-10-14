@@ -18,9 +18,9 @@ both. (Graham Monkman 9/3/2022)
 import arcpy as _arcpy
 
 
-__all__ = ['charts.py', 'common', 'data', 'display', 'environ',
-           'errors', 'httplib.py', 'meta', 'projections', 'raster', 'sql',
-           'structure.py']
+__all__ = ['charts', 'common', 'data', 'display', 'environ',
+           'errors', 'httplib', 'meta', 'projections', 'raster', 'sql',
+           'structure']
 
 from enum import Enum as _Enum
 

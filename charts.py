@@ -1,14 +1,13 @@
-# Largely unaltered from the original source in repo
+# Unaltered from the original source in repo
 # https://github.com/NERC-CEH/arcapi
-# Hence untested under _arcpy for ArcPro
-# Infact this has not been updated to be Python 3.x compatible
-# and is in a non-working state
+# This is currently broken and needs a full update
+
 
 
 import arcpy as _arcpy
 import numpy as _np
 
-from arcproapi.errors import MapNotFound, MapFrameNotFound, LayoutNotFound
+from arcproapi.errors import MapNotFound, MapFrameNotFound, LayoutNotFound  # noqa
 
 
 def create_pie_chart(fig, table, case_field, data_field='', fig_title='', x=8.5, y=8.5, rounding=0):

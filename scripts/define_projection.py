@@ -14,7 +14,7 @@ for f in LAYERS:
         print('Converting %s ...' % f)
         arcpy.management.DefineProjection(f, Projections.BNG)
     except Exception as e:
-        #exception occur if a projection exists
+        # exception occur if a projection exists
         print(e)
 
 print("Finished")
