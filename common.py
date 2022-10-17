@@ -7,6 +7,7 @@ import datetime as _datetime
 import sys as _sys
 import math as _math
 
+import fuckit as _fuckit
 import arcpy as _arcpy
 
 
@@ -386,6 +387,35 @@ def head(tbl: str, n: int = 10, as_rows: bool = True, delimiter: str = "; ", geo
 
 def pretty_now():
     return _time.strftime('%H:%M%p %Z on %b %d, %Y')
+
+
+def editor_tracking_disable(fname: str) -> None:
+    """
+    Disable editor tracking. Won't raise an error if editor tracking for a specific option does not exist (e.g. last editor is not enabled').
+    All errors are suppressed with fuckit.
+
+    See https://pro.arcgis.com/en/pro-app/latest/tool-reference/data-management/disable-editor-tracking.htm
+
+    Args:
+        fname (str): The table/layer
+
+    Returns:
+        None
+
+    Examples:
+        First setting a workspace
+        >>> import arcpy
+        >>> arcpy.env.workspace = 'C:/my.gdb'
+        >>> editor_tracking_disable('MyLayer')
+        \n\nWithout setting a workspace
+        >>> editor_tracking_disable('C:/my.gdb/MyLayer')
+    """
+    fname = _path.normpath(fname)
+    with _fuckit:
+        _arcpy.management.DisableEditorTracking(fname, creator='DISABLE_CREATOR')
+        _arcpy.management.DisableEditorTracking(fname, creation_date='DISABLE_CREATION_DATE')
+        _arcpy.management.DisableEditorTracking(fname, last_editor='DISABLE_LAST_EDITOR')
+        _arcpy.management.DisableEditorTracking(fname, last_edit_date='DISABLE_LAST_EDIT_DATE')
 
 
 def print_tuples(x, delim=" ", tbl=None, geoms=None, fillchar=" ", padding=1, verbose=True, returnit=False):

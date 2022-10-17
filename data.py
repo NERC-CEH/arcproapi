@@ -774,6 +774,10 @@ def fields_apply_func(fc, cols, *args, where_clause=None, show_progress=False):
 
     if isinstance(cols, str): cols = [cols]
     try:
+        # Update cursor behaves differently the environment has a workspace set
+        # Specifically, updates must be put in an edit session, otherwise arcpy raises
+        # an error about not being able to make changes outside of an edit session
+        # Hence the following code triggering an edit session if we have a workspace
         if _arcpy.env.workspace:
             edit = _arcpy.da.Editor(_arcpy.env.workspace)
             edit.startEditing(False, False)
@@ -790,12 +794,19 @@ def fields_apply_func(fc, cols, *args, where_clause=None, show_progress=False):
                 cursor.updateRow(row)
                 if show_progress:
                     PP.increment()  # noqa
-    finally:
-        with _fuckit:
-            if _arcpy.env.workspace:
-                edit.stopOperation()
+
+        if _arcpy.env.workspace:
+            edit.stopOperation()  # noqa
+            if edit.isEditing:
                 edit.stopEditing(save_changes=True)  # noqa
-                del edit
+            del edit
+
+    except Exception as e:
+        with _fuckit:
+            edit.stopOperation()
+            edit.stopEditing(save_changes=False)  # noqa
+            del edit
+        raise Exception('An exception occured and changes applied by fields_apply_func were rolled back. Further error details follow.') from e
 
 
 def del_rows(fname: str, cols: any, vals: any, where: str = None, show_progress: bool = True, no_warn=False) -> int:

@@ -7,9 +7,12 @@ Took the arcapi repo and moved into modules and changed for both Python 3 compat
 
 Several modules are still left as-is from the original arcpro API because I have not yet had call to .. call them.
 <br><br>
-# ArcPy Dependancy
+# Dependencies
+<h3>ArcPy</h3>
 This package is dependent on ESRIs ArcGISPro arcpy. You will need a working installation of ArcGISPro to use this package.
 <br><br>
+<h3>funclite</h3>
+Another NERC-CEH repository with many basic quality-of-life wrappers for common tasks. Available at https://github.com/NERC-CEH/funclite
 # docstrings
 Uses Google's Python Docstring standard. I am slowly sorting out docstrings on an adhoc database.
 
