@@ -23,6 +23,7 @@ with _fuckit:
 import funclite.iolib as _iolib
 import funclite.baselib as _baselib
 
+
 import arcproapi.structure as _struct
 #  The following are data-like operations defined in structure. They
 #  are imported here for convieniance
@@ -491,6 +492,32 @@ def table_as_dict(fname, cols=None, where=None, exclude_cols=('Shape', 'Shape_Le
     return df.to_dict(orient=orient)
 
 
+def table_dump_from_sde_to_excel(sde_file: str, lyr, xlsx_root_folder: str, **kwargs) -> str:
+    """
+    Dump Enterprise geodatabase layer defined by sde connection file to excel.
+    The excel file name is generated from current date and the source layer name.
+
+    Args:
+        sde_file (str): SDE file
+        lyr (str): feature class/table name.
+        xlsx_root_folder (str): Root folder in which to save the xlsx
+        kwargs (any): Passed to data.table_as_pandas2
+
+    Returns:
+        str: The excel file name.
+
+    Examples:
+        >>> table_dump_from_sde_to_excel('C:/my.sde', 'MyDataTable')
+    """
+    sde_file = _iolib.fixp(sde_file, lyr)
+    dest_xlsx = _iolib.fixp(xlsx_root_folder,
+                            '%s_%s.xlsx' % (_iolib.pretty_date_now(with_time=True, time_sep=''), lyr)
+                            )
+
+    df = table_as_pandas2(sde_file, **kwargs)
+    df.to_excel(dest_xlsx)
+    return dest_xlsx
+
 def field_update_from_dict2(fname: str, key_dict: dict, update_dict: dict, where: str = '', na: any = None, case_insentive: bool = True) -> int:  # noqa
     """Update columns in a table which match values in key_dict.
 
@@ -515,7 +542,7 @@ def field_update_from_dict2(fname: str, key_dict: dict, update_dict: dict, where
     raise NotImplementedError
 
 
-def field_update_from_dict(fname: str, dict_: dict, col_to_update: str, key_col: str = None, where: str = '', na: any = None) -> int:
+def field_update_from_dict(fname: str, dict_: dict, col_to_update: str, key_col: str = None, where: str = '', na: any = None, show_progress=False) -> int:
     """Update column in a table with values from a dictionary.
 
     Return number of updated records.
@@ -529,6 +556,7 @@ def field_update_from_dict(fname: str, dict_: dict, col_to_update: str, key_col:
         where: where clause to select rows to update in the feature class
         na: value to be used instead of new value for non-matching records,
             default is None, use (1,1) to leave original value if match is not found
+        show_progress (bool): Show progress
 
     Returns:
         int: Number of updated records
@@ -536,10 +564,8 @@ def field_update_from_dict(fname: str, dict_: dict, col_to_update: str, key_col:
     Examples:
         >>> fc = 'c:\\foo\\bar.shp'
         >>> d = {1: 'EN', 2:'ST', 3:'WL', 4:'NI'}
-        \n.
         Dictionary keys are table index numbers (ObjectID, OID etc), no need to pass key_col as objectid is assumed
         >>> field_update_from_dict(fc, d, 'country_code')
-        \n.
         Explicit declaration of update and key columns. Here we assume the numerics in d are "country_num"
         and we update country_code accordingly.
         >>> field_update_from_dict(fc, d, col_to_update='country_code', key_col='country_num', na='Other')
@@ -565,7 +591,9 @@ def field_update_from_dict(fname: str, dict_: dict, col_to_update: str, key_col:
     if n == 0:
         _warn('No records matched where query "%s" in %s. Did you expect this?' % (where, fname))
 
-    PP = _iolib.PrintProgress(maximum=n)
+    if show_progress:
+        PP = _iolib.PrintProgress(maximum=n)
+
     with _arcpy.da.UpdateCursor(fname, cols, where_clause=where) as uc:
         for row in uc:
             ido = row[0]
@@ -590,7 +618,8 @@ def field_update_from_dict(fname: str, dict_: dict, col_to_update: str, key_col:
                     row[1] = newval
                 uc.updateRow(row)
                 cnt += 1
-            PP.increment()
+            if show_progress:
+                PP.increment()  # noqa
     return cnt
 
 
@@ -751,21 +780,24 @@ def fields_copy_by_join(fc_dest: str, fc_dest_key_col: str, fc_src: str, fc_src_
 # this could be extented to allow multi argument functions by providing named arguments
 # to pass thru
 def fields_apply_func(fc, cols, *args, where_clause=None, show_progress=False):
-    """(str, iter|str, *args, str|None, bool)->None
+    """
 
     Updates all cols in where_clause filtered layer fc and applies
     functions passed to args to them.
 
-    fc: path to feature class/shapefile (e.g. c:\tmp\myfile.shp)
-    cols: iterable of columns to transform with func(s) in args (str for single col is ok)
-    args: 1 or more single argument function pointers
-    where_clause: applied to filter rows to be updated (STATE="Washington")
-    show_progress: Have this func print a progress bar to the console
+    Args:
+        fc (str): path to feature class/shapefile (e.g. c:\tmp\myfile.shp)
+        cols (str, iter): iterable of columns to transform with func(s) in args (str for single col is ok)
+        args (any): 1 or more single argument function pointers
+        where_clause (str, None): applied to filter rows to be updated (STATE="Washington")
+        show_progress (bool): Have this func print a progress bar to the console
 
+    Returuns:
+        None
 
-    Example
-    f1 = str.lower: f2 = str.upper
-    fields_apply_func('c:/my.shp', ['street','town'], f1, f2, where_clause='town="bangor"')
+    Examples:
+        >>> f1 = str.lower: f2 = str.upper
+        >>> fields_apply_func('c:/my.shp', ['street','town'], f1, f2, where_clause='town="bangor"')
     """
     fc = _path.normpath(fc)
     if show_progress:
@@ -774,7 +806,7 @@ def fields_apply_func(fc, cols, *args, where_clause=None, show_progress=False):
 
     if isinstance(cols, str): cols = [cols]
     try:
-        # Update cursor behaves differently the environment has a workspace set
+        # Update cursor behaves differently when the environment has a workspace set
         # Specifically, updates must be put in an edit session, otherwise arcpy raises
         # an error about not being able to make changes outside of an edit session
         # Hence the following code triggering an edit session if we have a workspace
@@ -807,6 +839,76 @@ def fields_apply_func(fc, cols, *args, where_clause=None, show_progress=False):
             edit.stopEditing(save_changes=False)  # noqa
             del edit
         raise Exception('An exception occured and changes applied by fields_apply_func were rolled back. Further error details follow.') from e
+
+
+# this could be extented to allow multi argument functions by providing named arguments
+# to pass thru
+def field_recalculate(fc: str, arg_cols: (str, list, tuple), col_to_update: str, func, where_clause: (str, None) = None, show_progress: bool = False):
+    """
+    Very similiar to ArcPros Calculate Field.
+    Take in_cols values, apply a function to these values to recalculate col_to_update.
+
+    Note that each function must accept exactly len(in_cols) arguments.
+
+    Arguments are matched by order, so in_cols[0], is passed as first argument to func.
+
+    Args:
+        fc (str): path to feature class/shapefile (e.g. c:\tmp\myfile.shp)
+        arg_cols (str, iter): iterable of columns to transform with func(s) in args (str for single col is ok)
+        col_to_update (str): column to update
+        func (function): A function object which excepts len(in_cols) number of arguments.
+        where_clause (str): applied to filter rows to be updated (STATE="Washington")
+        show_progress (bool): Have this func print a progress bar to the console
+
+    Returns:
+        None
+
+    Notes:
+        arcproapi.structure exposes AddField, use this to add your field to recalculate if it doesnt exist!
+
+    Examples:
+        Set field "coord_sum" to be the product of fields easting, northing, elevation for all rows in Bangor.
+        >>> f1 = lambda x, y, z: x + y + z
+        >>> field_recalculate('c:/my.shp', ['easting','northing', 'elevation'], 'coord_sum', f1, where_clause='town="bangor"')
+
+    TODO: Test/Debug field_recalculate
+    """
+    fc = _path.normpath(fc)
+    if show_progress:
+        max_ = _struct.get_row_count2(fc, where=where_clause)
+        PP = _iolib.PrintProgress(maximum=max_)
+
+    if isinstance(arg_cols, str): arg_cols = [arg_cols]
+
+    try:
+        # Update cursor behaves differently the environment has a workspace set
+        # Specifically, updates must be put in an edit session, otherwise arcpy raises
+        # an error about not being able to make changes outside of an edit session
+        # Hence the following code triggering an edit session if we have a workspace
+        if _arcpy.env.workspace:
+            edit = _arcpy.da.Editor(_arcpy.env.workspace)
+            edit.startEditing(False, False)
+            edit.startOperation()
+
+        with _arcpy.da.UpdateCursor(fc, arg_cols + [col_to_update], where_clause=where_clause) as cursor:
+            for i, row in enumerate(cursor):
+                row[-1] = func(*row[0:len(arg_cols)])
+                cursor.updateRow(row)
+                if show_progress:
+                    PP.increment()  # noqa
+
+        if _arcpy.env.workspace:
+            edit.stopOperation()  # noqa
+            if edit.isEditing:
+                edit.stopEditing(save_changes=True)  # noqa
+            del edit
+
+    except Exception as e:
+        with _fuckit:
+            edit.stopOperation()
+            edit.stopEditing(save_changes=False)  # noqa
+            del edit
+        raise Exception('An exception occured and changes applied by field_recalculate were rolled back. Further error details follow.') from e
 
 
 def del_rows(fname: str, cols: any, vals: any, where: str = None, show_progress: bool = True, no_warn=False) -> int:

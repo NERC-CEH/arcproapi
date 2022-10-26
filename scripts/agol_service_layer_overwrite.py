@@ -23,6 +23,9 @@
 # --------------------------------------------------------------------------------------------------------------------------------------------
 
 # import modules
+
+# TODO: Convert to stand-alone script
+
 import arcpy
 import sys
 import time

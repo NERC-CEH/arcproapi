@@ -63,7 +63,7 @@ class BNG100kmGrid:
 
 
 class OSBNG:
-    """ Functiond for converting between Ordnance survey grids and other coordinate systems
+    """ Function for converting between Ordnance survey grids and other coordinate systems
 
     Currently all static methods
     """
@@ -71,6 +71,7 @@ class OSBNG:
     @staticmethod
     def grid_to_bng(grid_ref: str) -> tuple:
         """
+        Convert OS Grids t British National Grid eastings and northings (tuple returns values in that order)
 
         Args:
             grid_ref (str): The grid ref, spaces allowed. e.g. SN123456, SN 123 456, SN1234567890 are all valid.
@@ -93,7 +94,7 @@ class OSBNG:
 
         tile = grid_ref[0:2]
 
-        # looks complicated but just parsing out the x and y coords and forcing to ints
+        # looks complicated but just parsing out the x and y coords and casting to ints
         # the /2 is why we dont support stuff like SN 12 456
         x = int(grid_ref[2:int((len(grid_ref) - 2) / 2) + 2])
         y = int(grid_ref[int(-1 * ((len(grid_ref) - 2) / 2)):])

@@ -1098,7 +1098,7 @@ def gdb_tables_and_fcs_list(gdb: str, full_path: bool = False, include_dataset: 
         list: A depth-2 tuple, of feature class names and table names, i.e. ([feature classes], [tables])
 
     Notes:
-        *** Sets the workspace to gdb ***
+        Temporaily changes the workspace. Returns it to original on error or completion
 
     Examples:
         >>> gdb_tables_and_fcs_list('C:/my.gdb')
@@ -1111,26 +1111,30 @@ def gdb_tables_and_fcs_list(gdb: str, full_path: bool = False, include_dataset: 
     if not _common.is_gdb(gdb):
         raise ValueError('%s is not a valid file geodatabase path' % gdb)
 
-    _environ.workspace_set(gdb)
+    try:
+        curws = _arcpy.env.workspace
+        _environ.workspace_set(gdb)
 
-    fcs, tbls = [], []
-    for fds in _arcpy.ListDatasets(feature_type='feature') + ['']:  # list in datasets and stuff not in datasets, i.e. dateset=''
-        for fc in _arcpy.ListFeatureClasses(feature_dataset=fds):
-            if full_path:
-                fcs.append(_path.join(_arcpy.env.workspace, fds, fc))
-            elif include_dataset:
-                fcs.append(_iolib.fixp(fds, fc))
-            else:
-                fcs.append(fc)
+        fcs, tbls = [], []
+        for fds in _arcpy.ListDatasets(feature_type='feature') + ['']:  # list in datasets and stuff not in datasets, i.e. dateset=''
+            for fc in _arcpy.ListFeatureClasses(feature_dataset=fds):
+                if full_path:
+                    fcs.append(_path.join(_arcpy.env.workspace, fds, fc))
+                elif include_dataset:
+                    fcs.append(_iolib.fixp(fds, fc))
+                else:
+                    fcs.append(fc)
 
-    tbl_list = _arcpy.ListTables()
+        tbl_list = _arcpy.ListTables()
 
-    if tbl_list:
-        for tbl in tbl_list:
-            if full_path:
-                tbls.append(_iolib.fixp(_arcpy.env.workspace, tbl))
-            else:
-                tbls.append(tbl)
+        if tbl_list:
+            for tbl in tbl_list:
+                if full_path:
+                    tbls.append(_iolib.fixp(_arcpy.env.workspace, tbl))
+                else:
+                    tbls.append(tbl)
+    finally:
+        _environ.workspace_set(curws)  # noqa
 
     return fcs, tbls  # noqa
 
