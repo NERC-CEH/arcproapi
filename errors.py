@@ -112,3 +112,10 @@ class DisplayFeatureClassNameMatchedMultipleLayers(Exception):
 ########
 class GeomInvalidTypeString(Exception):
     """Geometry type string invalid. Geometry strings are IN [point, polygon, polyline, or multipoint."""
+
+
+########
+# info #
+########
+class InfoMultiBandRasterNotSupported(Exception):
+    """Multiband rasters are not supported"""

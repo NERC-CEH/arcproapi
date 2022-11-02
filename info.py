@@ -15,7 +15,7 @@ import funclite.baselib as _baselib
 import arcproapi.structure as _struct
 import arcproapi.data as _data
 import arcproapi.environ as _environ
-
+import arcproapi.errors as _errors
 
 def gdb_row_counts(gdb: str, match: (str, list), where: (str, None) = None) -> _pd.DataFrame:  # noqa
     """
@@ -99,7 +99,6 @@ def gdb_dump_struct(gdb: str, save_to: (str, None) = None,
     Examples:
         Print all layers matching "*count*" (e.g. country, county), of field type "*int*" with name matching "*popula*" or "*people_*"
         >>> df_out = gdb_dump_struct('C:/my.gdb', 'C:/struct.xlsx', 'count', ['popula', 'people_'], 'int')
-
     """
     gdb = _path.normpath(gdb)
 
@@ -183,6 +182,72 @@ def gdb_dump_struct(gdb: str, save_to: (str, None) = None,
             print('Saving to excel file %s' % save_to)
         df.to_excel(save_to)
     return df
+
+
+
+def sde_fname_struct_as_dict(file_path: str) -> dict:
+    """
+    Return a dict describing a sde feature class or table details and structure.
+
+    Args:
+        file_path (str): Input database file path to read.
+
+    Returns:
+        sde_dict (dict): Attributes for the input file, which vary by file type.
+
+    TODO: Debug sde_fname_struct_as_dict
+    """
+
+    file_path = _path.normpath(file_path)
+    sde_dict = {'file_path': file_path}
+    desc = _arcpy.Describe(file_path)
+
+    # Retrieve various describe attributes, path, type, fields etc.
+    if desc.catalogPath.split('\\')[-2][-4:] == ".sde":
+        sde_dict['path'] = "Root of the GMEP SDE Database"
+    else:
+        sde_dict['path'] = desc.catalogPath.split('\\')[-2]
+
+    dtype = desc.dataType
+    sde_dict['type'] = dtype
+    sde_dict['name'] = desc.basename.split('.')[-1]
+    sde_dict['owner'] = desc.basename.split('.')[0]
+    sde_dict['sde_name'] = desc.basename
+
+    # If file is a feature or table, retrieve  field details and row count.
+    if dtype == "FeatureClass" or dtype == "Table":
+        sde_dict['oid_field'] = desc.OIDFieldName
+        fields = desc.fields
+        sde_dict['field_details'] = [[f.name, f.type, f.length] for f in fields]
+        _arcpy.MakeTableView_management(sde_dict['file_path'], "Temp")
+        sde_dict['count'] = int(_arcpy.GetCount_management("Temp").getOutput(0))
+        _arcpy.Delete_management("Temp")
+
+    # If file is a feature or raster, get spatial reference information.
+    if dtype == "FeatureClass" or dtype == "RasterDataset":
+        e = desc.extent
+        sde_dict['projection'] = e.spatialReference.name
+        sde_dict['extent'] = [[e.YMin, e.XMin], [e.YMin, e.XMax],
+                              [e.YMax, e.XMax], [e.YMin, e.XMax]]
+
+    # If file is a feature, get geometry information.
+    if dtype == "FeatureClass":
+        sde_dict['feature_type'] = desc.shapeType
+        sde_dict['shape_field'] = desc.shapeFieldName
+
+    # If file is a raster, attempt to get metadata.
+    elif dtype == "RasterDataset":
+        bands = desc.bandCount
+        if bands > 1:
+            raise _errors.InfoMultiBandRasterNotSupported(_errors.InfoMultiBandRasterNotSupported.__doc__)
+        else:
+            sde_dict['cell_size'] = (desc.meanCellWidth, desc.meanCellHeight)
+            sde_dict['field_details'] = [desc.tableType, desc.pixelType]
+            sde_dict['raster_size'] = (desc.width, desc.height)
+            sde_dict['count'] = (sde_dict['raster_size'][0] *
+                                 sde_dict['raster_size'][1])
+    return sde_dict
+
 
 
 if __name__ == '__main__':
