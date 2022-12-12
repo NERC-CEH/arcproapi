@@ -10,9 +10,7 @@ import math as _math
 import fuckit as _fuckit
 import arcpy as _arcpy
 
-
 import arcproapi.errors as _errors
-
 
 lut_field_types = {
     'Date': 'DATE',
@@ -25,10 +23,12 @@ lut_field_types = {
     'Raster': 'RASTER'
 }
 
+
 class Version(_Enum):
     """Version enumeration"""
     ArcPro = 1
     ArcMap = 2
+
 
 class FieldNamesSpecial:
     shape = 'SHAPE@'
@@ -46,6 +46,24 @@ class FieldNamesSpecial:
     xy = 'SHAPE@XY'
     xyz = 'SHAPE@XYZ'
 
+
+class eFieldTypeText(_Enum):
+    """Field Type text as required for addfield.
+    
+    Use as_text to get the required string.
+
+    Examples:
+        >>> eFieldTypeText.DATE.name
+        'DATE'
+    """
+    DATE = 1
+    TEXT = 2
+    FLOAT = 3
+    DOUBLE = 4
+    SHORT = 5
+    LONG = 6
+    GUID = 7
+    RASTER = 8
 
 
 def tstamp(p="", tf="%Y%m%d%H%M%S", d="_", m=False, s=()):
@@ -250,7 +268,6 @@ def arctype_to_ptype(esri_field_type):
         return float
     else:
         return str
-
 
 
 def list_data(top, **options):
@@ -649,7 +666,6 @@ def columns_delim(fname: str, cols: (str, list, tuple)) -> list:
     return [_arcpy.AddFieldDelimiters(fname, s) for s in cols]
 
 
-
 def is_shp(fname: str) -> bool:
     """Does it look like a shape file
 
@@ -665,6 +681,7 @@ def is_shp(fname: str) -> bool:
         make is_shape and is_gdb robust
     """
     return fname[-4:] == '.shp'
+
 
 def is_gdb(fname):
     """Does it look like a gdb feature class
@@ -695,6 +712,7 @@ def oid_field(fname):
          str: Name of the autoincremental primary key field
     """
     return _arcpy.Describe(fname).OIDFieldName
+
 
 # this is reproduced in stuct. Dont refactor or will risk ending up with circular references
 def shape_field(fname: str) -> str:
@@ -729,7 +747,6 @@ def oid_max(fname: str) -> (int, None):
         for row in Cur:
             return int(row[2])
     return None
-
 
 
 def extent(in_file: str, buffer_length=0, align=False):

@@ -335,24 +335,20 @@ def field_list(fname, cols_exclude=(), oid=True, shape=True, objects=False, func
                 if f.name.lower() not in exclude and _filt_fld(f)]
 
 
-def field_type_get(in_field, fc=''):
+def field_type_get(in_field, fc: str = '') -> str:
     """Converts esri field type returned from list fields or describe fields
     to format for adding fields to tables.
 
-    Required:
-    in_field -- field name to find field type. If no feature class
-        is specified, the in_field paramter should be a describe of
-        a field.type
+    Args:
+        in_field (str, obj): field name to find field type. If no feature class is specified, the in_field paramter should be a describe of a field.type
+        fc (str): feature class or table.  If no feature class is specified, the in_field paramter should be a describe of a field.type
 
-    Optional:
-    fc -- feature class or table.  If no feature class is specified,
-        the in_field paramter should be a describe of a field.type
+    Returns:
+        str: The field type as required for AddField in arcpy (for example)
 
     Examples:
-        >>> # field type of 'String' needs to be 'TEXT' to be added to table
-        >>> # This is a text type field
-        >>> # now get esri field type
-        >>> print getFieldType(table, 'PARCEL_ID') #esri field.type return is 'String', we want 'TEXT'  # noqa
+        Get field type string required for AddField
+        >>> field_type_get('PARCEL_ID', 'C:/my.gdb/mytable')
         TEXT
     """
     if fc:

@@ -17,14 +17,14 @@ import arcproapi.data as _data
 import arcproapi.environ as _environ
 import arcproapi.errors as _errors
 
-def gdb_row_counts(gdb: str, match: (str, list), where: (str, None) = None) -> _pd.DataFrame:  # noqa
+def gdb_row_counts(gdb: str, match: (str, list) = '*', where: (str, None) = None) -> _pd.DataFrame:  # noqa
     """
     Get row counts for all feature classes and tables in a geodatabase.
     Also see gdb_dump_struct.
 
     Args:
         gdb (str): Path to geodatabase
-        match (str, list, tuple): match names on this
+        match (str, list, tuple): match names on this, matches all with the default, '*'
         where (str): throw this where into the data.get_row_count2 query
 
     Returns:
@@ -51,8 +51,9 @@ def gdb_row_counts(gdb: str, match: (str, list), where: (str, None) = None) -> _
     fcs, tbls = _struct.gdb_tables_and_fcs_list(gdb, full_path=True)
 
     filt = lambda s: True if not match else _baselib.list_member_in_str(_iolib.get_file_parts2(s)[1], match)
-    fcs = [s for s in fcs if filt(s)]
-    tbls = [s for s in tbls if filt(s)]
+    if not match == ['*']:
+        fcs = [s for s in fcs if filt(s)]
+        tbls = [s for s in tbls if filt(s)]
     fcs_tbls = fcs + tbls
 
     dic = {'full_name': [s for s in fcs_tbls]}  # noqa

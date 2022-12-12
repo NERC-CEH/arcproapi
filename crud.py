@@ -468,45 +468,46 @@ class CRUD:
         col_val_dict is dictionary of key fields and their values used to build the where.
 
         Args:
-            search_dict:
-                Builds the where e.g. {'orderid':1, 'supplier':'Widget Company'}
-            force_add:
-                Force an add, this is necessary when doing an upsert based of non-composite key fields (i.e. members)
-            fail_on_multi:
-                Raise an error if get more than one row for the update cursor
-            fail_on_exists:
-                Raise an error the row exists by search_dict
-            fail_on_not_exists:
-                Raise an error if this should be an update
-            kwargs:
-                Field/value pairs to insert/update
+            search_dict (dict, None): Builds the where e.g. {'orderid':1, 'supplier':'Widget Company'}
+            force_add (bool): Force an add, this is necessary when doing an upsert based of non-composite key fields (i.e. members)
+            fail_on_multi (bool): Raise an error if get more than one row for the update cursor
+            fail_on_exists (bool): Raise an error if the row exists by search_dict
+            fail_on_not_exists (bool): Raise an error if this should be an update
+            kwargs: Field/value pairs to insert/update
 
-        Returns:
-            (int, None): None if update, returns new OID if a record was inserted.
+        Returns: (int, None): None if update, returns new OID if a record was inserted.
 
         Notes:
             For INSERTS, keylist alone can just be populated as a shortcut.
             Also see crud.fieldNamesSpecial which has ESRI's special field names
 
-        Example:
-        >>> with CRUD('c:/my.gdb', enable_transactions=True) as C:
-        >>>     C.upsert({'orderid':1, 'supplier':'Widget Company'}, orderid=1, supplier='Foo Company')
-        >>>     C.upsert({'ordernr':'A1234', 'value':12.35, 'n':5})  # simplified insert
-
-        # Force as update, error if record {'orderid':1, 'supplier':'Widget Company'} does not exist
-        >>>     C.upsert({'orderid':1, 'supplier':'Widget Company'}, fail_on_nor_exists=True, orderid=1, supplier='Foo Foo Company')
+        Examples:
+            >>> with CRUD('c:/my.gdb', enable_transactions=True) as C:
+            >>>     C.upsert({'orderid':1, 'supplier':'Widget Company'}, orderid=1, supplier='Foo Company')
+            >>>     C.upsert({'ordernr':'A1234', 'value':12.35, 'n':5})  # simplified insert
+            #
+            # Force as update, error if record {'orderid':1, 'supplier':'Widget Company'} does not exist
+            >>>     C.upsert({'orderid':1, 'supplier':'Widget Company'}, fail_on_nor_exists=True, orderid=1, supplier='Foo Foo Company')
+            #
+            # Insert
+            >>>     C.upsert(None, fail_on_nor_exists=True, orderid=993, supplier='Foo Foo Company', order_value=23.12, item='Staples')
+            15
         """
         i = None
         cols = list(kwargs.keys())
         values = list(kwargs.values())
-        where = CRUD._kwargs_where(search_dict)
+        if isinstance(search_dict, dict):
+            where = CRUD._kwargs_where(search_dict)
 
         # writing back, you have to use Shape@, otherwise you get a null feature
         for i, v in enumerate(cols):
             if v.lower() == 'shape':
                 cols[cols.index(v)] = 'Shape@'
 
-        exists = self.exists_by_compositekey(**search_dict)
+        exists = False
+        if isinstance(search_dict, dict):
+            exists = self.exists_by_compositekey(**search_dict)
+
         if not exists and fail_on_not_exists:
             raise _errors.UpsertExpectedUpdateButMatchedRow('Upsert expected an update but no records matched %s in %s' % (str(search_dict), self._fname))
 
