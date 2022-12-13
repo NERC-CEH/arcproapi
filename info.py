@@ -1,8 +1,15 @@
 """
-Retrieve informtion about databases
+Retrieve informtion about databases.
 
-Largely returns pandas dataframes which can be viewed with xlwings.view(dataframe)
+Largely returns pandas dataframes which can be viewed with xlwings.view(dataframe).
+
+Also see arcproapi.structure, which has several functions which retrieve info about
+feature classes and tables. This module is intended for the big standalone summary stuff.
+
+Structure on-the-other-hand, has many methods which are consumed directly by other library functions
 """
+
+
 import os.path as _path  # noqa
 
 import arcpy as _arcpy
@@ -13,6 +20,10 @@ import funclite.iolib as _iolib
 import funclite.baselib as _baselib
 
 import arcproapi.structure as _struct
+from arcproapi.structure import fcs_field_sym_diff as fc_field_sym_diff  # noqa - expose here as well - makes sense
+from arcproapi.structure import fcs_schema_compare as fc_schema_compare  # noqa - expose here as well - makes sense
+from arcproapi.structure import gdb_find_cols  # noqa - as above
+
 import arcproapi.data as _data
 import arcproapi.environ as _environ
 import arcproapi.errors as _errors

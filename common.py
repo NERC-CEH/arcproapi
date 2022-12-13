@@ -12,6 +12,9 @@ import arcpy as _arcpy
 
 import arcproapi.errors as _errors
 
+
+# Keys is the field type string as a property of arcpy ListFields Field instance
+# Values are the type strings used by arcpy AddField
 lut_field_types = {
     'Date': 'DATE',
     'String': 'TEXT',
@@ -31,6 +34,8 @@ class Version(_Enum):
 
 
 class FieldNamesSpecial:
+    """ Special field name mappings as text, used in cursors for example
+    """
     shape = 'SHAPE@'
     oid = 'OID@'
     wkt = 'SHAPE@WKT'
@@ -52,6 +57,9 @@ class eFieldTypeText(_Enum):
     
     Use as_text to get the required string.
 
+    See also eFieldTypeTextForListFields which is the values
+    returned by the the type property of an arcpy.Field instance.
+
     Examples:
         >>> eFieldTypeText.DATE.name
         'DATE'
@@ -64,7 +72,26 @@ class eFieldTypeText(_Enum):
     LONG = 6
     GUID = 7
     RASTER = 8
+    All = 99
 
+
+class eFieldTypeTextForListFields(_Enum):
+    """ These are the field type texts that are passed to arcpy.ListFields
+    """
+    All = 1
+    BLOB = 2
+    Date = 3
+    Double = 4
+    Geometry = 5
+    GlobalID = 6
+    GUID = 7
+    Integer = 8
+    OID = 9
+    Raster = 10
+    Single = 11
+    SmallInteger = 12
+    String = 13
+    
 
 def tstamp(p="", tf="%Y%m%d%H%M%S", d="_", m=False, s=()):
     """Returns time stamped string.

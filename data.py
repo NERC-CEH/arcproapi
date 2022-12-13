@@ -997,7 +997,7 @@ def del_rows(fname: str, cols: any, vals: any, where: str = None, show_progress:
 # These are also in funclite.pandaslib, but reproduce them here.
 def pandas_join_multi(dfs: list, key: str) -> _pd.DataFrame:
     """
-    Joins all dataframes by a common column
+    Joins all dataframes by a _common column
 
     Args:
         dfs: list or tuple of dataframes
@@ -1077,7 +1077,7 @@ def key_info(parent: str, parent_field: str, child: str, child_field: str, as_oi
     """
     Get dictionary listing:
     primary key values not in child foreign key values
-    common values
+    _common values
     foreign key values not in primary key values
 
     TODO: Support compound keys

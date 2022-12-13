@@ -3,6 +3,7 @@
 TODO: Migrate some of these functions to info, structure should be things that ALTER structure, and not query it. However, there would be some crossover risking circular references
 """
 import os.path as _path
+from warnings import warn as _warn
 
 from arcpy.management import CreateFeatureclass, AddJoin, AddRelate, AddFields, AddField, DeleteField, AlterField  # noqa Add other stuff as find it useful ...
 from arcpy.conversion import ExcelToTable, TableToExcel, TableToGeodatabase, TableToDBASE, TableToSAS  # noqa Add other stuff as find it useful ...
@@ -173,7 +174,7 @@ def cleanup(fname_list, verbose=False, **args):
     return cnt
 
 
-def fcs_list_all(gdb, wild='*', ftype='All', rel=False):
+def fcs_list_all(gdb, wild: str = '*', ftype: str = 'All', rel: bool = False):
     """Return a list of all feature classes in a geodatabase.
 
     if rel is True, only relative paths will be returned.  If
@@ -214,8 +215,11 @@ def fcs_list_all(gdb, wild='*', ftype='All', rel=False):
     Returns:
           List: List of all feature class paths
 
+    Notes:
+        Sets the workspace.
+
     Examples:
-       >>> # Return relative paths for fc
+        >>> # Return relative paths for fc
         >>> gdb_ = r'C:\TEMP\test.gdb'
         >>> for fc in getFCPaths(gdb_, rel=True):  # noqa
         >>>     pass
@@ -265,6 +269,53 @@ def field_list_compare(fname: str, col_list: list, **kwargs):
     """
     dbcols = field_list(fname, **kwargs)
     return _baselib.list_sym_diff(dbcols, col_list)
+
+
+def gdb_field_generator(gdb: str, wild_card='*', field_type: str = 'All', as_objs: bool = False) -> tuple[str]:
+    """
+    Yields a tuple of feature class and the field name for all fields in the geodatabase.
+
+    Args:
+        gdb (str): Path the geodatabase, probably will work with enterprise geodatabases, but currently untested
+        wild_card (str): Filter field names
+        field_type (str): Field type filter. IN ('All', 'BLOB', 'Date', 'Double', 'Geometry', 'GlobalID', 'GUID', 'Integer', 'OID', 'Raster', 'Single', 'SmallInteger', 'String')
+        as_objs (bool): Yield an ArcPy.Field object instead of a str
+
+    Notes:
+        Simply calls structure.table_field_generator, passing the arguments as-is.
+
+    Examples:
+        >>> for tbl, field_name in gdb_field_generator('C:/my.gdb')
+        >>>     print(tbl, fname)
+        'C:/my.gdb/countries', 'country_name'
+        'C:/my.gdb/countries', 'populations'
+    """
+    fcs, ts = gdb_tables_and_fcs_list(gdb, full_path=True)
+    for s in fcs + ts:
+        for fld in table_field_generator(s, wild_card=wild_card, field_type=field_type, as_objs=as_objs):
+            yield s, fld
+
+
+def table_field_generator(fname: str, wild_card='*', field_type: str = 'All', as_objs: bool = False) -> str:
+    """
+    Yields field names, or optionally a field instance
+
+    Args:
+        fname (str): The feature class or table
+        wild_card (str): Wildcard match
+        field_type (str): Field type filter. IN ('All', 'BLOB', 'Date', 'Double', 'Geometry', 'GlobalID', 'GUID', 'Integer', 'OID', 'Raster', 'Single', 'SmallInteger', 'String')
+        as_objs (bool): Yield an ArcPy.Field object instead of a str
+
+    Yields:
+        None: No matches on wild_card
+        str: Field name if as_obj = False
+        arcpy.Field: An instance of arcpy.Field if as_obj=True
+
+    Notes:
+        Args are passed to structure.fields_get. See the documentation for field_get for further help on args.
+    """
+    for s in fields_get(fname, wild_card, field_type, as_objs=as_objs):
+        yield s
 
 
 def field_list(fname, cols_exclude=(), oid=True, shape=True, objects=False, func=lambda s: s, **kwargs) -> list:
@@ -335,7 +386,7 @@ def field_list(fname, cols_exclude=(), oid=True, shape=True, objects=False, func
                 if f.name.lower() not in exclude and _filt_fld(f)]
 
 
-def field_type_get(in_field, fc: str = '') -> str:
+def field_type_get(in_field, fc: str = '') -> (str, None):
     """Converts esri field type returned from list fields or describe fields
     to format for adding fields to tables.
 
@@ -345,6 +396,10 @@ def field_type_get(in_field, fc: str = '') -> str:
 
     Returns:
         str: The field type as required for AddField in arcpy (for example)
+        None: None if the field type defined against arcpy.ListFields not specified in _common.lut_field_types. This is an unexpected condition.
+
+    Notes:
+        Raises a warning if the field type defined against arcpy.ListFields not specified in _common.lut_field_types.
 
     Examples:
         Get field type string required for AddField
@@ -357,7 +412,8 @@ def field_type_get(in_field, fc: str = '') -> str:
         field = in_field
     if field in _common.lut_field_types:
         return _common.lut_field_types[field]
-    return None
+    _warn('Field type "%s" in arcpy.Field instance, but not in _common.lut_field_types. This is unexpected.' % field)
+    return None  # noqa
 
 
 def field_exists(fname: str, field_name: str, case_insensitive: bool = True) -> bool:
@@ -419,6 +475,7 @@ def field_retype(fname: str, field_name: str, change_to: str, default_on_none=No
         change_to (str):
             In TEXT, FLOAT, DOUBLE, SHORT, LONG, DATE, BLOB, RASTER, GUID.
             Also support python's int, float and str types. NB int translates to LONG
+            Note that these strings are used in the enum, _common.eFieldTypeText
         show_progress (bool): Print out progress to the console
         **kwargs_override: kwargs passed to the addfield.
         default_on_none: default value to set if a source value evaluates to False. This may be an empty string, 0, or <null>
@@ -505,7 +562,13 @@ def fields_get(fname, wild_card='*', field_type='All', no_error_on_multiple: boo
     Args:
         fname (str): input table or feature class
         wild_card (str):pattern to match to field, * represents zero or more characters
-        field_type (str): Field type filter. IN ('All', 'BLOB', 'Date', 'Double', 'Geometry', 'GlobalID', 'GUID', 'Integer', 'OID', 'Raster', 'Single', 'SmallInteger', 'String'
+
+        field_type (str): Field type filter.
+            Valid values are 'All', 'BLOB', 'Date', 'Double',
+                'Geometry', 'GlobalID', 'GUID', 'Integer',
+                'OID', 'Raster', 'Single', 'SmallInteger', 'String'
+            You can use the _common.eFieldTypeTextForListFields enumeration to get the right text
+
         no_error_on_multiple (bool): If True and multiple fields match, will return a list of all matches. If false, will raise StructMultipleFieldMatches on multiple matches
         as_objs (bool): Return as arcpy Fields, not str.
 
@@ -520,7 +583,7 @@ def fields_get(fname, wild_card='*', field_type='All', no_error_on_multiple: boo
     Notes:
         Calls ListFields, https://pro.arcgis.com/en/pro-app/latest/arcpy/functions/listfields.htm
         This function is now largely superflous with the improvements in arcgispro, but is here to support legacy code.
-        I've seen this function fail  with no-good-reason when not qualifying with the full source path. failures observed where fname IN ['squares']
+        I've seen this function fail with no-good-reason when not qualifying with the full source path. failures observed where fname IN ['squares']
 
     Examples:
         >>> fields_get(r'C:\Temp\Counties.shp', 'county_*', no_error_on_multiple=True)
@@ -673,7 +736,7 @@ def fcs_schema_compare(fname1, fname2, sortfield, as_df=True):
     Args:
         fname1: name of first feature class
         fname2: name of second feature class
-        sortfield: sortfield, required, must be common to both
+        sortfield: sortfield, required, must be _common to both
         as_df: return a dataframe or a printable string of the comparison results
 
     Returns:
@@ -1002,16 +1065,14 @@ def gdb_csv_import(csv_source: str, gdb_dest: str, **kwargs) -> None:
     return res
 
 
-
-
-def gdb_find_cols(gdb, col_name, partial_match=False):
+def gdb_find_cols(gdb: str, col_name: str, partial_match: bool = False):
     """
     List cols in a geodb that match col_name, useful for "soft" relationships
 
     Args:
-        gdb:
-        col_name:
-        partial_match:
+        gdb (str): Geodatabase path
+        col_name (str): field name to match
+        partial_match: allow a partial match (e.g. 'bcd' IN 'abcdefg')
 
     Returns: dict: Dictionary like {'lyr':[...], 'col':[...], 'type':[...]}
 
@@ -1213,6 +1274,56 @@ def gdb_merge(source: str, dest: str, allow_overwrite=False, show_progress: bool
             PP.increment()  # noqa
 
     return {'tables': src_tbls, 'feature_classes': src_fcs}
+
+
+def gdb_field_rename(gdb: str, to: str, from_: (list, tuple), retype: _common.eFieldTypeText = _common.eFieldTypeText.All, show_progress: bool = False) -> list:
+    """
+    Rename all fields in a geodataase
+    Args:
+        gdb (str): The geodatabase, probably works with other geodatabase formats, but untested
+        to (str): Name that it should be
+        from_ (list, tuple): Iterable of names to match
+
+        retype (_common.eFieldTypeText): Retype to this (experimental). If retype is set to All (default) then no retyping will occur.
+                                        Note that this is the arcpy AddField type string directive
+
+        show_progress (bool): Print progress to the terminal
+
+    Returns:
+        list: list of fields that failed to be renamed
+
+    Notes:
+        You wont be able to rename or retype read only fields, like Shape, OID etc.
+    """
+    didnt_rename = []
+
+    if show_progress:
+        PP = _iolib.PrintProgress(iter_=gdb_field_generator(gdb, as_objs=True))
+
+    for fname, fld in gdb_field_generator(gdb, as_objs=True):
+        if not fld.name.lower() in map(str.lower, from_):
+            if show_progress:
+                PP.increment()  # noqa
+            continue
+
+        assert isinstance(fld, _arcpy.Field)
+        if retype != _common.eFieldTypeText.All and not _common.lut_field_types[fld.type] == retype.name:
+            try:
+                field_retype(fname, fld.name, change_to=_common.lut_field_types[retype.name])
+            except Exception as e:
+                _warn('field_retype failed. The error was:\n%s' % e)
+
+        try:
+            _arcpy.management.AlterField(fname, fld.name, to)
+        except Exception as e:
+            if 'exclusive schema lock' in str(e):
+                raise Exception('Geodatabase %s is in use. Close it!' % gdb) from e
+            didnt_rename += ['%s#%s' % (fname, fld)]
+
+        if show_progress:
+            PP.increment()  # noqa
+
+    return didnt_rename
 
 
 if __name__ == '__main__':
