@@ -607,6 +607,9 @@ def fields_get(fname, wild_card='*', field_type='All', no_error_on_multiple: boo
     return fields
 
 
+fc_fields_get = fields_get  # noqa This is for consistency, fields get operates on an entire feature class/table. Have to leave existing fields_get in for backwards compatility
+
+
 def fields_add_from_table(target, source, add_fields):
     """Add field SCHEMA from one table to another
 
@@ -961,7 +964,7 @@ def field_copy_definition(fc_src: str, fc_dest: str, source_field_name: str, ren
                                field_domain=domain)
 
 
-def field_rename(tbl: str, col: str, newcol: str, skip_name_validation: bool = False, alias='') -> str:
+def field_rename(fname: str, col: str, newcol: str, skip_name_validation: bool = False, alias='') -> str:
     """Rename column in table tbl and return the new name of the column.
 
     This function first adds column newcol, re-calculates values of col into it,
@@ -970,8 +973,8 @@ def field_rename(tbl: str, col: str, newcol: str, skip_name_validation: bool = F
 
 
     Args:
-        tbl: table with the column to rename
-        col: name of the column to rename
+        fname: table with the column to fname
+        col: name of the column to fname
         newcol: new name of the column
         alias: field alias for newcol, default is '' to use newcol for alias too
         skip_name_validation: Do not call arpy.ValidateFieldName to get a valid name. Useful as this can truncate perfectly valid names
@@ -983,26 +986,107 @@ def field_rename(tbl: str, col: str, newcol: str, skip_name_validation: bool = F
         error.ArcapiError: If col does not exist or newcol already exists
 
     Notes:
-         Provided largely for compatibility "historical" arcproapi functions.
-         ArcPro provides the function arcpy.management.AlterField (exposed in this module), which is recommended.
+        Provided largely for compatibility "historical" arcproapi functions.
+        ArcPro provides the function arcpy.management.AlterField (exposed in this module).
+        Alterfield is recommended as this does an non-transactioned AddField, CalculateField then DeleteField
     """
-    if col != newcol:
-        d = _arcpy.Describe(tbl)
+    if col.lower() != newcol.lower():
+        d = _arcpy.Describe(fname)
         dcp = d.catalogPath
-        flds = _arcpy.ListFields(tbl)
+        flds = _arcpy.ListFields(fname)
         fnames = [f.name.lower() for f in flds]
         if skip_name_validation:
-            newcol = _arcpy.ValidateFieldName(newcol, tbl)  # _path.dirname(dcp))
+            newcol = _arcpy.ValidateFieldName(newcol, fname)  # _path.dirname(dcp))
         if col.lower() not in fnames:
             raise _errors.ArcapiError("Field %s not found in %s." % (col, dcp))
         if newcol.lower() in fnames:
             raise _errors.ArcapiError("Field %s already exists in %s" % (newcol, dcp))
         oldF = [f for f in flds if f.name.lower() == col.lower()][0]
         if alias == "": alias = newcol
-        _arcpy.AddField_management(tbl, newcol, oldF.type, oldF.precision, oldF.scale, oldF.length, alias, oldF.isNullable, oldF.required, oldF.domain)
-        _arcpy.CalculateField_management(tbl, newcol, "!" + col + "!", "PYTHON_9.3")
-        _arcpy.DeleteField_management(tbl, col)
+        _arcpy.AddField_management(fname, newcol, oldF.type, oldF.precision, oldF.scale, oldF.length, alias, oldF.isNullable, oldF.required, oldF.domain)
+        _arcpy.CalculateField_management(fname, newcol, "!" + col + "!", "PYTHON_9.3")
+        _arcpy.DeleteField_management(fname, col)
     return newcol
+
+
+def fields_rename(fname: str, from_: list, to: list, aliases: (list, str, None) = None, skip_name_validation: bool = False, show_progress: bool = False):
+    """
+    Rename multiple fields.
+
+    Args:
+        fname (str):
+        from_ (list, tuple): iterable of current field names
+        to (list, tuple): iterable of new field names
+
+        aliases (list,tuple,str,None): iterable of aliases. Pass None to keep current alias.
+                                    Use 'CLEAR_ALIAS' in the list to clear aliases for some fields.
+                                    Pass the string, '**CLEAR_ALL**' to clear all aliases
+
+
+        skip_name_validation (bool): Don't validate names. Validate names will rename a column to an geodb friently name if the a new name was invalid.
+        show_progress (bool): Print progress to terminal
+
+    Raises:
+        ValueError: If lengths of the rename and aliases iterable (if provided) differed from from_
+
+    Returns:
+        tuple[list]: A tuple containing three list, tuple[0] = successes, tuple[1] = failure, tuple[2] = raised errors
+                    Lists are of the same length and are pairwise with from_
+
+    Notes:
+        field names in from_ are case insensitive. If fname IS NOT in a gdb, then skip_name_validation=True is recommended as further work is required on parsing out the correct workspace from fname.
+    # TODO Parse out none-gdb workspace correctly - suggest adding func to common.py
+    Examples:
+        >>> fields_rename('C:/my.gdb/countries', ['name', 'population'], ['country_name', 'total_population'], aliases=['Name of country', 'Population'])
+        ['country_name', 'total_population'], [None, None], [None, None]
+        # Clear all aliases
+        >>> fields_rename('C:/my.gdb/countries', ['name', 'population'], ['country_name', 'total_population'], aliases='**CLEAR_ALL**')
+        ['country_name', 'total_population'], [None, None], [None, None]
+
+
+    """
+    success = []
+    failure = []
+    errors = []
+
+    fname = _path.normpath(fname)
+    gdb = _common.gdb_from_fname(fname)
+
+    if len(from_) != len(to):
+        raise ValueError('The lengths of "from_" and "to" must be the same')
+
+    if aliases:
+        if aliases == '**CLEAR_ALL**':
+            aliases = ['CLEAR_ALIAS'] * len(from_)
+        if len(aliases) != len(from_):
+            raise ValueError('Aliases were provided, but the length differed from "from_"')
+
+    if show_progress:
+        PP = _iolib.PrintProgress(iter_=from_)
+
+    for i, targ in enumerate(from_):
+        rename_to = to[i]
+        alias = aliases[i] if aliases else None
+
+        if not skip_name_validation:
+            rename_to = _arcpy.ValidateFieldName(rename_to, gdb)
+
+        try:
+            _arcpy.management.AlterField(fname, targ, rename_to,
+                                         None if alias is None or alias.upper() == 'CLEAR_ALIAS' else alias,
+                                         clear_field_alias='CLEAR_ALIAS' if alias.upper() == 'CLEAR_ALIAS' else None)
+            success += [rename_to]
+            errors += [None]
+            failure += [None]
+        except Exception as e:
+            success += [None]
+            errors += [e]
+            failure += [rename_to]
+
+        if show_progress:
+            PP.increment(suffix='%s of %s good' % (sum([1 if s else 0 for s in success]), len(success)))  # noqa
+
+    return success, failure, errors
 
 
 def field_get_property(fld: _arcpy.Field, property_: str) -> any:  # noqa

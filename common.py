@@ -727,6 +727,29 @@ def is_gdb(fname):
     return fname[-4:] == '.gdb'
 
 
+def gdb_from_fname(fname: str) -> str:
+    """
+    Get gdb path from a full qualified feature class or table path.
+
+    Args:
+        fname (str): the full qualified path
+
+    Returns:
+        str: The gdb path. Empty string if ".gdb" not in fname
+
+    Notes:
+        Just looks for gdb and slices the string out accordingly.
+        Hence will fail if you have a path with multiple occurences of ".gdb"
+
+    Examples:
+        >>> gdb_from_fname('C:/my.gdb/my/layer')
+        'C:/my.gdb'
+    """
+    if '.gdb' in fname:
+        return fname[0:fname.index('.gdb\\') + 4]
+    return ''
+
+
 # this is reproduced in stuct, but don'as_rows import as will end up with circular reference issues
 def oid_field(fname):
     """(str)->str
