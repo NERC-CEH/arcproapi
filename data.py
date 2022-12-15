@@ -542,6 +542,51 @@ def field_update_from_dict2(fname: str, key_dict: dict, update_dict: dict, where
     raise NotImplementedError
 
 
+def field_update_from_dict1(fname: str, dict_: dict, col_to_update: str, key_col: str,
+                                    where: str = '', na: any = None,
+                                    field_length: int = 50, show_progress=False):
+    """Update column in a table with values from a dictionary. But
+    will add the column (col_to_update) if it does not exist.
+
+    The added column is forced to a text of length field_length.
+
+    Return number of updated records.
+
+    Args:
+        fname (str): table to update
+        dict_ (dict): dictionary with new values
+        col_to_update (str): name of the column of fname to update
+
+        key_col (str): column in fname to be used as keys to look up values in the feature class,
+            default is None, which means to use objectid field.
+
+        where (str): where clause to select rows to update in the feature class
+
+        na (any): value to be used instead of new value for non-matching records,
+            default is None, use (1,1) to leave original value if match is not found
+
+        field_length (int): Field length
+        show_progress (bool): Show progress
+
+    Returns:
+        int: Number of updated records
+
+    Notes:
+        A small wrapper around field_update_from_dict
+
+    Examples:
+        >>> fc = 'c:\\foo\\bar.shp'
+        >>> d = {1: 'EN', 2:'ST', 3:'WL', 4:'NI'}
+        Explicit declaration of update and key columns. Here we assume the numerics in d are "country_num"
+        and we update country_code accordingly.
+        >>> field_update_from_dict(fc, d, col_to_update='country_code', key_col='country_num', na='Other')
+    """
+    if not _struct.field_exists(fname, col_to_update):
+        _struct.AddField(fname, col_to_update, 'TEXT', field_length=field_length, field_is_nullable=True)
+    i = field_update_from_dict(fname, dict_, col_to_update, key_col, where=where, na=na, show_progress=show_progress)
+    return i
+
+
 def field_update_from_dict(fname: str, dict_: dict, col_to_update: str, key_col: str = None, where: str = '', na: any = None, show_progress=False) -> int:
     """Update column in a table with values from a dictionary.
 

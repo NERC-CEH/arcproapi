@@ -3,6 +3,7 @@
 TODO: Migrate some of these functions to info, structure should be things that ALTER structure, and not query it. However, there would be some crossover risking circular references
 """
 import os.path as _path
+from copy import deepcopy as _deepcopy
 from warnings import warn as _warn
 
 from arcpy.management import CreateFeatureclass, AddJoin, AddRelate, AddFields, AddField, DeleteField, AlterField  # noqa Add other stuff as find it useful ...
@@ -29,6 +30,7 @@ import arcproapi.errors as _errors
 
 def field_oid(fname):
     """Return name of the object ID field in table table"""
+    fname=_path.normpath(fname)
     return _arcpy.Describe(fname).OIDFieldName
 
 
@@ -42,11 +44,12 @@ def field_shp(fname):
     Returns:
          str: Name of the shape/geometry field
     """
+    fname = _path.normpath(fname)
     D = _arcpy.Describe(fname).shapeFieldName
     return D
 
 
-def field_delete_not_in(fname, not_in):
+def fields_delete_not_in(fname, not_in):
     """
     Delete all fields not in not_in
 
@@ -55,7 +58,7 @@ def field_delete_not_in(fname, not_in):
         not_in (iter): iterable of field names to keep
 
     Examples:
-        >>> field_delete_not_in('c:\lyr.shp', ('cola', 'colb'))
+        >>> fields_delete_not_in('c:\lyr.shp', ('cola', 'colb'))
 
     Notes:
         ArcGISPro now supports this natively, see management.DeleteField
@@ -68,12 +71,106 @@ def field_delete_not_in(fname, not_in):
     _arcpy.DeleteField_management(fname, flds)
 
 
+def fields_delete(fname, fields: (list, None) = None, where: (str, None) = None, show_progress: bool = False) -> (tuple[list[str]], None):
+    """
+    Delete fields that are in the list "fields" OR that match "where".
+
+    ** USE WITH EXTREME CARE. THIS CANNOT BE UNDONE!!! **
+
+    Args:
+        fname (str): Feature class or table
+        fields (list, None): list of field names
+        where (str, None): where, passed to ListFields to identify fields
+        show_progress (bool): Show progress
+
+    Raises:
+        ValueError: If where and fields are not None.
+
+    Returns:
+        tuple[list[str]]: A tuple of 2 lists,  (success, failure). Returns None if no matches.
+
+    Notes:
+        Call arcpy.ListFields, passing the where argument.
+        Raises a python warning if the delete raises an error
+    """
+    good = []
+    bad = []
+    fname = _path.normpath(fname)
+    if where and fields:
+        raise ValueError('The "where" and "fields" argument cannot both be passed. Use one or the other')
+
+    flds = _deepcopy(fields)
+    if not flds:
+        flds = []
+
+    if where:
+        flds = _arcpy.ListFields(fname, where)
+
+    if not flds:
+        return None  # noqa
+    if show_progress:
+        PP = _iolib.PrintProgress(iter_=flds, init_msg='Deleting %s fields...' % len(flds))
+    for f in flds:
+        try:
+            DeleteField(fname, f)
+            good += [f]
+        except Exception as e:
+            bad += [f]
+            _warn('Failed to delete field "%s". The error was:\n\n%s' % (f, e))
+        if show_progress:
+            PP.increment()  # noqa
+
+    return good, bad
+
+
+def fields_alias_clear(fname: str, where: str = '', fields: iter = None, show_progress: bool = False) -> list:
+    """
+    Clear field aliases that match either the fields list or the where.
+
+    Args:
+        fname (str): feature/table name
+        where (str): where, passed to arcpy.ListFields. Use "*" for all fields
+        fields (iter): list of fields
+        show_progress (bool): Show progress
+
+    Raises:
+        ValueError: If fields AND where both evaluate to True (e.g. where='*' and fields=['myfield']
+
+    Returns:
+        list: field names with cleared aliases
+
+    Examples:
+        # Clear all aliases in countries
+        >>> fields_alias_clear('C:/my.gdb/countries', where='*')
+
+        # Clear aliases in fields total_population and male_population
+        >>> fields_alias_clear('C:/my.gdb/countries', fields=('total_population', 'male_population'))
+    """
+    out = []
+    fname = _path.normpath(fname)
+    if where and fields:
+        raise ValueError('Pass "fields" or "where", not both.')
+
+    flds = _deepcopy(fields)
+    if not fields:
+        flds = _arcpy.ListFields(fname, where)
+    if show_progress:
+        PP = _iolib.PrintProgress(iter_=flds, init_msg='Resetting aliases....')
+    for f in flds:
+        AlterField(fname, f, clear_field_alias='CLEAR_ALIAS')
+        if show_progress:
+            PP.increment()  # noqa
+        out += f
+    return out
+
+
 def fc_delete(fname: str) -> bool:
     """Deletes a table or feature class
 
     Returns: bool: False if fname does not exist, True if fname exists and was deleted.
     """
     deletted = False
+    fname = _path.normpath(fname)
     if _arcpy.Exists(fname):
         _arcpy.Delete_management(fname)
         deletted = True
@@ -97,6 +194,7 @@ def fc_delete2(fname: str, err_on_not_exists: bool = False, data_type: str = Non
     Examples:
         >>> fc_delete2('c:/my.gdb/this_does_not_exist', err_on_not_exists=False)
     """
+    fname = _path.normpath(fname)
     try:
         _arcpy.management.Delete(fname, data_type=data_type)
     except _arcpy.ExecuteError as e:
@@ -119,6 +217,7 @@ def fc_field_types_get(fname, filterer=None) -> list:
     Example:
     >>> types('c:\\foo\\bar.shp', lambda f: f.name.startswith('eggs'))  # noqa
     """
+    fname = _path.normpath(fname)
     flds = _arcpy.ListFields(fname)
     if filterer is None: filterer = lambda a: True
     return [f.type for f in flds if filterer(f)]
@@ -136,6 +235,7 @@ def fcs_delete(fnames, err_on_not_exists=False):
         >>> fcs_delete(['c:/my.gdb/layer1', 'c:/my.gdb/layer2'])
     """
     for fname in fnames:
+        fname = _path.normpath(fname)
         try:
             fc_delete2(fname, err_on_not_exists)
         except Exception as e:
@@ -464,7 +564,7 @@ def fields_exist(fname: str, *args) -> bool:
     return args and (len(d['a_and_b']) == len(args))
 
 
-def field_retype(fname: str, field_name: str, change_to: str, default_on_none=None, show_progress=False, **kwargs_override):
+def field_retype(fname: str, field_name: str, change_to: (str, type), default_on_none=None, show_progress=False, **kwargs_override):
     """
     Retype a field. Currently experimental. Should work with between ints, floats and text. Probably dates
     but other types are likely to fail.
@@ -472,10 +572,12 @@ def field_retype(fname: str, field_name: str, change_to: str, default_on_none=No
     Args:
         fname (str): fname
         field_name (str): field name
-        change_to (str):
+
+        change_to (str, type):
             In TEXT, FLOAT, DOUBLE, SHORT, LONG, DATE, BLOB, RASTER, GUID.
             Also support python's int, float and str types. NB int translates to LONG
             Note that these strings are used in the enum, _common.eFieldTypeText
+
         show_progress (bool): Print out progress to the console
         **kwargs_override: kwargs passed to the addfield.
         default_on_none: default value to set if a source value evaluates to False. This may be an empty string, 0, or <null>
