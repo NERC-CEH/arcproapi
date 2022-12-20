@@ -25,6 +25,8 @@ from arcproapi.structure import fcs_schema_compare as fc_schema_compare  # noqa 
 from arcproapi.structure import gdb_find_cols  # noqa - as above
 
 import arcproapi.data as _data
+from arcproapi.data import key_info  # noqa - expose here as well - makes sense
+
 import arcproapi.environ as _environ
 import arcproapi.errors as _errors
 

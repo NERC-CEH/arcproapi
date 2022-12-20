@@ -1,4 +1,5 @@
 """Operations on data"""
+import string
 from warnings import warn as _warn
 import os.path as _path
 
@@ -22,7 +23,7 @@ with _fuckit:
 
 import funclite.iolib as _iolib
 import funclite.baselib as _baselib
-
+import funclite.stringslib as _stringslib
 
 import arcproapi.structure as _struct
 #  The following are data-like operations defined in structure. They
@@ -274,11 +275,11 @@ def field_get_dup_values(fname: str, col: str, value_list_only: bool = False, f:
         dict: A dictionary of duplicates. Keys are the duplicate values and values are is the counts of duplicate values
 
     Examples:
-        sum_of_stuff col n, as duplicates for 2 and 10. Asked for simple list
+        sum_of_stuff col n, has duplicates for 2 and 10. Asked for simple list
         >>> field_get_dup_values('c:/my.gdb/sum_of_stuff','n')
         [2, 10]
 
-        fave_colour colour has 2 occurence of blue and 5 occurences of black - and we asked for this detail
+        fave_colour colour has 2 occurences of blue and 5 occurences of black - and we asked for this detail
         and don't care about case
         >>> field_get_dup_values('c:/my.gdb/fave_colour','colour', False, f=str.lower)
         {'blue':2,'black':5}
@@ -518,6 +519,7 @@ def table_dump_from_sde_to_excel(sde_file: str, lyr, xlsx_root_folder: str, **kw
     df.to_excel(dest_xlsx)
     return dest_xlsx
 
+
 def field_update_from_dict2(fname: str, key_dict: dict, update_dict: dict, where: str = '', na: any = None, case_insentive: bool = True) -> int:  # noqa
     """Update columns in a table which match values in key_dict.
 
@@ -543,8 +545,8 @@ def field_update_from_dict2(fname: str, key_dict: dict, update_dict: dict, where
 
 
 def field_update_from_dict1(fname: str, dict_: dict, col_to_update: str, key_col: str,
-                                    where: str = '', na: any = None,
-                                    field_length: int = 50, show_progress=False):
+                            where: str = '', na: any = None,
+                            field_length: int = 50, show_progress=False):
     """Update column in a table with values from a dictionary. But
     will add the column (col_to_update) if it does not exist.
 
@@ -587,7 +589,7 @@ def field_update_from_dict1(fname: str, dict_: dict, col_to_update: str, key_col
     return i
 
 
-def field_update_from_dict(fname: str, dict_: dict, col_to_update: str, key_col: str = None, where: str = '', na: any = None, show_progress=False) -> int:
+def field_update_from_dict(fname: str, dict_: dict, col_to_update: str, key_col: str = None, where: str = '', na: any = (1, 1), show_progress=False) -> int:
     """Update column in a table with values from a dictionary.
 
     Return number of updated records.
@@ -600,7 +602,7 @@ def field_update_from_dict(fname: str, dict_: dict, col_to_update: str, key_col:
             default is None, which means to use objectid field.
         where: where clause to select rows to update in the feature class
         na: value to be used instead of new value for non-matching records,
-            default is None, use (1,1) to leave original value if match is not found
+            default is (1,1), which leaves original value. Else use na=None to null unmatched values.
         show_progress (bool): Show progress
 
     Returns:
@@ -886,11 +888,11 @@ def fields_apply_func(fc, cols, *args, where_clause=None, show_progress=False):
         raise Exception('An exception occured and changes applied by fields_apply_func were rolled back. Further error details follow.') from e
 
 
-# this could be extented to allow multi argument functions by providing named arguments
+# this could be extended to allow multi argument functions by providing named arguments
 # to pass thru
 def field_recalculate(fc: str, arg_cols: (str, list, tuple), col_to_update: str, func, where_clause: (str, None) = None, show_progress: bool = False):
     """
-    Very similiar to ArcPros Calculate Field.
+    Very similiar to ArcPro's Calculate Field.
     Take in_cols values, apply a function to these values to recalculate col_to_update.
 
     Note that each function must accept exactly len(in_cols) arguments.
@@ -1120,10 +1122,10 @@ def features_copy_to_new(source: str, dest: str, where_clause: (None, str) = Non
 
 def key_info(parent: str, parent_field: str, child: str, child_field: str, as_oids: bool = False) -> dict:
     """
-    Get dictionary listing:
-    primary key values not in child foreign key values
-    _common values
-    foreign key values not in primary key values
+    Get a dictionary listing the "primary key" values not in child foreign key values.
+    This is a quick validation tool. A set of more advanced validation tools is planned
+    in a dedicated module, integrating arcproapi connection objects with the
+    great expectations package.
 
     TODO: Support compound keys
 
@@ -1147,6 +1149,9 @@ def key_info(parent: str, parent_field: str, child: str, child_field: str, as_oi
         \n\nNow with oids
         >>> key_info('C:/my.gdb/coutries', 'cname', 'C:/my.gdb/towns', 'cname', as_oids=True)
         {'parent_only': [232, 343], 'both': [1,2,...], 'child_only': [56,77,...]}
+
+    Notes:
+        This is also exposed in arcapipro.info
     """
 
     parent_values = field_values(parent, parent_field, distinct=True)
@@ -1340,6 +1345,48 @@ def excel_import_sheets(fname: str, gdb: str, match_sheet: (list, tuple, str) = 
     return added
 
 
+def table_summary_as_pandas(fname: str, statistics_fields: (str, list[list[str]]), case_field: (str, list[str], None) = None, concatenation_separator='') -> _pd.DataFrame:
+    """
+    Execute a table summary against a feature class or table
+    and return the result as a pandas dataframe.
+
+    Arguments are passed to arcpy.analysis.Statistics
+    See https://pro.arcgis.com/en/pro-app/latest/tool-reference/analysis/summary-statistics.htm
+
+    Args:
+        fname (str): feature class/table
+        statistics_fields (list[str]): List of fields to aggregate with the aggregate function (see link)
+        case_field (list[str]): Fields to group by
+        concatenation_separator (str): Character or characters used to concatenate values when the CONCATENATION option is used in  statistics_fields
+
+    Returns:
+        pandas.DataFrame: The results of the aggregation as a pandas dataframe
+
+    Notes:
+        As with all operations on features, field names appear to be case insensitive, at least in file geodatabases.
+
+    Examples:
+        >>> table_summary_as_pandas('C:/my.gdb/countries', [['country', 'COUNT'], ['population', 'MAX']], 'continent')  # noqa
+        continent   FREQUENCY   COUNT_country   MAX_population
+        'Europe'    20          20              70000000
+        'Asia'      25          25              200000000
+        ...
+    """
+
+    fname = _path.normpath(fname)
+    out_tmp = 'in_memory/%s' % _stringslib.get_random_string(length=8, from_=string.ascii_lowercase)
+    _arcpy.analysis.Statistics(fname,  # noqa
+                               out_tmp,
+                               statistics_fields=statistics_fields,
+                               case_field=case_field,
+                               concatenation_separator=concatenation_separator
+                               )
+    df = table_as_pandas2(out_tmp)
+    return df
+
+
+rows_delete = del_rows  # noqa. For conveniance, should of been called this in first place but don't break existing code
+
 if __name__ == '__main__':
     # quick debugging
 
@@ -1350,10 +1397,7 @@ if __name__ == '__main__':
     # features_copy(src, dst, wsp, where_clause='sq_id=34158', permission='permission', sq_id='sq_id')
 
     # fields_copy_by_join
-    fields_copy_by_join(r'\\nerctbctdb\shared\shared\PROJECTS\WG ERAMMP2 (06810)\2 Field Survey\Data Management\Processed Datasets\pollinators\pollinators.gdb\gmep_transect_bng', 'SQ_ID_ROOT',
-                        r'S:\GMEP_Restricted\WP3_Restricted\WG_Data_Handover\EIDC_GMEP_SPATIAL\GMEP_SPATIAL_v2.gdb\SQUARES_CEH_ID_LOOKUP', 'CEH_ID',
-                        cols_to_copy='SQ_ID', rename_to='WEBID',
-                        ignore_type_on_lookup=True, error_if_dest_cols_exists=False
-                        )
+    fname_local = 'C:/GIS/erammp_local/submission/curated_raw/botany_curated_raw_local.gdb/plot'
+    dfout = table_summary_as_pandas(fname_local, [['OBJECTID', 'MEAN'], ['PLOT_NuMBER', 'RANGE']], ['plot_type'])  # noqa
 
     pass

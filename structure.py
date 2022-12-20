@@ -30,7 +30,7 @@ import arcproapi.errors as _errors
 
 def field_oid(fname):
     """Return name of the object ID field in table table"""
-    fname=_path.normpath(fname)
+    fname = _path.normpath(fname)
     return _arcpy.Describe(fname).OIDFieldName
 
 
@@ -1512,6 +1512,57 @@ def gdb_field_rename(gdb: str, to: str, from_: (list, tuple), retype: _common.eF
     return didnt_rename
 
 
+def rel_one_to_many_create(fname1: str, col1: str, fname_many: str, col_many: str, workspace: (str, None) = None, **kwargs) -> None:
+    """
+    Quickly create a one to many relationship. Conveniance function to standardise naming.
+
+    If fname1 and fname_many are not in a geodatabase,
+    then pass workspace and the relative paths of the layers within that workspace.
+
+    Args:
+        fname1 (str):
+        col1 (str):
+        fname_many (str):
+        col_many (str):
+
+        workspace (str, None): If None, then the workspace is assumed to be a gdb and is extracted from fname.
+        If a string, then this sets the workspace.
+
+        **kwargs (keyword args): Passed to arcpy.management.CreateRelationshipClass.
+            See https://pro.arcgis.com/en/pro-app/latest/tool-reference/data-management/create-relationship-class.htm
+
+    Returns:
+        None
+
+    Notes:
+        If workspace is passed, then the workspace is reset to the original one before the function exits.
+
+    Examples:
+        >>> rel_one_to_many_create('C:/my.gdb/parent', 'C:/my.gdb/parent', 'parentid', 'fkparentid')
+    """
+    np = _path.normpath
+    fname1 = np(fname1)
+    fname_many = np(fname_many)
+    ws_orig = ''
+
+    try:
+        if workspace:
+            ws_orig = _arcpy.env.workspace
+            workspace = np(workspace)
+        else:
+            workspace = _common.gdb_from_fname(fname1)
+
+        rel_name = _iolib.fixp(workspace, 'rel_%s_%s' % (col1, col_many))
+        _arcpy.management.CreateRelationshipClass(fname1, fname_many, rel_name, "SIMPLE",
+                                                  _path.basename(fname_many),
+                                                  _path.basename(fname1), cardinality="ONE_TO_MANY",
+                                                  origin_primary_key=fname1, origin_foreign_key=fname_many, **kwargs)
+    finally:
+        if ws_orig:
+            _arcpy.env.workspace = ws_orig
+
+
 if __name__ == '__main__':
     #  Quick debugging here
+    rel_one_to_many_create()
     pass
