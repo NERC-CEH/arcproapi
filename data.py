@@ -482,7 +482,7 @@ def table_as_dict(fname, cols=None, where=None, exclude_cols=('Shape', 'Shape_Le
     Returns: dict
 
     Notes:
-        The primay key of fname is used as the intermediary dataframes index prior to conversion to a dict.
+        The primay key of fname is used as the intermediary dataframe's index prior to conversion to a dict.
         For performance reasons and erroneous errors when viewing the data (e.g. in xlwings), exclude the shape column if not needed (default).
         This function is just a call to table_as_pandas2, with the output dataframe then converted to a dict in pandas
 
