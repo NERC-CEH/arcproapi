@@ -1,4 +1,6 @@
 """ convert area units, also has error trapping
+
+See https://digimap.edina.ac.uk/help/our-maps-and-data/bng/ got a great explanation of OS grids
 """
 import arcpy as _arcpy  # noqa
 from arcpy.management import ConvertCoordinateNotation  # noqa - helper func, see https://desktop.arcgis.com/en/arcmap/latest/tools/data-management-toolbox/convert-coordinate-notation.htm
@@ -24,7 +26,7 @@ class AreaUnits:
 
 
 class BNG100kmGrid:
-    # keys 'tile', origin_easting, origin_northin
+    # keys 'tile', origin_easting, origin_northing
     _BNG_100KM_GRID_DICT = {
         'tile': ['HP', 'HT', 'HU', 'HW', 'HX', 'HY', 'HZ', 'NA', 'NB', 'NC', 'ND', 'NF', 'NG', 'NH', 'NJ', 'NK', 'NL', 'NM', 'NN', 'NO', 'NR', 'NS', 'NT', 'NU', 'NW', 'NX', 'NY', 'NZ', 'OV', 'SC',
                  'SD', 'SE', 'SH', 'SJ', 'SK', 'SM', 'SN', 'SO', 'SP', 'SR', 'SS', 'ST', 'SU', 'SV', 'SW', 'SX', 'SY', 'SZ', 'TA', 'TF', 'TG', 'TL', 'TM', 'TQ', 'TR', 'TV'],
@@ -69,18 +71,23 @@ class OSBNG:
     """
 
     @staticmethod
-    def grid_to_bng(grid_ref: str) -> tuple:
+    def grid_to_bng(grid_ref: str, centroid: bool = False) -> tuple[(int, float)]:
         """
-        Convert OS Grids t British National Grid eastings and northings (tuple returns values in that order)
+        Convert OS Grids to British National Grid eastings and northings (tuple returns values in that order).
+
+        This gets the grid origin by default
 
         Args:
             grid_ref (str): The grid ref, spaces allowed. e.g. SN123456, SN 123 456, SN1234567890 are all valid.
+            centroid (bool): Get the grid centroid, rather than the origin
 
         Returns:
-            tuple: Point as easting, northing
+            tuple[int]: Point as easting, northing if grid size >= 1m by 1m (i.e. len(grid_ref) <= 12)
+            tuple[float]: Point as easting, northing if grid size < 1m by 1m (i.e. len(grid_ref) > 12)
 
         Raises:
-            ValueError: If the gridref numbers are of different accuracy e.g. SN 12 456 is invalid.
+            ValueError: If the gridref numbers are of different accuracy
+
 
         Examples:
             SV is grid at the BNG origin ...
@@ -89,8 +96,11 @@ class OSBNG:
         """
 
         grid_ref = grid_ref.replace(' ', '')
-        if len(grid_ref)%2 != 0:
+        if len(grid_ref) % 2 != 0:
             raise ValueError('Grid ref %s is invalid. Are you mixing accuracies? e.g. SV 12 345 is invalid, but SV 123 345 is valid.' % grid_ref.upper())
+
+        if len(grid_ref) == 2:
+            return BNG100kmGrid.origin_get(grid_ref)
 
         tile = grid_ref[0:2]
 
@@ -100,7 +110,19 @@ class OSBNG:
         y = int(grid_ref[int(-1 * ((len(grid_ref) - 2) / 2)):])
 
         x1, y1 = BNG100kmGrid.origin_get(tile)
-        return x + x1, y + y1
+        xx = x + x1
+        yy = y + y1
+
+        # TL63 is a 10km by 10km grid in the 100km by 100km TL grid tile
+        # see https://digimap.edina.ac.uk/help/our-maps-and-data/bng/
+        if centroid:
+            # length of a side
+            j = 10000 / pow(10, int(((len(grid_ref) - 2) / 2) - 1))
+            j *= 0.5
+            xx += j
+            yy += j
+
+        return int(xx) if len(grid_ref) <= 12 else float(xx), int(yy) if len(grid_ref) <= 12 else float(yy)  # noqa
 
 
 def convertArea(x, from_unit, to_unit):
