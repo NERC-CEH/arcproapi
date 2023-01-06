@@ -985,15 +985,14 @@ def del_rows(fname: str, cols: any, vals: any, where: str = None, show_progress:
         Multiple criteria is an (obviously) OR match, see examples.
 
     Examples:
-        .
         Delete rows where (cola=1 and colb='a') OR (cola=2 and colb='b') OR (cola=3 and colb='c')
         >>> del_rows('c:/shp.shp', ['cola','colb'], [[1,2,3],['a','b','c']])
         >>> del_rows('c:/shp.shp', 'cola', 1)  # deletes every record where cola==1
-        .
-        Use wildcard delete, we don't care about cols, so just use OBJECTID
+
+        Use wildcard delete, we don't care about cols, so just use OBJECTID\n
         >>> del_rows('c:/my.gdb', 'OBJECTID', '*', where='OBJECTID<10')
-        .
-        Delete everything
+
+        Delete everything\n
         >>> del_rows('c:/my.gdb', '*', '*', no_warn=True)
     """
     if cols == '*':
@@ -1146,7 +1145,7 @@ def key_info(parent: str, parent_field: str, child: str, child_field: str, as_oi
         >>> key_info('C:/my.gdb/coutries', 'cname', 'C:/my.gdb/towns', 'cname')
         {'parent_only': ['NoTownCountry',...], 'both': ['England',...,], 'child_only': ['NoCountryTown',...]}
 
-        \n\nNow with oids
+        Now with oids
         >>> key_info('C:/my.gdb/coutries', 'cname', 'C:/my.gdb/towns', 'cname', as_oids=True)
         {'parent_only': [232, 343], 'both': [1,2,...], 'child_only': [56,77,...]}
 
@@ -1185,6 +1184,10 @@ def features_delete_orphaned(parent: str, parent_field: str, child: str, child_f
 
     Returns:
         None
+
+    Examples:
+        Delete all rows in regions, which where country_name does not exist in countries
+        >>> features_delete_orphaned('c:/my.gdb/countries', 'country_name', 'c:/my.gdb/regions', 'country_name')
     """
     oids = key_info(parent, parent_field, child, child_field, as_oids=True)['child_only']
     if oids:
@@ -1397,7 +1400,7 @@ if __name__ == '__main__':
     # features_copy(src, dst, wsp, where_clause='sq_id=34158', permission='permission', sq_id='sq_id')
 
     # fields_copy_by_join
-    fname_local = 'C:/GIS/erammp_local/submission/curated_raw/botany_curated_raw_local.gdb/plot'
-    dfout = table_summary_as_pandas(fname_local, [['OBJECTID', 'MEAN'], ['PLOT_NuMBER', 'RANGE']], ['plot_type'])  # noqa
+    # fname_local = 'C:/GIS/erammp_local/submission/curated_raw/botany_curated_raw_local.gdb/plot'
+    # dfout = table_summary_as_pandas(fname_local, [['OBJECTID', 'MEAN'], ['PLOT_NuMBER', 'RANGE']], ['plot_type'])  # noqa
 
     pass

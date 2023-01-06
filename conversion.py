@@ -2,6 +2,7 @@
 
 See https://digimap.edina.ac.uk/help/our-maps-and-data/bng/ got a great explanation of OS grids
 """
+import math as _math
 import arcpy as _arcpy  # noqa
 from arcpy.management import ConvertCoordinateNotation  # noqa - helper func, see https://desktop.arcgis.com/en/arcmap/latest/tools/data-management-toolbox/convert-coordinate-notation.htm
 
@@ -82,8 +83,8 @@ class OSBNG:
             centroid (bool): Get the grid centroid, rather than the origin
 
         Returns:
-            tuple[int]: Point as easting, northing if grid size >= 1m by 1m (i.e. len(grid_ref) <= 12)
-            tuple[float]: Point as easting, northing if grid size < 1m by 1m (i.e. len(grid_ref) > 12)
+            tuple[int]: Point as easting, northing if grid size >= 1m by 1m (i.e. len(grid_ref) <= 12) and we dont want the centroid
+            tuple[float]: Point as easting, northing if grid size < 1m by 1m (i.e. len(grid_ref) > 12) or if we are asking for centroid of a 1m box
 
         Raises:
             ValueError: If the gridref numbers are of different accuracy
@@ -121,8 +122,53 @@ class OSBNG:
             j *= 0.5
             xx += j
             yy += j
+            # ALthough 10 digits is a square of 1m by 1m, the centroid will ofcourse be 0.5 meters from the origin
+            return int(xx) if len(grid_ref) <= 10 else float(xx), int(yy) if len(grid_ref) <= 10 else float(yy)  # noqa
 
+        # Dont want the centroid, a 1m by 1m origin is an integer
         return int(xx) if len(grid_ref) <= 12 else float(xx), int(yy) if len(grid_ref) <= 12 else float(yy)  # noqa
+
+    @staticmethod
+    def bng_to_grid(e: (int, float), n: (int, float)) -> str:
+        """
+        Return an OS grid reference from an easting and northing (OSGB36 projection)
+
+        Args:
+            e (int, float): The easting
+            n (int, float): The northing
+
+        Returns:
+            str: the grid reference
+        """
+
+        # Correct that there is no I
+        gridChars = "ABCDEFGHJKLMNOPQRSTUVWXYZ"
+
+        # get the 100km-grid indices
+        e100k = _math.floor(e / 100000)
+        n100k = _math.floor(n / 100000)
+
+        # translate those into numeric equivalents of the grid letters
+        l1 = (19 - n100k) - (19 - n100k) % 5 + _math.floor((e100k + 10) / 5)
+        l2 = (19 - n100k) * 5 % 25 + e100k % 5
+        # tile will look like 'SN'
+        tile = gridChars[int(l1)] + gridChars[int(l2)]
+
+        # strip 100km-grid indices from easting & northing, round to 100m
+        e100m = _math.trunc(round(float(e) / 100))
+        ee = e/100
+
+        # Stuff zeros infront of str(e100m) to length 4
+        egr = str(e100m).rjust(4, "0")[1:]
+
+        if n >= 1000000:
+            n = n - 1000000  # Fix Shetland northings
+
+        n100m = _math.trunc(round(float(n) / 100))
+        nn = n/100
+        ngr = str(n100m).rjust(4, "0")[1:]
+
+        return tile + egr + ngr
 
 
 def convertArea(x, from_unit, to_unit):
@@ -150,4 +196,6 @@ def m2_percent_km2(x):
 if __name__ == '__main__':
     """Quick debugging"""
     #  OSBNG.grid_to_bng('SV123456')
+    s = OSBNG.bng_to_grid(204459, 204863)
+    print(s)
     pass

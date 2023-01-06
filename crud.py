@@ -8,6 +8,7 @@ Examples:
 
 TODO:
     Consider converting the upsert to seperate add and insert to reduce complexity.
+    Add an InsertCursor
 """
 
 import os.path as _path
@@ -458,8 +459,8 @@ class CRUD:
 
 
 
-    def upsert(self, search_dict, force_add: bool = False, fail_on_multi: bool = False, fail_on_exists: bool = False, fail_on_not_exists: bool = False, **kwargs):
-        """(str, dict, bool, **kwargs)->None|int
+    def upsert(self, search_dict: (dict, None), force_add: bool = False, fail_on_multi: bool = False, fail_on_exists: bool = False, fail_on_not_exists: bool = False, **kwargs) -> (None, int):
+        """
         Upsert or insert a record.
 
         If the record exists, as determined by the key-val records in col_val_dict, then an update is
@@ -480,7 +481,7 @@ class CRUD:
         Notes:
             For INSERTS, keylist alone can just be populated as a shortcut.
             Also see crud.fieldNamesSpecial which has ESRI's special field names
-
+            Use Shape=<arcpy shape instance> to insert a shape.
         Examples:
             >>> with CRUD('c:/my.gdb', enable_transactions=True) as C:
             >>>     C.upsert({'orderid':1, 'supplier':'Widget Company'}, orderid=1, supplier='Foo Company')

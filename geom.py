@@ -96,7 +96,7 @@ def polygon_from_list(lst: (list, tuple)) -> _arcpy.Polygon:
         Include the closing point, so a square is defined by 5 points
 
     Examples:
-        >>> polygon_from_list([(0,0), (0, 1), (1, 1), (1, 0), (0, 0)])
+        >>> poly = polygon_from_list([(0,0), (0, 1), (1, 1), (1, 0), (0, 0)])
         >>> poly.centroid
         <Point (0.50006103515625, 0.50006103515625, #, #)>
 
@@ -104,6 +104,29 @@ def polygon_from_list(lst: (list, tuple)) -> _arcpy.Polygon:
     pts = _arcpy.Array([_arcpy.Point(x, y) for x, y in lst])
     poly = _arcpy.Polygon(pts)
     return poly
+
+
+def polyline_from_list(lst: (list[list[(int, float)]])) -> _arcpy.Polyline:
+    """
+    Args:
+        lst (any): A list of points, accepts tuples as well
+
+    Returns:
+         arcpy.Polyline: An instance of arcpy.Polyline
+
+    Notes:
+        Order matters.
+        Should accept any combination of lists or tuples containing ints and/or floats
+
+    Examples:
+        >>> poly = polyline_from_list([(0,0), (0, 1), (1, 1), (1, 0)])  # noqa
+        >>> poly.centroid
+        <Point (0.50006103515625, 0.50006103515625, #, #)>
+    """
+    pts = _arcpy.Array([_arcpy.Point(x, y) for x, y in lst])
+    poly = _arcpy.Polyline(pts)
+    return poly
+
 
 def array_from_list(lst: (list, tuple)) -> _arcpy.Array:
     """
