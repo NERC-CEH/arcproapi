@@ -96,18 +96,25 @@ def polygon_from_list(lst: (list, tuple)) -> _arcpy.Polygon:
         Include the closing point, so a square is defined by 5 points
 
     Examples:
-        >>> poly = polygon_from_list([(0,0), (0, 1), (1, 1), (1, 0), (0, 0)])
-        >>> poly.centroid
+        >>> ply = polygon_from_list([(0,0), (0, 1), (1, 1), (1, 0), (0, 0)])
+        >>> ply.centroid
+        <Point (0.50006103515625, 0.50006103515625, #, #)>
+
+        With Z and M
+        >>> ply = polygon_from_list([(0, 0, 2, 2), (0, 1, 2, 2), (1, 1, 2, 2), (1, 0, 2, 2), (0, 0, 2, 2)])
+        >>> ply.centroid
         <Point (0.50006103515625, 0.50006103515625, #, #)>
 
     """
-    pts = _arcpy.Array([_arcpy.Point(x, y) for x, y in lst])
+    pts = _arcpy.Array([_arcpy.Point(*pt) for pt in lst])
     poly = _arcpy.Polygon(pts)
     return poly
 
 
 def polyline_from_list(lst: (list[list[(int, float)]])) -> _arcpy.Polyline:
     """
+    Get instance of an arcpy.Polyline from a list/tuple of points
+
     Args:
         lst (any): A list of points, accepts tuples as well
 
@@ -122,10 +129,39 @@ def polyline_from_list(lst: (list[list[(int, float)]])) -> _arcpy.Polyline:
         >>> poly = polyline_from_list([(0,0), (0, 1), (1, 1), (1, 0)])  # noqa
         >>> poly.centroid
         <Point (0.50006103515625, 0.50006103515625, #, #)>
+
+        With Z and M
+        >>> ply = polyline_from_list([(0, 0, 1, 1), (0, 1, 1, 1), (1, 1, 1, 1), (1, 0, 1, 1)])  # noqa
+        >>> ply.centroid
+        <Point (0.50006103515625, 0.50006103515625, 0, 0)>
     """
-    pts = _arcpy.Array([_arcpy.Point(x, y) for x, y in lst])
+    pts = _arcpy.Array([_arcpy.Point(*pt) for pt in lst])
     poly = _arcpy.Polyline(pts)
     return poly
+
+
+def point_from_list(lst) -> _arcpy.Point:
+    """
+    Get instance of an arcpy.Point from a list/tuple of points
+
+    Args:
+        lst (tuple, list): A list of points, accepts tuples as well
+
+    Returns:
+         arcpy.Point: An instance of arcpy.Point
+
+    Notes:
+        Added for completeness - creating an arcpy point is trivial
+
+    Examples:
+        >>> pt = point_from_list((0, 0))  # noqa
+        <Point (0.50006103515625, 0.50006103515625, #, #)>
+
+        With Z and M
+        >>> pt = point_from_list((0, 0, 0, 0))  # noqa
+        <Point (0.50006103515625, 0.50006103515625, 0, 0)>
+    """
+    return _arcpy.Point(*lst)
 
 
 def array_from_list(lst: (list, tuple)) -> _arcpy.Array:

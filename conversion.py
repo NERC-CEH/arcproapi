@@ -2,12 +2,16 @@
 
 See https://digimap.edina.ac.uk/help/our-maps-and-data/bng/ got a great explanation of OS grids
 """
+from enum import Enum as _Enum
+
 import math as _math
 import arcpy as _arcpy  # noqa
 from arcpy.management import ConvertCoordinateNotation  # noqa - helper func, see https://desktop.arcgis.com/en/arcmap/latest/tools/data-management-toolbox/convert-coordinate-notation.htm
 
 # Subject to errors to the order of meters
 from OSGridConverter import latlong2grid, grid2latlong  # noqa
+
+import funclite.numericslib as _numerics
 
 SquareMetersInSquareKM = 1000000
 
@@ -37,6 +41,60 @@ class BNG100kmGrid:
         'origin_northing': [1200000, 1100000, 1100000, 1000000, 1000000, 1000000, 1000000, 900000, 900000, 900000, 900000, 800000, 800000, 800000, 800000, 800000, 700000, 700000, 700000, 700000,
                             600000, 600000, 600000, 600000, 500000, 500000, 500000, 500000, 500000, 400000, 400000, 400000, 300000, 300000, 300000, 200000, 200000, 200000, 200000, 100000, 100000,
                             100000, 100000, 0, 0, 0, 0, 0, 400000, 300000, 300000, 200000, 200000, 100000, 100000, 0]}
+
+    @staticmethod
+    def tile_get(e: (int, float), n: (int, float)) -> str:
+        #  See https://oobrien.com/2010/02/en-to-gridref-in-python/
+        """
+        Get 100km OS grid tile from easting and northing
+
+        Args:
+            e (int, float): Easting
+            n (int, float): Northing
+
+        Returns:
+            str: The tile in which the point defined by e,n lies.
+
+        Examples:
+            >>> BNG100kmGrid.tile_get(204459, 204863)
+            'SJ'
+        """
+
+        # Correct that there is no I
+        gridChars = "ABCDEFGHJKLMNOPQRSTUVWXYZ"
+
+        # get the 100km-grid indices
+        e100k = _math.floor(e / 100000)
+        n100k = _math.floor(n / 100000)
+
+        # translate those into numeric equivalents of the grid letters
+        l1 = (19 - n100k) - (19 - n100k) % 5 + _math.floor((e100k + 10) / 5)
+        l2 = (19 - n100k) * 5 % 25 + e100k % 5
+
+        # tile will look like 'SN'
+        tile = gridChars[int(l1)] + gridChars[int(l2)]
+        return tile
+
+
+    @staticmethod
+    def cell_part_get(v: (int, float), astype_: any = str) -> str:
+        """
+        Get the coordinate in the context of a 100km cell, where
+        coordinate is an easting or northing.
+
+        Args:
+            v (int, float): An easting or a northing
+            astype_ (object): A conversion function, eg str, float etc.
+
+        Returns:
+            (str): The coordinate as a string, in the context of the cell
+
+        Examples:
+            >>> BNG100kmGrid.cell_part_get(204459)
+            '04459'
+        """
+        out = str(v).rjust(6, "0")[1:]
+        return astype_(out)  # noqa
 
     @staticmethod
     def origin_get(tile: str) -> tuple:
@@ -70,6 +128,15 @@ class OSBNG:
 
     Currently all static methods
     """
+
+    class eBNGGrid(_Enum):
+        KM_100by100 = 99
+        KM_10by10 = 2
+        KM_1by1 = 4
+        M_100by100 = 6
+        M_10by10 = 8
+        M_1by1 = 10
+        NoTruncation = 0
 
     @staticmethod
     def grid_to_bng(grid_ref: str, centroid: bool = False) -> tuple[(int, float)]:
@@ -128,10 +195,13 @@ class OSBNG:
         # Dont want the centroid, a 1m by 1m origin is an integer
         return int(xx) if len(grid_ref) <= 12 else float(xx), int(yy) if len(grid_ref) <= 12 else float(yy)  # noqa
 
+
     @staticmethod
     def bng_to_grid(e: (int, float), n: (int, float)) -> str:
         """
-        Return an OS grid reference from an easting and northing (OSGB36 projection)
+        Return an OS grid reference from an easting and northing (OSGB36 projection).
+
+        If the e and n in are fractional, then the out format is fractional friendly.
 
         Args:
             e (int, float): The easting
@@ -139,36 +209,29 @@ class OSBNG:
 
         Returns:
             str: the grid reference
+
+        Examples:
+            >>> OSBNG.bng_to_grid(204459, 204863)
+            'SN0445904863'
+
+            With frational coords
+            >>> OSBNG.bng_to_grid(204459.123, 204863.456)
+            'SN 04459.123 04863.456'
+
         """
+        tile = BNG100kmGrid.tile_get(e, n)
 
-        # Correct that there is no I
-        gridChars = "ABCDEFGHJKLMNOPQRSTUVWXYZ"
+        easting = BNG100kmGrid.cell_part_get(e)
 
-        # get the 100km-grid indices
-        e100k = _math.floor(e / 100000)
-        n100k = _math.floor(n / 100000)
-
-        # translate those into numeric equivalents of the grid letters
-        l1 = (19 - n100k) - (19 - n100k) % 5 + _math.floor((e100k + 10) / 5)
-        l2 = (19 - n100k) * 5 % 25 + e100k % 5
-        # tile will look like 'SN'
-        tile = gridChars[int(l1)] + gridChars[int(l2)]
-
-        # strip 100km-grid indices from easting & northing, round to 100m
-        e100m = _math.trunc(round(float(e) / 100))
-        ee = e/100
-
-        # Stuff zeros infront of str(e100m) to length 4
-        egr = str(e100m).rjust(4, "0")[1:]
-
+        # Fix Shetland northings
         if n >= 1000000:
-            n = n - 1000000  # Fix Shetland northings
+            n = n - 1000000
+        northing = BNG100kmGrid.cell_part_get(n)
 
-        n100m = _math.trunc(round(float(n) / 100))
-        nn = n/100
-        ngr = str(n100m).rjust(4, "0")[1:]
-
-        return tile + egr + ngr
+        if _numerics.is_float(e, int_is_float=False) or _numerics.is_float(n, int_is_float=False):
+            return '%s %s %s' % (tile, easting, northing)
+        else:
+            return '%s%s%s' % (tile, easting, northing)
 
 
 def convertArea(x, from_unit, to_unit):
@@ -197,5 +260,6 @@ if __name__ == '__main__':
     """Quick debugging"""
     #  OSBNG.grid_to_bng('SV123456')
     s = OSBNG.bng_to_grid(204459, 204863)
+    s = OSBNG.bng_to_grid(204459.123, 204863.456)
     print(s)
     pass
