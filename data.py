@@ -39,6 +39,9 @@ import arcproapi.common as _common
 #  More data-like functions, imported for convieniance
 from arcproapi.common import get_row_count2 as get_row_count2
 from arcproapi.common import get_row_count as get_row_count  # noqa
+from arcproapi.export import excel_to_gdb as excel_import_sheets  # noqa Rearranged, import here so as not to break scripts/compatibility
+
+
 
 
 class Excel:
@@ -47,7 +50,7 @@ class Excel:
     """
 
     @staticmethod
-    def excel_worksheets_get(workbook: str) -> list:
+    def excel_worksheets_get(workbook: str) -> list[str]:
         """
         List of worksheets in workbook
 
@@ -55,7 +58,11 @@ class Excel:
             workbook (str): The workbook (xlsx)
 
         Returns:
-            list: list of workbooks
+            list[str]: list of workbooks
+
+        Examples:
+            >>> Excel.excel_worksheets_get('C:/temp/my.xlsx')
+            ['Sheet1', 'Sheet2']
         """
         workbook = _path.normpath(workbook)
         fld, fname = _iolib.get_file_parts2(workbook)[0:2]
@@ -63,6 +70,32 @@ class Excel:
             _ = App.books.open(workbook)
             out = [sht.name for sht in App.books[fname].sheets]
         return out
+
+
+    @staticmethod
+    def excel_listobjects_get(workbook: str) -> list[str]:
+        """
+        Get list of listobjects in an excel workbook
+
+        Args:
+            workbook (str): The workbook
+
+        Returns:
+            list[str]: List of listobjects
+
+        Examples:
+            >>> Excel.excel_listobjects_get('C:/temp/my.xlsx')
+            ['Table1', 'Table2']
+        """
+        workbook = _path.normpath(workbook)
+        fld, fname = _iolib.get_file_parts2(workbook)[0:2]
+        with _xlwings.App(visible=False) as App:
+            _ = App.books.open(workbook)
+            out = [lo.name for lo in _baselib.list_flatten([sheet.tables for sheet in App.books[fname].sheets])]
+        return out
+
+
+
 
 
 def poly_from_extent(ext, sr):
@@ -1291,63 +1324,6 @@ def features_copy(source: str, dest: str, workspace: str, where_clause: str = '*
     return i
 
 
-def excel_import_sheets(fname: str, gdb: str, match_sheet: (list, tuple, str) = (), exclude_sheet: (list, tuple, str) = (), allow_overwrite: bool = False, show_progress: bool = False) -> list:
-    """
-    Import worksheets from excel file fname into file geodatabase gdb.
-
-    Args:
-        fname (str): Excel workbook
-        gdb ():
-        match_sheet (): Case insensitive
-        exclude_sheet (): Case insensitive. Overrides match_sheet on clash.
-        allow_overwrite (bool): Performs a delete prior to importing into gdb, otherwise raises standard arcpy error
-        show_progress (bool): Show progress bar
-
-    Returns:
-        list of new gdb tables
-
-    Notes:
-        Forces all names to lowercase
-    """
-    fname = _path.normpath(fname)
-    # Lets construct the list of sheets then close excel to avoid any potential "read only/file in use" moans
-    if isinstance(match_sheet, str):
-        match_sheet = [match_sheet]
-
-    if isinstance(exclude_sheet, str):
-        exclude_sheet = [exclude_sheet]
-
-    sheets = []
-    with _xlwings.App(visible=False) as xl:
-        workbook: _xlwings.Book = xl.books.open(_xlwings.Book(fname), read_only=True)
-        for sheet in workbook.sheets:
-            if not _baselib.list_member_in_str(sheet, match_sheet, ignore_case=True):  # always true of match is empty/None
-                continue
-
-            if _baselib.list_member_in_str(sheet, exclude_sheet, ignore_case=True):
-                continue
-
-            sheets += [sheet.lower()]
-
-    if show_progress:
-        PP = _iolib.PrintProgress(iter_=sheets)
-
-    added = []
-    for sheet in sheets:
-        # The out_table is based on the input Excel file name
-        # an underscore (_) separator followed by the sheet name
-        safe_name = _arcpy.ValidateTableName(sheet, gdb)
-        out_table = _iolib.fixp(gdb, safe_name)
-        if allow_overwrite:
-            _struct.fc_delete2(_iolib.fixp(gdb, out_table))
-
-        _arcpy.conversion.ExcelToTable(fname, out_table, sheet)
-        added += out_table
-        if show_progress:
-            PP.increment()  # noqa
-    return added
-
-
 def table_summary_as_pandas(fname: str, statistics_fields: (str, list[list[str]]), case_field: (str, list[str], None) = None, concatenation_separator='') -> _pd.DataFrame:
     """
     Execute a table summary against a feature class or table
@@ -1388,6 +1364,67 @@ def table_summary_as_pandas(fname: str, statistics_fields: (str, list[list[str]]
     return df
 
 
+def vertext_add(fname, vertex_index: (int, str), x_field: str, y_field: str = 'y', field_type='DOUBLE', where_clause: (str, None) = '*', fail_on_exists: bool = True,
+                show_progress: bool = False) -> int:
+    """
+    Add the x and y coordinates of a vertex
+    Args:
+        fname (str): The layer
+        vertex_index (int, str): Index of the vertext, pass 'last' to get the last vertext in the shape. Pass 0 or 'first' to get the first
+        x_field ():  Field name for x coordinate
+        y_field (str): Field name for y coordinate
+        field_type (str): Passed to AddField when creating new fields. 'FLOAT', 'DOUBLE', 'LONG' recommended
+        where_clause (str): Record filter passed to the crud.UpdateCursor
+        fail_on_exists (bool): Fail if either x_field or y_field already exists, otherwise will overwrite if exists
+        show_progress (bool): Show progress in terminal
+
+    Returns:
+        int: Number of records edited
+
+    Notes:
+        Use LONG for easting and northings.
+        If fail_on_exists is used, then no fields will be added if only the x or y field already exists, preserving the current structure.
+        If the feature is multipart, it uses the first part.
+
+    Examples:
+        >>>
+    """
+    fname = _path.normpath(fname)
+    if str(vertex_index).lower() == 'first': vertex_index = 0
+
+    x_exists = _struct.field_exists(fname, x_field)
+    y_exists = _struct.field_exists(fname, y_field)
+    if fail_on_exists and (x_exists or y_exists):
+        raise _errors.StructFieldExists('Field %s or/and %s already exists and fail_on_exists was True' % (x_field, y_field))
+
+    if not x_exists:
+        _struct.AddField(fname, x_field, field_type=field_type, field_is_nullable=True)
+
+    if not y_exists:
+        _struct.AddField(fname, y_field, field_type=field_type, field_is_nullable=True)
+
+    if show_progress:
+        PP = _iolib.PrintProgress(maximum=get_row_count(fname), init_msg='Adding vertex coords...')
+    j = 0
+    with _crud.UpdateCursor(fname, ['OID@', x_field, y_field], where_clause=where_clause, load_shape=True) as UpdCur:
+        for R in UpdCur:
+            if len(R.Shape) > 1:
+                _warn('Multipart feature found for row with OID=%s' % R[0])
+
+            if str(vertex_index).lower() == 'last':
+                R[x_field] = R['SHAPE@'].lastPoint.X
+                R[y_field] = R['SHAPE@'].lastPoint.Y
+            else:
+                R[x_field] = R['SHAPE@'][0][vertex_index].X
+                R[y_field] = R['SHAPE@'][0][vertex_index].Y
+
+            UpdCur.updateRow(R)
+            j += 1
+            if show_progress:
+                PP.increment()  # noqa
+    return j
+
+
 rows_delete = del_rows  # noqa. For conveniance, should of been called this in first place but don't break existing code
 
 if __name__ == '__main__':
@@ -1403,4 +1440,5 @@ if __name__ == '__main__':
     # fname_local = 'C:/GIS/erammp_local/submission/curated_raw/botany_curated_raw_local.gdb/plot'
     # dfout = table_summary_as_pandas(fname_local, [['OBJECTID', 'MEAN'], ['PLOT_NuMBER', 'RANGE']], ['plot_type'])  # noqa
 
+    # i = vertext_add(r'C:\GIS\erammp_local\submission\curated_raw\freshwater_curated_raw.gdb\stream_sites', 1, x_field='easting_vertex', y_field='northing_vertex', fail_on_exists=False, show_progress=True)
     pass

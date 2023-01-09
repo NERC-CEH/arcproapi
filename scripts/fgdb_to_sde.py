@@ -41,6 +41,7 @@ def main():
         try:
             arcpy.management.Copy(fc, iolib.fixp(args.dest_sde, fc))
         except:
+            pass
 
     print('Exporting tables....')
     for tbl in tqdm(arcpy.ListTables()):

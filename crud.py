@@ -255,7 +255,7 @@ class _Row:
     def _write_row(self):
         """write things back to row, so we can use it for the update"""
         for k, v in self.__dict__.items():
-            if k == '_row' or k == '_flds': continue
+            if k == '_row' or k == '_flds' or k == 'OIDat': continue
             if k.lower() == 'shapeat':
                 self._row[self._flds.index('SHAPE@')] = v
             else:
@@ -584,7 +584,6 @@ class CRUD:
         return i
 
 
-
     def delete(self, fail_on_multi=False, error_on_no_rows=True, **kwargs):
         """(kwargs)->None
         Delete a row or rows.
@@ -638,7 +637,6 @@ class CRUD:
                 Cur.deleteRow()
                 i += 1
         return i
-
 
 
     def tran_begin(self):
