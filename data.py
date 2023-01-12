@@ -39,7 +39,7 @@ import arcproapi.common as _common
 #  More data-like functions, imported for convieniance
 from arcproapi.common import get_row_count2 as get_row_count2
 from arcproapi.common import get_row_count as get_row_count  # noqa
-from arcproapi.export import excel_to_gdb as excel_import_sheets  # noqa Rearranged, import here so as not to break scripts/compatibility
+from arcproapi.export import excel_sheets_to_gdb as excel_import_sheets  # noqa Rearranged, import here so as not to break scripts/compatibility
 
 
 

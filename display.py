@@ -15,33 +15,58 @@ import arcproapi.common as _common
 from arcproapi import mp as _mp  # arcpy.mapping/arcpy.mp
 
 
+class Project:
+    """Class to work with projects
+
+    Args:
+        aprx (str): fully qualified path to the arpx project file
+    """
+    def __init__(self, aprx: str):
+        self._arpx_path = _path.normpath(aprx)
+        self.Project = _arcpy.mp.ArcGISProject(self._arpx_path)
+
+    def __enter__(self):
+        """support context manager"""
+        return self
+
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        """clean up to stop locks persisting"""
+        with _fuckit:
+            del self.Layout
+            del self.Map
+            del self.Project
+            self.Logger.write()
+
+
+    def __str__(self):
+        """friendly print instance members"""
+        return self._arpx_path
+
+
 class Map:
-    """Class to manipulate mapsclass to manipulate maps to print them out for the permissions process
+    """Class to work with maps in an arcgispro project.
     Supports a context manager, i.e. instantiate using with.
 
-    arpx:
-        fully qualified path to the arpx project file
-    map_name:
-        name of a map in the project file
-    logto:
-        open a logfile to record errors etc (need to call save to persist to file system)
-    layout:
-        optionally set a layout object in the class
+    Args:
+        aprx (str): fully qualified path to the arpx project file
+        map_name (str): name of a map in the project file
+        logto (str): open a logfile to record errors etc (need to call save to persist to file system)
+        overwrite_log (bool): Overwrite the existing log file.
+        layout (str): optionally set a layout object in the class
 
-    The object Map, Layout, Mapframe and Project are the native arcpy objects
+    Notes:
+        The object Map, Layout, Mapframe and Project are the native arcpy objects.
 
-    The collection Layers is a dictionary of all layers in the map, hence
-    layers can be accessed with Map.Layers['layer_name']
+        The collection Layers is a dictionary of all layers in the map, hence
+        layers can be accessed with Map.Layers['layer_name'].
 
-    Example:
-    with arcpro.Map('c:/proj.arpx', 'mymap', 'c:/log.log', 'Layout1') as MyMap:
-        MyMap.<do stuff>
+    Examples:
+        >>> with arcpro.Map('c:/proj.arpx', 'mymap', 'c:/log.log', 'Layout1') as MyMap:  # noqa
+        >>> MyMap.<do stuff>  # noqa
     """
 
-    def __init__(self, aprx, map_name, logto, overwrite_log=False, layout='', map_frame=''):
-        """(str, str, str, str, str) -> None
-        New class
-        """
+    def __init__(self, aprx: str, map_name: str, logto: str, overwrite_log:bool = False, layout: str = '', map_frame: str = ''):
         self._arpx_path = _path.normpath(aprx)
         self._logto = _path.normpath(logto)
         self._map_name = map_name
@@ -129,57 +154,68 @@ class Map:
             del self.Layout
 
 
-    def layout_to_pdf(self, fname, dpi=300, image_quality='BEST', **args):
+    def layout_to_pdf(self, fname:str, dpi: int = 300, image_quality: str = 'BEST', **args):
         """(str) -> str
         Export current layout to pdf
 
-        fname:
-            filename
+        Args:
+            fname (str): The feature class/table
+            dpi (int): Resolution of the pdf
+            image_quality(str): See  the arcpy Layout.exportToPDF documentation
+            **args: Keyword arguments passed to the arcpy Layout.exportToPDF method
 
-        Example:
-        >> Map.layout_open('mylayout')
-        >> Map.layout_to_pdf('C:/temp.mylayout.pdf')
+        Examples:
+            >>> Map.layout_open('mylayout')
+            >>> Map.layout_to_pdf('C:/temp.mylayout.pdf')
 
         See https://pro.arcgis.com/en/pro-app/latest/arcpy/mapping/layout-class.htm for args
         """
+        fname = _path.normpath(fname)
         self.Layout.exportToPDF(fname, dpi, image_quality, **args)
 
 
-    def mapframe_zoom_to_feature(self, lyr_name, feat_col, fid, scale_factor=1, abs_scale=None):
-        """(str, str, int|float|str, float, float) -> List:ArcPy.Feature
-        Pan to first feature, returns feature panned to
-        lyr_name:
-            Name of layer in the Map object
-        feat_col:
-            Name of column to look up the feature on
-        fid:
-            Row data to find in the column
-        scale_factor:
-           after zooming, either grow or shrink the extent by this factor
-        abs_scale:
-            zoom to this absolute scale
+    def mapframe_zoom_to_feature(self, lyr_name: str, feat_col: str, fid: int, scale_factor: float = 1, abs_scale: float = None) -> None:
+        """
+        Pan and zoom to feature with OID=fid.
+
+        Args:
+            lyr_name: Name of layer in the Map object
+            feat_col: Name of column to look up the feature on
+            fid: Row data to find in the column
+            scale_factor: after zooming, either grow or shrink the extent by this factor
+            abs_scale: zoom to this absolute scale
+
+        Returns:
+            None
+
+
+        TODO:
+            This is a hacky and relies on clearing filters. Redesign so find a feature then zoom to that features extent
         """
         if scale_factor != 1 and abs_scale:
             _warn('scale_factor and abs_scale arguments both set. Using scale_factor, ignoring abs_scale')
             abs_scale = None
-        # TODO this is a hacky and relies on clearing filters. Redesign so find a feature then zoom to that features extent
+
         self.layers_clear_filters()
         lyrs = self.Map.listLayers(lyr_name)
         if len(lyrs) > 1:
             _warn('Map "%s" had %s layers named "%s". Picked the first one.' % (self._map_name, len(lyrs), lyr_name))
         lyr = lyrs[0]
+
         q = '%s = %s' % (feat_col, fid)
         _arcpy.management.SelectLayerByAttribute(lyr, "NEW_SELECTION", q, None)  # If this is failing unexpectedly, check that data types are as expected, e.g. if doing sqid=1, make sure the underlying table data type is int/long
-        self.MapFrame.zoomToAllLayers()  # zooms to currently selected feature
+        self.MapFrame.zoomToAllLayers()  # zooms to currently selected feature, honest
 
         factor = scale_factor * self.MapFrame.camera.scale if scale_factor != 1 else abs_scale  # zoom in/out by scale factor
         self.MapFrame.camera.scale = factor
 
 
-    def map_frame_open(self, map_frame_name):
+    def map_frame_open(self, map_frame_name: str):
         """(str) -> Obj:ArcPy.Map
         open a map, close the current one
         Sets self.Layout, and returns an ArcPy Layout object
+
+        Returns
         """
         if not self.Layout:
             raise _errors.LayoutNotFound('Could not open MapFrame "%s" because no Layout was set' % map_frame_name)
@@ -226,14 +262,13 @@ class Map:
         """(str|iter, bool, bool) -> None
         Show layers by name in the iterable layers
 
-        layers:
-            Iterable or string of layer names
-        show_rest:
-            Boolean, if true will force all layers not in layers to be hidden, ignores group layers
-        force_show_group_layers:
-            will turn all group layers to visible
-        Example:
-        >>> Map.layers_show(['square','my_polys'], show_rest=True)
+        Args:
+            layers: Iterable or string of layer names
+            show_rest: Boolean, if true will force all layers not in layers to be hidden, ignores group layers
+            force_show_group_layers: will turn all group layers to visible
+
+        Examples:
+            >>> Map.layers_show(['square','my_polys'], show_rest=True)
         """
         if isinstance(layers, str):
             lyrs = (layers,)
@@ -282,13 +317,13 @@ class Map:
             self.Logger.log('clear_layer_filters failed for layer %s' % lyr_name_or_lyr)
 
 
-    def layer_set_transparency(self, lyr_name_or_lyr, v):
-        """(str, int)->None
-        set layer transparency
+    def layer_set_transparency(self, lyr_name_or_lyr: str, v: int):
+        """
+        Set layer transparency
 
-        Parameters
-        lyr_name_or_lyr: An arcpy layer object or the layer name as a string
-        v: transparency vale (0-100)
+        Args:
+            lyr_name_or_lyr: An arcpy layer object or the layer name as a string
+            v: transparency vale (0-100)
         """
         try:
             lyr = self.Map.listLayers(lyr_name_or_lyr)[0] if isinstance(lyr_name_or_lyr, str) else lyr_name_or_lyr
@@ -297,17 +332,14 @@ class Map:
             self.Logger.log('layer_set_transparency failed for layer %s' % lyr_name_or_lyr)
 
 
-    def layers_clear_filters(self, wildcard_or_list='', clear_definition_query=True, clear_selection=True):
+    def layers_clear_filters(self, wildcard_or_list: str = '', clear_definition_query: bool = True, clear_selection: bool = True):
         """
         Clear filters or definition queries from all layers
 
         Args:
-            wildcard_or_list:
-                string to match to layer names, * is wildcarded, or pass a list
-            clear_definition_query:
-                clear the definition query from the layer
-            clear_selection:
-                deselect selected features
+            wildcard_or_list: string to match to layer names, * is wildcarded, or pass a list
+            clear_definition_query: clear the definition query from the layer
+            clear_selection: deselect selected features
 
         Returns: None
 
@@ -327,7 +359,7 @@ class Map:
 
 
 
-    def features_show(self, lyrname, feat_col='', fid='', override_where=''):
+    def features_show(self, lyrname: str, feat_col: str = '', fid: str = '', override_where: str = ''):
         """
         Show features in layer lyrname.
         Clears any selected features and removes the definition
@@ -361,7 +393,7 @@ class Map:
         self.layer_definition_query_set(lyrname, sql)
 
 
-    def layer_definition_query_clear(self, lyrname:str) -> None:
+    def layer_definition_query_clear(self, lyrname: str) -> None:
         """
         Clear layer definition using ArcGISPro CIM calls.
 
@@ -437,27 +469,27 @@ class Map:
 
         Columns included in the o parameter must be included in the col parameter!
 
-        Required:
-        tbl -- input table or table view
-        col -- input column name(s) as string or a list; valid options are:
-            col='colA'
-            col=['colA']
-            col=['colA', 'colB', 'colC']
-            col='colA,colB,colC'
-            col='colA;colB;colC'
+        Args:
+            tbl: input table or table view
+            col: input column name(s) as string or a list; valid options are:
+                col='colA'
+                col=['colA']
+                col=['colA', 'colB', 'colC']
+                col='colA,colB,colC'
+                col='colA;colB;colC'
+            w: where clause
+            o: order by clause like '"OBJECTID" ASC, "Shape_Area" DESC',
+                default is None, which means order by object id if exists
+            unique: Return unique items only
 
-        Optional:
-        w -- where clause
-        o -- order by clause like '"OBJECTID" ASC, "Shape_Area" DESC',
-            default is None, which means order by object id if exists
-        unique -- Return unique items only
+        Examples:
+            >>> field_get_values('c:/foo/bar.shp', 'Shape_Length')
+            >>> field_get_values('c:/fo/bar.shp', 'SHAPE@XY')
+            >>> field_get_values('c:/foo/bar.shp', 'SHAPE@XY;Shape_Length', 'Shape_Length ASC')
 
-        Example:
-        >> values('c:/foo/bar.shp', 'Shape_Length')
-        >> values('c:/fo/bar.shp', 'SHAPE@XY')
-        >> values('c:/foo/bar.shp', 'SHAPE@XY;Shape_Length', 'Shape_Length ASC')
-        >> # columns in 'o' must be in 'col', otherwise RuntimeError is raised:
-        >> values('c:/foo/bar.shp', 'SHAPE@XY', 'Shape_Length DESC') # Error!
+            Columns in 'o' must be in 'col', otherwise RuntimeError is raised:
+            >>> field_get_values('c:/foo/bar.shp', 'SHAPE@XY', 'Shape_Length DESC')
+            Traceback (most recent call last): ....
         """
         if search_layers_first:
             obj = get_item(self.Map.listLayers(lyr_or_table_name))
@@ -502,9 +534,17 @@ class Map:
         return ret
 
 
-def get_item(objs):
-    """(list|tuple|None) -> None|Item
-    return first item is iter, else none. Used for this listXXXX functions in arcpy"""
+def get_item(objs: (list, tuple, None)) -> any:
+    """
+    Return first item in iter, else none.
+    Used for this listXXXX functions in arcpy
+    
+    Args:
+        objs: An iterable
+        
+    Returns:
+        First item in the iterable objs
+    """
     if isinstance(objs, (list, tuple)):
         if objs:
             return objs[0]
@@ -512,28 +552,26 @@ def get_item(objs):
     return None
 
 
-def combine_pdfs(out_pdf, pdf_path_or_list, wildcard=''):
+def combine_pdfs(out_pdf: str, pdf_path_or_list: str, wildcard: str = ''):
     """Combine PDF documents using arcpy mapping module
-    Required:
-       out_pdf -- output pdf document (.pdf)
-        pdf_path_or_list -- list of pdf documents or folder
-            path containing pdf documents.
-    Optional:
-    wildcard -- optional wildcard search (only applies
-        when searching through paths)
+    
+    Args:
+        out_pdf (str): output pdf document (.pdf)
+        pdf_path_or_list (str): list of pdf documents or folder path containing pdf documents.
+        wildcard (str): Optional wildcard search (only applies when searching through paths)
 
-    Example:
-    >>> # test function with path
-    >>> out_pdf = r'C:/Users/calebma/Desktop/test.pdf'  # noqa
-    >>> path = r'C:/Users/calebma/Desktop/pdfTest'
-    >>> combine_pdfs(out_pdf, path)
-
-    >>> # test function with list
-    >>> out = r'C:/Users/calebma/Desktop/test2.pdf'
-    >>> pdfs = [r'C:/Users/calebma/Desktop/pdfTest/Mailing_Labels5160.pdf',
-                r'C:/Users/calebma/Desktop/pdfTest/Mailing_Taxpayer.pdf',
-                r'C:/Users/calebma/Desktop/pdfTest/stfr.pdf']
-    >>> combine_pdfs(out, pdfs)
+    Examples:
+        With a path
+        >>> out_pdf = r'C:/Users/calebma/Desktop/test.pdf'  # noqa
+        >>> path = r'C:/Users/calebma/Desktop/pdfTest'
+        >>> combine_pdfs(out_pdf, path)
+    
+        With a list
+        >>> out = r'C:/Users/calebma/Desktop/test2.pdf'
+        >>> pdfs = [r'C:/Users/calebma/Desktop/pdfTest/Mailing_Labels5160.pdf',
+                    r'C:/Users/calebma/Desktop/pdfTest/Mailing_Taxpayer.pdf',
+                    r'C:/Users/calebma/Desktop/pdfTest/stfr.pdf']
+        >>> combine_pdfs(out, pdfs)
     """
 
     # Create new PDF document
