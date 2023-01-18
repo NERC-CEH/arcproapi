@@ -20,7 +20,11 @@ class Project:
 
     Args:
         aprx (str): fully qualified path to the arpx project file
+
+    Methods:
+        Project: The arcgispro Project object, exposed for convieniance
     """
+
     def __init__(self, aprx: str):
         self._arpx_path = _path.normpath(aprx)
         self.Project = _arcpy.mp.ArcGISProject(self._arpx_path)
@@ -29,19 +33,58 @@ class Project:
         """support context manager"""
         return self
 
-
     def __exit__(self, exc_type, exc_value, traceback):
         """clean up to stop locks persisting"""
-        with _fuckit:
-            del self.Layout
-            del self.Map
+        try:
+            self.Project.save()
+        except Exception as e:
+            _warn('An exception occured when saving the project on exit:\n\n' % e)
+        finally:
             del self.Project
-            self.Logger.write()
-
 
     def __str__(self):
         """friendly print instance members"""
         return self._arpx_path
+
+
+
+
+    def paths_update(self, find, replace, **kwargs) -> list[str]:
+        """
+        Change paths for layers. Calls updateConnectionProperties on
+        each layer which matches ..
+
+        Args:
+            find (str): find in source path
+            replace (str): replace "find" in source path
+
+            **kwargs (any): Keyword arguments to pass to updateConnectionProperties. Currently supportes validate, auto_update_joins_and_relates, ignore_case
+            See https://pro.arcgis.com/en/pro-app/latest/arcpy/mapping/layer-class.htm
+
+        Returns:
+            list[str]: list of layers/table which were updated
+
+        Notes:
+            Needed because updateConnectionsProperties called against the project
+            does not currently function correctly.
+
+        Examples:
+            >>> with Project('C:/my.arpx') as Prj:  # noqa
+            >>>     Prj.paths_update('bad/layer/path', 'good/layer/path')
+            ['layer1', 'layer2', 'table2']
+        """
+        good = []
+        for M in self.Project.listMaps():
+            for lyr in M.listLayers():
+                if lyr.supports("CONNECTIONPROPERTIES"):
+                    try:
+                        lyr.updateConnectionProperties(find, replace, **kwargs)
+                        good += lyr.name
+                    except Exception as e:
+                        _warn('Failed to change source for layer %s. The error was:\n%s' % (lyr.name, e))
+
+        self.Project.save()
+        return good
 
 
 class Map:
@@ -66,7 +109,7 @@ class Map:
         >>> MyMap.<do stuff>  # noqa
     """
 
-    def __init__(self, aprx: str, map_name: str, logto: str, overwrite_log:bool = False, layout: str = '', map_frame: str = ''):
+    def __init__(self, aprx: str, map_name: str, logto: str, overwrite_log: bool = False, layout: str = '', map_frame: str = ''):
         self._arpx_path = _path.normpath(aprx)
         self._logto = _path.normpath(logto)
         self._map_name = map_name
@@ -91,11 +134,9 @@ class Map:
         if self._map_frame_name:
             self.map_frame_open(self._map_frame_name)
 
-
     def __enter__(self):
         """support context manager"""
         return self
-
 
     def __exit__(self, exc_type, exc_value, traceback):
         """clean up to stop locks persisting"""
@@ -104,7 +145,6 @@ class Map:
             del self.Map
             del self.Project
             self.Logger.write()
-
 
     # MAP OBJECT STUFF--------------------------------
     def map_open(self, map_name):
@@ -119,7 +159,6 @@ class Map:
         self.layers_refresh()
         return self.Map
 
-
     def layers_refresh(self):
         """Refresh layers dict so that
         the self.Layers matches removal and additions
@@ -129,12 +168,10 @@ class Map:
         """
         self.Layers = {listLayer.name: listLayer for listLayer in self.Map.listLayers() if not listLayer.isGroupLayer and listLayer.supports("NAME")}
 
-
     def _map_close(self):
         with _fuckit:
             del self.Layers
             del self.Map
-
 
     # LAYOUT OBJECT STUFF--------------------------------
     def layout_open(self, layout_name):
@@ -148,13 +185,11 @@ class Map:
         self._layout_name = layout_name
         return self.Layout
 
-
     def _layout_close(self):
         with _fuckit:
             del self.Layout
 
-
-    def layout_to_pdf(self, fname:str, dpi: int = 300, image_quality: str = 'BEST', **args):
+    def layout_to_pdf(self, fname: str, dpi: int = 300, image_quality: str = 'BEST', **args):
         """(str) -> str
         Export current layout to pdf
 
@@ -172,7 +207,6 @@ class Map:
         """
         fname = _path.normpath(fname)
         self.Layout.exportToPDF(fname, dpi, image_quality, **args)
-
 
     def mapframe_zoom_to_feature(self, lyr_name: str, feat_col: str, fid: int, scale_factor: float = 1, abs_scale: float = None) -> None:
         """
@@ -203,12 +237,12 @@ class Map:
         lyr = lyrs[0]
 
         q = '%s = %s' % (feat_col, fid)
-        _arcpy.management.SelectLayerByAttribute(lyr, "NEW_SELECTION", q, None)  # If this is failing unexpectedly, check that data types are as expected, e.g. if doing sqid=1, make sure the underlying table data type is int/long
+        _arcpy.management.SelectLayerByAttribute(lyr, "NEW_SELECTION", q,
+                                                 None)  # If this is failing unexpectedly, check that data types are as expected, e.g. if doing sqid=1, make sure the underlying table data type is int/long
         self.MapFrame.zoomToAllLayers()  # zooms to currently selected feature, honest
 
         factor = scale_factor * self.MapFrame.camera.scale if scale_factor != 1 else abs_scale  # zoom in/out by scale factor
         self.MapFrame.camera.scale = factor
-
 
     def map_frame_open(self, map_frame_name: str):
         """(str) -> Obj:ArcPy.Map
@@ -226,11 +260,9 @@ class Map:
         self._map_frame_name = map_frame_name
         return self.MapFrame
 
-
     def _map_frame_close(self):
         with _fuckit:
             del self.MapFrame
-
 
     def layers_hide(self, layers, show_rest=False):
         """(str|iter) -> None
@@ -257,14 +289,13 @@ class Map:
             else:
                 lname.visible = lname not in lyrs if lname in lyrs else lname.visible  # i.e. leave it unchanged if not in layers
 
-
-    def layers_show(self, layers, hide_rest=False, force_show_group_layers=True):
-        """(str|iter, bool, bool) -> None
+    def layers_show(self, layers: (str, list[str]), hide_rest: bool = False, force_show_group_layers: bool = True):
+        """
         Show layers by name in the iterable layers
 
         Args:
             layers: Iterable or string of layer names
-            show_rest: Boolean, if true will force all layers not in layers to be hidden, ignores group layers
+            hide_rest: Boolean, if true will force all layers not in layers to be hidden, ignores group layers
             force_show_group_layers: will turn all group layers to visible
 
         Examples:
@@ -291,7 +322,6 @@ class Map:
             else:
                 map_lyr.visible = s in lyrs if s in lyrs else map_lyr.visible  # i.e. leave it unchanged if not in layers
 
-
     def layer_clear_filters(self, lyr_name_or_lyr, clear_definition_query=True, clear_selection=True):
         """(str|Object:Layer, bool, bool) -> None
         Clear definition queries and selections on a layer.
@@ -316,7 +346,6 @@ class Map:
         except:
             self.Logger.log('clear_layer_filters failed for layer %s' % lyr_name_or_lyr)
 
-
     def layer_set_transparency(self, lyr_name_or_lyr: str, v: int):
         """
         Set layer transparency
@@ -330,7 +359,6 @@ class Map:
             lyr.transparency = v
         except:
             self.Logger.log('layer_set_transparency failed for layer %s' % lyr_name_or_lyr)
-
 
     def layers_clear_filters(self, wildcard_or_list: str = '', clear_definition_query: bool = True, clear_selection: bool = True):
         """
@@ -356,8 +384,6 @@ class Map:
         else:
             for name in wildcard_or_list:
                 self.layer_clear_filters(name, clear_definition_query=clear_definition_query, clear_selection=clear_selection)
-
-
 
     def features_show(self, lyrname: str, feat_col: str = '', fid: str = '', override_where: str = ''):
         """
@@ -392,7 +418,6 @@ class Map:
         self.layer_clear_filters(lyrname)
         self.layer_definition_query_set(lyrname, sql)
 
-
     def layer_definition_query_clear(self, lyrname: str) -> None:
         """
         Clear layer definition using ArcGISPro CIM calls.
@@ -418,7 +443,6 @@ class Map:
         else:
             cim_layer.featureTable.definitionExpression = None
         lyr.setDefinition(cim_layer)
-
 
     def layer_definition_query_set(self, lyrname: str, query: str) -> None:
         """
@@ -461,7 +485,7 @@ class Map:
         e = self.Layout.listElements('TEXT_ELEMENT', element_name)[0]
         e.text = txt
 
-    def field_get_values(self, lyr_or_table_name, col, w='', o=None, search_layers_first=True, unique=False):
+    def field_get_values(self, lyr_or_table_name: str, col: (str, list[str]), w: (str, None) = None, o: (str, None) = None, search_layers_first: bool = True, unique: bool = False):
         """Return a list of all values in column col in table tbl.
 
         If col is a single column, returns a list of values, otherwise returns
@@ -470,25 +494,27 @@ class Map:
         Columns included in the o parameter must be included in the col parameter!
 
         Args:
-            tbl: input table or table view
-            col: input column name(s) as string or a list; valid options are:
+            lyr_or_table_name (str): input table or table view
+            col (str, list[str]): input column name(s) as string or a list; valid options are:
                 col='colA'
                 col=['colA']
                 col=['colA', 'colB', 'colC']
                 col='colA,colB,colC'
                 col='colA;colB;colC'
-            w: where clause
-            o: order by clause like '"OBJECTID" ASC, "Shape_Area" DESC',
+            w (str): where clause
+            o (str, None): order by clause like 'ELEVATION DESC',
                 default is None, which means order by object id if exists
-            unique: Return unique items only
+            search_layers_first (bool): Tables and feature classes can have the same name. Search for layer lyr_or_table_name first, else looks at tables first
+            unique (bool): Return unique items only
 
         Examples:
-            >>> field_get_values('c:/foo/bar.shp', 'Shape_Length')
-            >>> field_get_values('c:/fo/bar.shp', 'SHAPE@XY')
-            >>> field_get_values('c:/foo/bar.shp', 'SHAPE@XY;Shape_Length', 'Shape_Length ASC')
+            >>> with Map('C:/my.arpx', 'mymap', 'C:/temp/my.log') as M:
+            >>>     M.field_get_values('c:/foo/bar.shp', 'Shape_Length')
+            >>>     M.field_get_values('c:/fo/bar.shp', 'SHAPE@XY')
+            >>>     M.field_get_values('c:/foo/bar.shp', 'SHAPE@XY;Shape_Length', 'Shape_Length ASC')
 
             Columns in 'o' must be in 'col', otherwise RuntimeError is raised:
-            >>> field_get_values('c:/foo/bar.shp', 'SHAPE@XY', 'Shape_Length DESC')
+            >>>     M.field_get_values('c:/foo/bar.shp', 'SHAPE@XY', 'Shape_Length DESC')
             Traceback (most recent call last): ....
         """
         if search_layers_first:
@@ -552,13 +578,16 @@ def get_item(objs: (list, tuple, None)) -> any:
     return None
 
 
-def combine_pdfs(out_pdf: str, pdf_path_or_list: str, wildcard: str = ''):
+def combine_pdfs(out_pdf: str, pdf_path_or_list: (str, list[str]), wildcard: str = '') -> str:
     """Combine PDF documents using arcpy mapping module
     
     Args:
         out_pdf (str): output pdf document (.pdf)
-        pdf_path_or_list (str): list of pdf documents or folder path containing pdf documents.
+        pdf_path_or_list (str, list[str]): list of pdf documents or folder path containing pdf documents.
         wildcard (str): Optional wildcard search (only applies when searching through paths)
+
+    Returns:
+        str: The output pdf name, this is just a normpathed out_pdf
 
     Examples:
         With a path
@@ -596,3 +625,8 @@ def combine_pdfs(out_pdf: str, pdf_path_or_list: str, wildcard: str = ''):
     del pdfDoc
     _common.msg('Created: %s' % out_pdf)
     return out_pdf
+
+
+if __name__ == '__main__':
+    """simple debugging"""
+    Prj = Project('S:/SPECIAL-ACL/ERAMMP2 Survey Restricted/current/data/GIS/_arcpro_projects/_templates/xsg_letters_per_crn/xsg_letters_per_crn.aprx')

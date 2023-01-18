@@ -66,28 +66,24 @@ class ConfigESRIGeoDBTableOrFeatureClass(_BaseFileSource):
 
     Args:
         fname: path to the geodatabase, use config.GeoDatabasePaths
-        lyr_or_tbl_name: layer or table name
     """
 
-    def __init__(self, fname, lyr_or_tbl_name):
-        self.fname = fname
-        self.lyr_or_tbl_name = lyr_or_tbl_name
-        self.lyr_or_tbl_name_fqn = _path.normpath(_path.join(self.fname, self.lyr_or_tbl_name))
-        super(ConfigESRIGeoDBTableOrFeatureClass, self).__init__(self.fname)
+    def __init__(self, fname):
+        super(ConfigESRIGeoDBTableOrFeatureClass, self).__init__(fname)
 
 
 class ConfigESRISDE(_BaseFileSource):
     """SDE connection"""
-    def __init__(self, sde_file, lyr_or_tbl_name):
-        self.sde_file = sde_file
-        self.fname = sde_file
-        self.lyr_or_tbl_name = lyr_or_tbl_name
-        self.lyr_or_tbl_name_fqn = _path.normpath(_path.join(self.sde_file, self.lyr_or_tbl_name))
-        super(ConfigESRISDE, self).__init__(self.sde_file)
+
+    def __init__(self, fname):
+        super(ConfigESRISDE, self).__init__(fname)
 
 
 class ConfigESRIShp(_BaseFileSource):
     """Config class for ESRI Shape Files"""
+
+    def __init__(self, fname):
+        super(ConfigESRIShp, self).__init__(fname)
 
 
 class ConfigExcel(_BaseFileSource):
@@ -107,7 +103,7 @@ class ConfigExcel(_BaseFileSource):
 
     """
 
-    def __init__(self, workbook: str, table: str = '', worksheet: str = '', range_: str='', expand_cell_range: bool = None):
+    def __init__(self, workbook: str, table: str = '', worksheet: str = '', range_: str = '', expand_cell_range: bool = None):
         if expand_cell_range == True:  # noqa
             expand_cell_range = 'table'
         self.expand_cell_range = expand_cell_range
@@ -236,19 +232,20 @@ class TextFile:
     See https://pandas.pydata.org/docs/reference/api/pandas.read_csv.html
 
     Examples:
-        >>> with TextFile('C:/data.csv', delim='\t', header=('col1','col2')) as Obj:
+        >>> with TextFile('C:/data.csv', delim='\t', header=('col1','col2')) as Obj:  # noqa
         >>>     my_pandas_dataframe = Obj.df
         >>>     print(Obj.df[1])
     """
 
-    def __init__(self, Config: ConfigTextFile, delim=',', header=0, **args):
+    def __init__(self, fname, delim=',', header=0, **args):
         """(class:ConfigTextFile, args)->None
 
         args are passed to the panda's read_csv func call.
         """
         self._header = header
         self._delim = delim
-        self._Config = Config
+
+        self.fname = _path.normpath(fname)
         self._args = args
         self.df = None  # type: [None, _pd.DataFrame]
         self.refresh()
@@ -263,7 +260,7 @@ class TextFile:
 
     def refresh(self):
         """refresh data"""
-        self.df = _pd.read_csv(self._Config.fname, header=self._header, delimiter=self._delim, **self._args)
+        self.df = _pd.read_csv(self.fname, header=self._header, delimiter=self._delim, **self._args)
 
     def close(self):
         """close connection"""
@@ -274,19 +271,24 @@ class TextFile:
 class _ESRIFile(_BaseFileSource):
     """Base class for ESRI file data sources, including layers in
     filesystem geodatabases and shapefiles
+
+    Args:
+        Config (str, ConfigESRIShp, ConfigESRIGeoDBTableOrFeatureClass, ConfigESRISDE) : An instance of a Config class in this module.
+        Also accepts a string and just tries it!
     """
 
-    def __init__(self, Config, cursor_type=ESRICursorType.SearchCursor, cols=(), exclude_cols=('Shape',), where_clause='', **kwargs):
-        """init
-        """
+    def __init__(self, Config, cursor_type=ESRICursorType.SearchCursor, cols=(), exclude_cols=('Shape',), where_clause='', col_rename_func=lambda x: x, **kwargs):
+
         self.Config = Config  # type: [ConfigESRIShp, ConfigESRIGeoDBTableOrFeatureClass, ConfigESRISDE]
 
-        if isinstance(Config, ConfigESRIShp):
+        if isinstance(Config, (ConfigESRIGeoDBTableOrFeatureClass, ConfigESRISDE, ConfigESRIShp)):
             self._fqn = Config.fname
-        elif isinstance(Config, (ConfigESRIGeoDBTableOrFeatureClass, ConfigESRISDE)):
-            self._fqn = Config.lyr_or_tbl_name_fqn
+        elif isinstance(Config, str):
+            self._fqn = _path.normpath(Config)
         else:
             raise ValueError('Expected Config class instance of type ConfigESRIShp, ConfigESRIGeoDBTableOrFeatureClass or ConfigESRISDE')
+
+        self._col_rename_func = col_rename_func
 
         self._cursor_type = cursor_type  # type: ESRICursorType
         self._where_clause = where_clause
@@ -303,7 +305,7 @@ class _ESRIFile(_BaseFileSource):
         else:
             self._cols = cols
 
-        super().__init__(self.Config.fname)
+        super().__init__(self._fqn)
         self.refresh()
 
     def __enter__(self):
@@ -326,6 +328,7 @@ class _ESRIFile(_BaseFileSource):
             # table_as_pandas errors on date types with nulls, hence replaced
             # self.df = _data.table_as_pandas(self._fqn, cols=self._cols, where=self._where_clause, **self._kwargs)
             self.df = _data.table_as_pandas2(self._fqn, cols=self._cols, exclude_cols=self._exclude_cols, where=self._where_clause, **self._kwargs)
+            self.df.columns = list(map(self._col_rename_func, self.df.columns))
         else:
             raise NotImplementedError
 
@@ -351,17 +354,16 @@ class _ESRIFile(_BaseFileSource):
 # with these connection types
 class ESRIShp(_ESRIFile):  # noqa
     """
-    Open shapefile
+    Open layer
     See https://pro.arcgis.com/en/pro-app/latest/arcpy/functions/searchcursor.htm
 
     Use pypika to generate complex where statements:
     https://github.com/kayak/pypika
 
     Args:
-        Config: ConfigESRIShp instance
-        cols: tuple/list of columns to include in the connetion
-        cursor_type: type of datasource to open. See the connections.ESRICursorType enumeration
-        args: passed to the relevant connection call, e.g. arcpy.da.SearchCursor
+        cols: tuple/list of columns to include in the conncetion  # noqa
+        cursor_type: type of datasource to open. See the connections.ESRICursorType enumeration  # noqa
+        args: passed to the relevant connection call, e.g. arcpy.da.SearchCursor  # noqa
     """
 
 
@@ -392,7 +394,7 @@ class ESRISDE(_ESRIFile):  # noqa
         args: passed to the relevant connection call, e.g. arcpy.da.SearchCursor  # noqa
 
     Examples:
-        >>> Cfg = ConfigESRISDE('c:/my.sde', 'my_feature_class')
+        >>> Cfg = ConfigESRISDE('c:/my.sde/my_feature_class')
         >>> with ESRISDE(Cfg) as SDE:
         >>>     df: pandas.DataFrame = SDE.df  # noqa
     """
@@ -404,5 +406,6 @@ class Oracle:
     Notes:
         ESRI spatial features under SDE should be accessed using class ESRISDE.
     """
+
     def __init__(self):
         raise NotImplementedError
