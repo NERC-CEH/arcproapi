@@ -199,8 +199,7 @@ def tuple_list_to_table(x, out_tbl, cols, null_number=None, null_text=None):
 
 
 def field_values(fname: str, col: (str, list), where: (str, None) = None, order_by: (str, None) = None, distinct: bool = False) -> any:
-    """(str, str|iter, str, str, bool) -> list
-
+    """
     Return a list of all values in column col in table tbl.
 
     If col is a single column, returns a list of values, otherwise returns
@@ -212,8 +211,7 @@ def field_values(fname: str, col: (str, list), where: (str, None) = None, order_
         fname (str): input table or table view
         col (str, list): column name(s) as string, a csv or colon seperated string, or a list
         where (str): where clause
-        order_by (str): order by clause like '"OBJECTID" ASC, "Shape_Area" DESC',
-                        default is None, which means order by object id if exists
+        order_by (str): order by clause like '"OBJECTID" ASC, "Shape_Area" DESC', default is None, which means order by object id if exists
         distinct (bool): unique values only
 
     Returns:
@@ -228,13 +226,16 @@ def field_values(fname: str, col: (str, list), where: (str, None) = None, order_
         [1.23,2.34, ..]
 
         Need to check return values our regads SHAPE@XY
+
         >>> field_values('c:\\foo\\bar.shp', col='SHAPE@XY')
 
         Multiple columns with where and order by clauses
+
         >>> field_values('c:\\foo\\bar.shp', col='OID@;Shape_Length', where='"OBJECTID" < 3', order_by='Shape_Length ASC')
         [(1, 2.34), (2, 1.55), ..]
 
         RuntimeError raised, order_by col not in cols
+
         >>> field_values('c:\\foo\\bar.shp', col='SHAPE@XY', order_by='Shape_Length DESC')
         Traceback (most recent call last): ....
     """
