@@ -275,9 +275,21 @@ class _ESRIFile(_BaseFileSource):
     Args:
         Config (str, ConfigESRIShp, ConfigESRIGeoDBTableOrFeatureClass, ConfigESRISDE) : An instance of a Config class in this module.
         Also accepts a string and just tries it!
+        cursor_type: Type of cursor top open, currently only supports SearchCursor
+        cols (tuple, list): List of cols to include in dataset
+        exclude_cols (tuple, list): List of cols to exclude from dataset
+        where_clause (str): Filter records returned with this where clause
+        col_rename_func (any): A function to apply to the column names, defaults to str.lower
+
+    Raies:
+        ValueError: If incorrect class type passed to Config. Config should be an instance of [ConfigESRIShp, ConfigESRIGeoDBTableOrFeatureClass or ConfigESRISDE]
+
+    Notes:
+        Converts all column names to lower case. This is because ESRI geodatabases are not case sensitive to field names, but pandas
+        is, which causes a hell of a lot of niggling issues. Pass col_rename_func = lambda x:x to override thie behaviour
     """
 
-    def __init__(self, Config, cursor_type=ESRICursorType.SearchCursor, cols=(), exclude_cols=('Shape',), where_clause='', col_rename_func=lambda x: x, **kwargs):
+    def __init__(self, Config, cursor_type=ESRICursorType.SearchCursor, cols=(), exclude_cols=('Shape',), where_clause='', col_rename_func=str.lower, **kwargs):
 
         self.Config = Config  # type: [ConfigESRIShp, ConfigESRIGeoDBTableOrFeatureClass, ConfigESRISDE]
 
