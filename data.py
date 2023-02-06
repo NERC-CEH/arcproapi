@@ -463,11 +463,18 @@ def table_as_pandas2(fname: str, cols: (str, list) = None, where: str = None, ex
     Returns:
         pandas.DataFrame: The feature class or table converted to a pandas DataFrame
 
+    Warnings:
+        Raises a warning if as_int and as_float fail to cooerce to their respective type.
+        Common cause of this is nan/na/none values in the coerced column.
+
     Notes:
         The primay key of fname is used as the dataframes index.
         For performance reasons and erroneous errors when viewing the data (e.g. in xlwings), exclude the shape column if not needed.
         The as_int and as_float allows forcing of col to int or float, by default this data is interpreted as objects by pandas (read as strings by SearchCursor).
         "where" is called on arcpy SearchCursor, hence ignores any type conversions forced by as_int and as_float.
+
+        To avoid warnings and correctly cooerce to int and float, a prior call to field_apply_func, using lambda x: 0 if not x or x is None else x
+        will clear up those null values (provided zeros are acceptable).
 
     Examples:
         Get from feature class fc, forcing objectid to be an int
@@ -493,10 +500,16 @@ def table_as_pandas2(fname: str, cols: (str, list) = None, where: str = None, ex
         as_float = (as_float,)
 
     for s in as_int:
-        df[s] = df[s].astype(str).astype(int)
+        try:
+            df[s] = df[s].astype(str).astype(int)
+        except:
+            _warn('Column %s could not be coerced to type int. It probably contains nan/none/na values' % s)
 
     for s in as_float:
-        df[s] = df[s].astype(str).astype(float)
+        try:
+            df[s] = df[s].astype(str).astype(float)
+        except:
+            _warn('Column %s could not be coerced to type int. It probably contains nan/none/na values' % s)
 
     return df
 
@@ -860,29 +873,27 @@ def fields_copy_by_join(fc_dest: str, fc_dest_key_col: str, fc_src: str, fc_src_
 
 # this could be extented to allow multi argument functions by providing named arguments
 # to pass thru
-def fields_apply_func(fc, cols, *args, where_clause=None, show_progress=False):
+def fields_apply_func(fname, cols, *args, where_clause=None, show_progress=False) -> int:
     """
-
-    Updates all cols in where_clause filtered layer fc and applies
-    functions passed to args to them.
+    Applys each function passed to args to each column in cols.
 
     Args:
-        fc (str): path to feature class/shapefile (e.g. c:\tmp\myfile.shp)
+        fname (str): path to feature class/shapefile (e.g. c:\tmp\myfile.shp)
         cols (str, iter): iterable of columns to transform with func(s) in args (str for single col is ok)
         args (any): 1 or more single argument function pointers
         where_clause (str, None): applied to filter rows to be updated (STATE="Washington")
         show_progress (bool): Have this func print a progress bar to the console
 
     Returuns:
-        None
+        int: Number of records processed
 
     Examples:
         >>> f1 = str.lower: f2 = str.upper
         >>> fields_apply_func('c:/my.shp', ['street','town'], f1, f2, where_clause='town="bangor"')
     """
-    fc = _path.normpath(fc)
+    fname = _path.normpath(fname)
     if show_progress:
-        max_ = int(_arcpy.GetCount_management(fc)[0])  # yes get count management gets the count as a fucking string
+        max_ = int(_arcpy.GetCount_management(fname)[0])  # yes get count management gets the count as a fucking string
         PP = _iolib.PrintProgress(maximum=max_)
 
     if isinstance(cols, str): cols = [cols]
@@ -895,8 +906,8 @@ def fields_apply_func(fc, cols, *args, where_clause=None, show_progress=False):
             edit = _arcpy.da.Editor(_arcpy.env.workspace)
             edit.startEditing(False, False)
             edit.startOperation()
-
-        with _arcpy.da.UpdateCursor(fc, cols, where_clause=where_clause) as cursor:
+        n = 0
+        with _arcpy.da.UpdateCursor(fname, cols, where_clause=where_clause) as cursor:
             for i, row in enumerate(cursor):
                 vals = [row[j] for j in range(len(cols))]
                 for f in args:  # function chaining
@@ -907,6 +918,7 @@ def fields_apply_func(fc, cols, *args, where_clause=None, show_progress=False):
                 cursor.updateRow(row)
                 if show_progress:
                     PP.increment()  # noqa
+                n += 1
 
         if _arcpy.env.workspace:
             edit.stopOperation()  # noqa
@@ -920,6 +932,7 @@ def fields_apply_func(fc, cols, *args, where_clause=None, show_progress=False):
             edit.stopEditing(save_changes=False)  # noqa
             del edit
         raise Exception('An exception occured and changes applied by fields_apply_func were rolled back. Further error details follow.') from e
+    return n
 
 
 # this could be extended to allow multi argument functions by providing named arguments
@@ -989,7 +1002,10 @@ def field_recalculate(fc: str, arg_cols: (str, list, tuple), col_to_update: str,
             edit.stopOperation()
             edit.stopEditing(save_changes=False)  # noqa
             del edit
-        raise Exception('An exception occured and changes applied by field_recalculate were rolled back. Further error details follow.') from e
+        raise Exception('An exception occured and changes applied by field_recalculate were rolled back.') from e
+
+
+field_apply_func = field_recalculate  # noqa For convieniance. Original func left in to not break code
 
 
 def del_rows(fname: str, cols: any, vals: any, where: str = None, show_progress: bool = True, no_warn=False) -> int:

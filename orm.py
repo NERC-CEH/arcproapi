@@ -59,7 +59,7 @@ def class_def_to_clip(fname, workspace='None', composite_key_cols='()', short_su
      Examples:
         >>> import arcproapi.orm as orm
         >>> import erammp.config as config  # noqa
-        >>> orm.class_def_to_clip(config.GeoDatabaseLayersAndTables.address_crn_lpis_sq, ('crn', 'plotid'), config.GeoDatabasePaths.erampp)  # noqa
+        >>> orm.class_def_to_clip(config.GeoDatabaseLayersAndTables.address_crn_lpis_sq, ('crn', 'plotid'), config.GeoDatabasePaths.PathsCurrent.erammp)  # noqa
     """
     if short_super:
         s = class_def2(fname, composite_key_cols, workspace)

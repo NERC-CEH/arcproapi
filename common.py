@@ -74,7 +74,6 @@ class eFieldTypeText(_Enum):
     RASTER = 8
     All = 99
 
-
 class eFieldTypeTextForListFields(_Enum):
     """ These are the field type texts that are passed to arcpy.ListFields
     """
@@ -815,6 +814,7 @@ def extent(in_file: str, buffer_length=0, align=False):
 
     # Set initial ext from arcpy Describe object, and convert to int. Min
     # coordinates are rounded down, whilst max coordinates are rounded up.
+    in_file = _path.normpath(in_file)
     desc = _arcpy.Describe(in_file)
     min_x = (int(desc.Extent.XMin))
     min_y = (int(desc.Extent.YMin))
