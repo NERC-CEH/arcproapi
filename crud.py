@@ -21,7 +21,7 @@ import arcpy.da as _da
 import arcproapi.environ as _environ
 import arcproapi.sql as _sql
 import arcproapi.errors as _errors
-
+import arcproapi.structure as _struct
 
 from arcproapi.common import FieldNamesSpecial, get_row_count2 as get_row_cnt, get_id_col  # noqa
 
@@ -34,7 +34,9 @@ class SearchCursor(_da.SearchCursor):
 
     Args:
         fname (str): Name of feature class or table
-        field_names (str, list, tuple): String or iterable of field names to retreive
+
+        field_names (str, list, tuple, None): String or iterable of field names to retreive. Passing None or an empty string will include all fields in the search cursor. load_shape will still be respected.
+
         load_shape (bool): load the geometry, note that the name is mangled in the underlying Row, as the @ symbol is invalid
         **kwargs: Keyword arguments, passed to the arcpy SearchCursor call. See https://pro.arcgis.com/en/pro-app/latest/arcpy/data-access/searchcursor-class.htm
 
@@ -66,10 +68,14 @@ class SearchCursor(_da.SearchCursor):
         fname = _path.normpath(fname)
         self._load_shape = load_shape
         self._rowcount = None
-        if isinstance(field_names, str):
-            field_names = [field_names]
+        if field_names is None or not field_names:
+            field_names = _struct.fields_get(fname)
+        else:
+            if isinstance(field_names, str):
+                field_names = [field_names]
+
         if load_shape and 'SHAPE@' not in field_names:
-            field_names.append('SHAPE@')
+            field_names.append('SHAPE@')  # noqa
         super().__init__(fname, field_names, **kwargs)
 
     def __enter__(self):
@@ -120,6 +126,7 @@ class SearchCursor(_da.SearchCursor):
         self.reset()
         return i
 
+
 class UpdateCursor(_da.UpdateCursor):
     """Wrapper around arcpy.da.SearchCursor. The rows yielded are of class crud.Row,
     which supports accessing values as a property of the Row instance or using indexing
@@ -144,7 +151,7 @@ class UpdateCursor(_da.UpdateCursor):
         >>> with UpdateCursor('c:/my.gdb/mytable', ['OBJECTID', 'CITY'], where_clause='OBJECTID = 10', load_shape=True) as Cur:
         >>>     for R in Cur:
         >>>         R['CITY'] = 'London'  # noqa
-        >>>         R.SHAPEat = <polygon object>
+        >>>         R.SHAPEat = <polygon object>  # noqa
         >>>         Cur.update(R)  # noqa
         10,10
         23.223, 23.223
@@ -202,6 +209,7 @@ class UpdateCursor(_da.UpdateCursor):
 class _Row:
     """
     Wrapper for the row list, enabling accessing row vals by col name"""
+
     class Field:
         """
         Args:
@@ -218,7 +226,6 @@ class _Row:
         def __str__(self):
             """friendly print instance members"""
             return '[%s] %s: %s' % (self.index, self.name, self.value)
-
 
     def __init__(self, row, flds):
         """init"""
@@ -270,8 +277,8 @@ class _Row:
         Examples:
             >>> with SearchCursor('c:/my.gdb/mytable', ['OBJECTID'], where_clause='OBJECTID=10', load_shape=True) as Cur:
             >>>     for R in Cur:
-            >>>         for F in R.fields():
-            >>>             print(F)
+            >>>         for Fld in R.fields():
+            >>>             print(Fld)
 
         """
         ff = zip(self._flds, self._row)
@@ -279,7 +286,6 @@ class _Row:
             f, v = fv
             F = _Row.Field(f, v, i)
             yield F
-
 
     @property
     def Shape(self):
@@ -385,7 +391,6 @@ class CRUD:
             v = Cur.rowcount
             return True if v else False
 
-
     def lookup(self, cols_to_read, key_val_dict, allow_multi=False):
         """(str, str|iter, dic:str) -> any-iter
         Read the values in cols_to_read which matches
@@ -396,7 +401,6 @@ class CRUD:
         in a 2d list.
 
         Args:
-            table: the name of the table
             cols_to_read (str, list, tuple): column name or iterable for multiple columns, Use '*' to retreive all columns, except BLOBS
             key_val_dict: a dictionary of key value pairs, e.g. {'id':1, 'country':'UK'}
             allow_multi: Raise an error if multiple rows match the criteria defined by key_val_dict
@@ -422,7 +426,7 @@ class CRUD:
             >>> 'ON1235', 24000.123
 
             Get as polygon\n
-            >>> row = Crud.lookup('SHAPE@', {'ctry19nm':'Wales'})
+            >>> row = CRUD.lookup('SHAPE@', {'ctry19nm':'Wales'})
             >>> type(row[0])
             <Polygon object at 0x1f70dcf7a00[0x1f70dcf7a80]>
 
@@ -456,8 +460,6 @@ class CRUD:
                 return rows_out
 
             return v
-
-
 
     def upsert(self, search_dict: (dict, None), force_add: bool = False, fail_on_multi: bool = False, fail_on_exists: bool = False, fail_on_not_exists: bool = False, **kwargs) -> (None, int):
         """
@@ -516,7 +518,7 @@ class CRUD:
             if not kwargs or fail_on_exists:
                 raise _errors.UpsertExpectedInsertButHadMatchedRow(_errors.UpsertExpectedInsertButHadMatchedRow.__doc__)
 
-            if get_row_cnt(self._fname, where) > 1 and fail_on_multi:
+            if get_row_cnt(self._fname, where) > 1 and fail_on_multi:  # noqa
                 raise _errors.UpdateCursorGotMultipleRecords(_errors.UpdateCursorGotMultipleRecords.__doc__)
 
             with _da.UpdateCursor(self._fname, cols, where_clause=where) as Cur:
@@ -546,7 +548,6 @@ class CRUD:
                     del Cur
 
         return i
-
 
     def updatew(self, where: str, **kwargs) -> int:
         """(str, str, **kwargs)->None
@@ -583,7 +584,6 @@ class CRUD:
                                        ' string truncation or locking issues.') from r
         return i
 
-
     def delete(self, fail_on_multi=False, error_on_no_rows=True, **kwargs):
         """(kwargs)->None
         Delete a row or rows.
@@ -602,7 +602,7 @@ class CRUD:
         if n > 1 and fail_on_multi:
             raise _errors.DeleteMatchedMutlipleRecords(
                 'Delete key-value pairs %s matched more than 1 record in feature class %s' % (str(kwargs),
-                self._fname)
+                                                                                              self._fname)
             )
 
         if n == 0 and error_on_no_rows:
@@ -611,7 +611,6 @@ class CRUD:
         with _da.UpdateCursor(self._fname, ['OID@'], where_clause=where) as Cur:
             for _ in Cur:
                 Cur.deleteRow()
-
 
     def deletew(self, where: str) -> int:
         """
@@ -633,11 +632,10 @@ class CRUD:
             where = None
 
         with _da.UpdateCursor(self._fname, ['OID@'], where_clause=where) as Cur:
-            for row in Cur:
+            for _ in Cur:
                 Cur.deleteRow()
                 i += 1
         return i
-
 
     def tran_begin(self):
         """begin trans
@@ -656,7 +654,6 @@ class CRUD:
         self._editor.startEditing(False, False)
         self._editor.startOperation()
 
-
     def tran_rollback(self):
         """rollback"""
         if not self._editor:
@@ -666,7 +663,6 @@ class CRUD:
         with _fuckit:
             self._editor.abortOperation()
             self._editor.stopEditing(False)
-
 
     def tran_commit(self):
         """committrans"""
@@ -678,7 +674,6 @@ class CRUD:
             if self._editor.isEditing:
                 self._editor.stopOperation()
                 self._editor.stopEditing(True)
-
 
     @staticmethod
     def _read_col(row, colname):
