@@ -26,7 +26,7 @@ from arcproapi.common import get_row_count as get_row_count  # noqa
 
 import arcproapi.environ as _environ
 import arcproapi.errors as _errors
-
+import arcproapi.decs as _decs
 
 def field_oid(fname):
     """Return name of the object ID field in table table"""
@@ -1325,6 +1325,7 @@ def excel_import_worksheet(xls: str, fname: str, worksheet: str, header_row=1, o
     ExcelToTable(xls, fname, Sheet=worksheet, field_names_row=header_row, **kwargs)
 
 
+@_decs.environ_persist
 def gdb_tables_and_fcs_list(gdb: str, full_path: bool = False, include_dataset: bool = True) -> tuple:
     """
     Get a tuple containing 2 lists, of feature classes and tables in a geodatabase.
@@ -1341,7 +1342,7 @@ def gdb_tables_and_fcs_list(gdb: str, full_path: bool = False, include_dataset: 
         list: A depth-2 tuple, of feature class names and table names, i.e. ([feature classes], [tables])
 
     Notes:
-        Temporaily changes the workspace. Returns it to original on error or completion
+        Temporaily changes the workspace. Returns it to original on error or completion using dec.environ_persist
 
     Examples:
         >>> gdb_tables_and_fcs_list('C:/my.gdb')
@@ -1354,31 +1355,27 @@ def gdb_tables_and_fcs_list(gdb: str, full_path: bool = False, include_dataset: 
     if not _common.is_gdb(gdb):
         raise ValueError('%s is not a valid file geodatabase path' % gdb)
 
-    try:
-        curws = _arcpy.env.workspace
-        _environ.workspace_set(gdb)
+    curws = _arcpy.env.workspace
+    _environ.workspace_set(gdb)
 
-        fcs, tbls = [], []
-        for fds in _arcpy.ListDatasets(feature_type='feature') + ['']:  # list in datasets and stuff not in datasets, i.e. dateset=''
-            for fc in _arcpy.ListFeatureClasses(feature_dataset=fds):
-                if full_path:
-                    fcs.append(_path.join(_arcpy.env.workspace, fds, fc))
-                elif include_dataset:
-                    fcs.append(_iolib.fixp(fds, fc))
-                else:
-                    fcs.append(fc)
+    fcs, tbls = [], []
+    for fds in _arcpy.ListDatasets(feature_type='feature') + ['']:  # list in datasets and stuff not in datasets, i.e. dateset=''
+        for fc in _arcpy.ListFeatureClasses(feature_dataset=fds):
+            if full_path:
+                fcs.append(_path.join(_arcpy.env.workspace, fds, fc))
+            elif include_dataset:
+                fcs.append(_iolib.fixp(fds, fc))
+            else:
+                fcs.append(fc)
 
-        tbl_list = _arcpy.ListTables()
+    tbl_list = _arcpy.ListTables()
 
-        if tbl_list:
-            for tbl in tbl_list:
-                if full_path:
-                    tbls.append(_iolib.fixp(_arcpy.env.workspace, tbl))
-                else:
-                    tbls.append(tbl)
-    finally:
-        _environ.workspace_set(curws)  # noqa
-
+    if tbl_list:
+        for tbl in tbl_list:
+            if full_path:
+                tbls.append(_iolib.fixp(_arcpy.env.workspace, tbl))
+            else:
+                tbls.append(tbl)
     return fcs, tbls  # noqa
 
 

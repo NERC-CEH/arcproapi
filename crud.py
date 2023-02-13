@@ -321,13 +321,21 @@ class CRUD:
         fname = _path.normpath(fname)
         self._workspace_txt = workspace
         self._fname = fname
-        self._enable_transactions = enable_transactions
         self._transaction = None
-        self._workspace = _environ.workspace_set(workspace)
-
+        self._workspace = None
         self._editor = None
-        if self._enable_transactions:
-            self._editor = _da.Editor(self._workspace)
+
+        if enable_transactions:
+            if not workspace:
+                _warn('enable_transactions was True, but no workspace was passed. You must pass the workspace to support transactions.\n\n*** Transactions are disabled ***')
+                self._enable_transactions = False
+            else:
+                self._workspace = _environ.workspace_set(workspace)
+                self._editor = _da.Editor(self._workspace)
+                self._enable_transactions = True
+        else:
+            self._enable_transactions = False
+
 
     def __enter__(self):
         """enter"""

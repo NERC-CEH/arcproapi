@@ -29,6 +29,8 @@ from arcproapi.data import key_info  # noqa - expose here as well - makes sense
 
 import arcproapi.environ as _environ
 import arcproapi.errors as _errors
+import arcproapi.decs as _arcdecs
+
 
 def gdb_row_counts(gdb: str, match: (str, list) = '*', where: (str, None) = None) -> _pd.DataFrame:  # noqa
     """
@@ -49,6 +51,7 @@ def gdb_row_counts(gdb: str, match: (str, list) = '*', where: (str, None) = None
         The where is passed to get_row_count2, against all tables/feature classes that are matched,
         hence it is highly likely to raise an error unless you know what you are querying!
         I possible use is to reduce query time in finding empty tables, by limiting on OBJECTID.
+        gdb_dump_struct omits row counts, hence is quicker
 
     Examples:
         >>> gdb = r'C:\my.gdb'  # noqa
@@ -77,6 +80,61 @@ def gdb_row_counts(gdb: str, match: (str, list) = '*', where: (str, None) = None
     return df
 
 
+def gdb_dump_tables_and_fcs(gdb: str, save_to: (str, None) = None,
+                    overwrite_xlsx: bool = False) -> _pd.DataFrame:  # noqa
+    """
+    Write out the tables and feature classes of a gdb to excel
+
+    Performs quicker than gdb_row_counts.
+
+    Args:
+        gdb (str): the geodatabase, set the environment.
+        save_to (str, None): dump to this excel file if provided. Is normpathed.
+        overwrite_xlsx (bool): Overwrite the file given in save_to
+
+    Returns:
+        pandas.DataFrame: A pandas datafrome of the fcs/tables
+
+    Raises:
+        FileExistsError: If save_to is given and the file exists, but overwrite_xlsx is False
+
+    Notes:
+        *** This sets the arcpy workspace ***
+        All filters are case insensitive
+
+    Examples:
+        >>> df_out = gdb_dump_tables_and_fcs('C:/my.gdb', 'C:/struct.xlsx')
+    """
+    gdb = _path.normpath(gdb)
+
+    out = {'fullname': [],
+           'name': [],
+           'type': []}
+
+    fcs, tbls = _struct.gdb_tables_and_fcs_list(gdb)
+
+    def _add_fld(fullname: str, name: str, type_: str):
+        out['fullname'] += [fullname]
+        out['name'] += [name]
+        out['type'] += [type_]
+
+    for fc in fcs:
+        _add_fld(_iolib.fixp(gdb, fc), fc, 'feature class')
+
+
+    for tbl in tbls:
+        _add_fld(_iolib.fixp(gdb, tbl), tbl, 'table')
+    df = _pd.DataFrame(out)
+    if save_to:
+        save_to = _path.normpath(save_to)
+        if overwrite_xlsx:
+            _iolib.file_delete(save_to)
+        df.to_excel(save_to)
+    return df
+
+
+
+@_arcdecs.environ_persist
 def gdb_dump_struct(gdb: str, save_to: (str, None) = None,
                     layer_match: (str, list, None) = None, field_match: (str, list, None) = None,
                     field_type_match: (str, list, None) = None,
@@ -85,7 +143,6 @@ def gdb_dump_struct(gdb: str, save_to: (str, None) = None,
     """
     Write the struture of a gdb
     May also work with SDE connection, but untested.
-
 
     Args:
         gdb (str): the geodatabase, set the environment.
@@ -107,7 +164,6 @@ def gdb_dump_struct(gdb: str, save_to: (str, None) = None,
         FileExistsError: If save_to is given and the file exists, but overwrite_xlsx is False
 
     Notes:
-        *** This sets the arcpy workspace ***
         All filters are case insensitive
 
     Examples:
@@ -266,7 +322,7 @@ def sde_fname_struct_as_dict(file_path: str) -> dict:
 
 if __name__ == '__main__':
     with _fuckit:
-        import xlwings
+        import xlwings  # noqa
 
     # Use for quick debugging
     # row_counts
@@ -275,12 +331,13 @@ if __name__ == '__main__':
         dframe = gdb_row_counts(db, match='__ATT')  # all attachment tables
         xlwings.view(dframe)
 
-    # dump struct
-    df_ = gdb_dump_struct('C:/GIS/erammp_local/submission/staged/raw/botany/botany.gdb',
-                          save_to='C:/GIS/erammp_local/submission/staged/raw/botany/botany_struct.xlsx',
-                          field_type_match=['str', 'text'],
-                          overwrite_xlsx=True)
-    xlwings.view(df_)
+        # dump struct
+        df_ = gdb_dump_struct('C:/GIS/erammp_local/submission/staged/raw/botany/botany.gdb',
+                              save_to='C:/GIS/erammp_local/submission/staged/raw/botany/botany_struct.xlsx',
+                              field_type_match=['str', 'text'],
+                              overwrite_xlsx=True)
+        xlwings.view(df_)
 
+        gdb_dump_tables_and_fcs(r'S:\GMEP_Restricted\WP3_Restricted\WG_Data_Handover\EIDC_GMEP_SPATIAL\GMEP_SPATIAL_v2.gdb', save_to=r'S:\GMEP_Restricted\WP3_Restricted\WG_Data_Handover\EIDC_GMEP_SPATIAL\GMEP_SPATIAL_v2_checkout.xlsx')
     pass
     exit()
