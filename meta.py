@@ -5,9 +5,8 @@ import os.path as _path
 import arcpy as _arcpy
 
 import arcproapi as _arcapi
-
 import arcproapi.common as _common
-from arcproapi.errors import *  # noqa
+
 
 
 def meta(datasource, mode="PREPEND", **args):
@@ -50,7 +49,7 @@ def meta(datasource, mode="PREPEND", **args):
     >>> meta(fc, 'append', purpose='example', abstract='Column Spam means eggs')
     """
     raise NotImplementedError
-    #https://github.com/Esri/arcgis-pro-metadata-toolkit
+    # https://github.com/Esri/arcgis-pro-metadata-toolkit
     # Need to convert so compatible with arcpro
 
     import xml.etree.ElementTree as ET
@@ -143,8 +142,7 @@ def meta(datasource, mode="PREPEND", **args):
         f.write(mf)
 
     # import new xml file as metadata
-    _arcapi.ImportMetadata_conversion(tmpmetadatafile, datasource) # noqa
-
+    _arcapi.ImportMetadata_conversion(tmpmetadatafile, datasource)  # noqa
 
     _common.msg("Updated metadata for " + str(datasource))
 
@@ -155,3 +153,36 @@ def meta(datasource, mode="PREPEND", **args):
         pass
 
     return reader
+
+
+def write_basic(fname: str, summary: str = '', description: str = '') -> bool:
+    """
+    Write out summary and description metadata to table/fc fname.
+    All errors are suppressed.
+
+    Args:
+        fname (str):
+        summary (str):
+        description (str):
+
+    Returns:
+        bool: True if write worked, false if error
+
+    Examples:
+        >>> write_basic('C:/my.gdb', 'my summary', 'my description')
+        True
+    """
+    out = False
+    fname = _path.normpath(fname)
+    try:
+        M = _arcpy.metadata.Metadata(fname)
+        M.summary = summary
+        M.description = description
+        M.save()  # noqa
+        out = True
+    finally:
+        try:  # paranoid about ESRI not clearing up properly
+            del M
+        except:
+            pass
+    return out

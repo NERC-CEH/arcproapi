@@ -24,6 +24,8 @@ with _fuckit:
 import funclite.iolib as _iolib
 import funclite.baselib as _baselib
 import funclite.stringslib as _stringslib
+from funclite.pandaslib import df_to_dict_as_records_flatten1 as df_to_dict  # noqa Used to convert a standard dataframe into one accepted by field_update_from_dict and field_update_from_dict1
+
 
 import arcproapi.structure as _struct
 #  The following are data-like operations defined in structure. They
@@ -592,14 +594,14 @@ def field_update_from_dict2(fname: str, key_dict: dict, update_dict: dict, where
 
 
 def field_update_from_dict1(fname: str, dict_: dict, col_to_update: str, key_col: str,
-                            where: str = '', na: any = None,
+                            where: str = '', na: any = (1,1),
                             field_length: int = 50, show_progress=False):
-    """Update column in a table with values from a dictionary. But
-    will add the column (col_to_update) if it does not exist.
+    """Update column in a table with values from a dictionary.
+    Will add the column (col_to_update) if it does not exist.
 
     The added column is forced to a text of length field_length.
 
-    Return number of updated records.
+    *** DANGER *** Passing na=None will overwrite any unmatched records, USE WITH EXTREME CAUTION!!!!
 
     Args:
         fname (str): table to update
@@ -612,7 +614,7 @@ def field_update_from_dict1(fname: str, dict_: dict, col_to_update: str, key_col
         where (str): where clause to select rows to update in the feature class
 
         na (any): value to be used instead of new value for non-matching records,
-            default is None, use (1,1) to leave original value if match is not found
+            Pass None to null out unmatched values. (1,1) will leave original value if match is not found
 
         field_length (int): Field length
         show_progress (bool): Show progress
@@ -628,7 +630,7 @@ def field_update_from_dict1(fname: str, dict_: dict, col_to_update: str, key_col
         >>> d = {1: 'EN', 2:'ST', 3:'WL', 4:'NI'}
         Explicit declaration of update and key columns. Here we assume the numerics in d are "country_num"
         and we update country_code accordingly.
-        >>> field_update_from_dict(fc, d, col_to_update='country_code', key_col='country_num', na='Other')
+        >>> field_update_from_dict1(fc, d, col_to_update='country_code', key_col='country_num', na='Other')
     """
     if not _struct.field_exists(fname, col_to_update):
         _struct.AddField(fname, col_to_update, 'TEXT', field_length=field_length, field_is_nullable=True)
@@ -654,6 +656,10 @@ def field_update_from_dict(fname: str, dict_: dict, col_to_update: str, key_col:
 
     Returns:
         int: Number of updated records
+
+    Notes:
+        Use data.df_to_dict (direct import of funclite.pandaslib.df_to_dict_as_records_flatten1) to convert a dataframe to the required format to
+        be consumed by this function.
 
     Examples:
         >>> fc = 'c:\\foo\\bar.shp'
@@ -692,7 +698,7 @@ def field_update_from_dict(fname: str, dict_: dict, col_to_update: str, key_col:
         for row in uc:
             ido = row[0]
             if identity:
-                # branch that leaves unmatched records unchanged but only if we are using an identity, weird
+                # branch that leaves unmatched records unchanged if na = (1,1)
                 if ido in dict_:
                     newval = dict_[ido]
                     if selfupdate:
@@ -1002,7 +1008,7 @@ def field_recalculate(fc: str, arg_cols: (str, list, tuple), col_to_update: str,
             edit.stopOperation()
             edit.stopEditing(save_changes=False)  # noqa
             del edit
-        raise Exception('An exception occured and changes applied by field_recalculate were rolled back.') from e
+        raise Exception('An exception occured and changes applied by field_recalculate were rolled back.\n\nException: %s' % str(e)) from e
 
 
 field_apply_func = field_recalculate  # noqa For convieniance. Original func left in to not break code

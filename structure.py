@@ -538,6 +538,42 @@ def field_exists(fname: str, field_name: str, case_insensitive: bool = True) -> 
     return field_name in fields_get(fname)
 
 
+def field_add(in_table, field_name, field_type, field_precision=None, field_scale=None, field_length=None, field_alias=None, field_is_nullable=None, field_is_required=None, field_domain=None) -> (None, int, float, complex, str, dict):
+    """
+    Wrapper for arcpy.AddField, this does an exists check first, hence
+    will not raise an error if the field exists
+
+    Args:
+        in_table (str): feture class/table path
+        field_name (str): field name
+        field_type (str): type, use common.EnumFieldTypeText.<member>.name to get the required field_type text value
+        field_precision (int): precision
+        field_scale (int): scale
+        field_length (int): Field length
+        field_alias (str): Field alias
+        field_is_nullable (bool): Is nullable
+        field_is_required (bool): Is required
+        field_domain (str): name of domain for the field
+
+    Returns:
+        AddField result: whatever addfield returns, not properly documented by ESRI
+        None: If the field already exists
+
+
+    Notes:
+        For a description, do help(arcpy.AddField).
+        All these args are taken directly from AddField and just passed into the AddField call as-is
+
+    Examples:
+        >>> field_add('c:/my.gdb', 'this_field_exists', **kwargs)  # noqa
+        None
+    """
+    in_table = _path.normpath(in_table)
+    if field_exists(in_table, field_name):
+        return None
+    return AddField(in_table, field_name, field_type, field_precision, field_scale, field_length, field_alias, field_is_nullable, field_is_required, field_domain)
+
+
 def fields_exist(fname: str, *args) -> bool:
     """
     Do all fields exist in a data store. Names passed as args, NOT a list.
@@ -576,7 +612,7 @@ def field_retype(fname: str, field_name: str, change_to: (str, type), default_on
         change_to (str, type):
             In TEXT, FLOAT, DOUBLE, SHORT, LONG, DATE, BLOB, RASTER, GUID.
             Also support python's int, float and str types. NB int translates to LONG
-            Note that these strings are used in the enum, _common.eFieldTypeText
+            Note that these strings are used in the enum, _common.EnumFieldTypeText
 
         show_progress (bool): Print out progress to the console
         **kwargs_override: kwargs passed to the addfield.
@@ -1459,7 +1495,7 @@ def gdb_merge(source: str, dest: str, allow_overwrite=False, show_progress: bool
     return {'tables': src_tbls, 'feature_classes': src_fcs}
 
 
-def gdb_field_rename(gdb: str, to: str, from_: (list, tuple), retype: _common.eFieldTypeText = _common.eFieldTypeText.All, show_progress: bool = False) -> list:
+def gdb_field_rename(gdb: str, to: str, from_: (list, tuple), retype: _common.EnumFieldTypeText = _common.EnumFieldTypeText.All, show_progress: bool = False) -> list:
     """
     Rename all fields in a geodataase
     Args:
@@ -1467,7 +1503,7 @@ def gdb_field_rename(gdb: str, to: str, from_: (list, tuple), retype: _common.eF
         to (str): Name that it should be
         from_ (list, tuple): Iterable of names to match
 
-        retype (_common.eFieldTypeText): Retype to this (experimental). If retype is set to All (default) then no retyping will occur.
+        retype (_common.EnumFieldTypeText): Retype to this (experimental). If retype is set to All (default) then no retyping will occur.
                                         Note that this is the arcpy AddField type string directive
 
         show_progress (bool): Print progress to the terminal
@@ -1490,7 +1526,7 @@ def gdb_field_rename(gdb: str, to: str, from_: (list, tuple), retype: _common.eF
             continue
 
         assert isinstance(fld, _arcpy.Field)
-        if retype != _common.eFieldTypeText.All and not _common.lut_field_types[fld.type] == retype.name:
+        if retype != _common.EnumFieldTypeText.All and not _common.lut_field_types[fld.type] == retype.name:
             try:
                 field_retype(fname, fld.name, change_to=_common.lut_field_types[retype.name])
             except Exception as e:

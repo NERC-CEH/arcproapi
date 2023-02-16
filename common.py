@@ -52,7 +52,7 @@ class FieldNamesSpecial:
     xyz = 'SHAPE@XYZ'
 
 
-class eFieldTypeText(_Enum):
+class EnumFieldTypeText(_Enum):
     """Field Type text as required for addfield.
     
     Use as_text to get the required string.
@@ -61,7 +61,7 @@ class eFieldTypeText(_Enum):
     returned by the the type property of an arcpy.Field instance.
 
     Examples:
-        >>> eFieldTypeText.DATE.name
+        >>> EnumFieldTypeText.DATE.name
         'DATE'
     """
     DATE = 1

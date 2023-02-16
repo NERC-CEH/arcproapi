@@ -1077,7 +1077,7 @@ class ORM(_crud.CRUD):
             return fname_log
 
         _struct.fc_schema_copy(fname_parent, fname_log)
-        _struct.AddField(fname_log, 'action', _common.eFieldTypeText.TEXT.name, field_length=50)
+        _struct.AddField(fname_log, 'action', _common.EnumFieldTypeText.TEXT.name, field_length=50)
         return fname_log
 
     @staticmethod
