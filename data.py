@@ -943,7 +943,7 @@ def fields_apply_func(fname, cols, *args, where_clause=None, show_progress=False
 
 # this could be extended to allow multi argument functions by providing named arguments
 # to pass thru
-def field_recalculate(fc: str, arg_cols: (str, list, tuple), col_to_update: str, func, where_clause: (str, None) = None, show_progress: bool = False):
+def field_recalculate(fc: str, arg_cols: (str, list, tuple), col_to_update: str, func, where_clause: (str, None) = None, show_progress: bool = False) -> int:
     """
     Very similiar to ArcPro's Calculate Field.
     Take in_cols values, apply a function to these values to recalculate col_to_update.
@@ -961,7 +961,7 @@ def field_recalculate(fc: str, arg_cols: (str, list, tuple), col_to_update: str,
         show_progress (bool): Have this func print a progress bar to the console
 
     Returns:
-        None
+        int: Number of records processed
 
     Notes:
         arcproapi.structure exposes AddField, use this to add your field to recalculate if it doesnt exist!
@@ -979,7 +979,7 @@ def field_recalculate(fc: str, arg_cols: (str, list, tuple), col_to_update: str,
         PP = _iolib.PrintProgress(maximum=max_)
 
     if isinstance(arg_cols, str): arg_cols = [arg_cols]
-
+    j = 0
     try:
         # Update cursor behaves differently the environment has a workspace set
         # Specifically, updates must be put in an edit session, otherwise arcpy raises
@@ -996,13 +996,14 @@ def field_recalculate(fc: str, arg_cols: (str, list, tuple), col_to_update: str,
                 cursor.updateRow(row)
                 if show_progress:
                     PP.increment()  # noqa
+                j += 1
 
         if _arcpy.env.workspace:
             edit.stopOperation()  # noqa
             if edit.isEditing:
                 edit.stopEditing(save_changes=True)  # noqa
             del edit
-
+        return j
     except Exception as e:
         with _fuckit:
             edit.stopOperation()

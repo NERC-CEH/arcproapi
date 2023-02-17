@@ -12,7 +12,6 @@ import arcpy as _arcpy
 
 import arcproapi.errors as _errors
 
-
 # Keys is the field type string as a property of arcpy ListFields Field instance
 # Values are the type strings used by arcpy AddField
 lut_field_types = {
@@ -74,6 +73,7 @@ class EnumFieldTypeText(_Enum):
     RASTER = 8
     All = 99
 
+
 class eFieldTypeTextForListFields(_Enum):
     """ These are the field type texts that are passed to arcpy.ListFields
     """
@@ -90,7 +90,7 @@ class eFieldTypeTextForListFields(_Enum):
     Single = 11
     SmallInteger = 12
     String = 13
-    
+
 
 def tstamp(p="", tf="%Y%m%d%H%M%S", d="_", m=False, s=()):
     """Returns time stamped string.
@@ -671,25 +671,27 @@ def get_id_col(fname):
     return names(fname)[0]
 
 
-def columns_delim(fname: str, cols: (str, list, tuple)) -> list:
+def columns_delim(cols: (str, list, tuple), fname_or_db: str = '') -> list:
     """
     Get a list of properly delimited fields - used to generate where clauses
     for example by pypika
 
     Args:
-        fname (str): fully qualified path to the datasource
         cols (list, str, tuple): string or iterable of column names
+        fname_or_db (str): fully qualified path to the datasource
 
     Notes:
-        https://github.com/kayak/pypika
-        https://desktop.arcgis.com/en/arcmap/10.3/analyze/arcpy-functions/addfielddelimiters.htm
+        https://pro.arcgis.com/en/pro-app/latest/arcpy/functions/addfielddelimiters.htm
+        Defaults to the current workspace if fname_or_db evaluates to false
 
     Examples:
-        >>> columns_delim('c:/geo.gdb', ('col_a', 'col_b'))
+        >>> columns_delim(('col_a', 'col_b'), 'c:/geo.gdb')
         ['"col_a"', '"col_b"']
     """
+    if not fname_or_db:
+        fname_or_db = _arcpy.env.workspace
     if isinstance(cols, str): cols = (cols,)
-    return [_arcpy.AddFieldDelimiters(fname, s) for s in cols]
+    return [_arcpy.AddFieldDelimiters(fname_or_db, s) for s in cols]
 
 
 def is_shp(fname: str) -> bool:

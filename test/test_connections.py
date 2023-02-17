@@ -41,7 +41,7 @@ class Test(unittest.TestCase):
     def test_esri_feature_class(self):
         """testfunc"""
         cols = ('STATE_NAME', 'STATE_FIPS')
-        f = sql.columns_delim(self.gdb, cols)  # just to test this
+        f = sql.columns_delim(cols, self.gdb)  # just to test this
         w = sql.query_where_in('STATE_NAME', values=('Illinois','Texas'), datasource=self.gdb)
 
         Config = conn.ConfigESRIGeoDBTableOrFeatureClass(fname=self.gdb, lyr_or_tbl_name=self.illinois)

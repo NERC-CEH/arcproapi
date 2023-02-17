@@ -4,14 +4,10 @@ Base classes from pypika are imported exposed here
 See https://github.com/kayak/pypika
 """
 
-
-from pypika import Query, Table, Schema
+#  from pypika import Query, Table, Schema
 
 from arcproapi.common import columns_delim
-from arcproapi.common import  FieldNamesSpecial as _FieldNamesSpecial
 from funclite.stringslib import get_between as _getb
-
-
 
 
 def query_where_in(field_name: str, values: (tuple, str, list), datasource: str = '', override_field_delim: str = ''):
@@ -19,9 +15,9 @@ def query_where_in(field_name: str, values: (tuple, str, list), datasource: str 
     build a simple where IN ( query
 
     Args:
-        field_name: name of column to query
-        values: iterable or single value to match
-        datasoure:
+        field_name (str): name of column to query
+        values (tuple, str, list): iterable or single value to match
+        datasource (str):
             path to datasource, passed to columns_delim to add delimited for field_name
             see https://desktop.arcgis.com/en/arcmap/10.3/analyze/arcpy-functions/addfielddelimiters.htm
         override_field_delim (str): override the field delim
@@ -41,22 +37,24 @@ def query_where_in(field_name: str, values: (tuple, str, list), datasource: str 
         '"ID" IN (123, 345)'
     """
     if isinstance(values, str): values = [values]
+
     def _f(v):
         if isinstance(v, str):
             return "'%s'" % v
         return str(v)
 
+    # not currently used
     def _getdelim(v):
         if override_field_delim:
             return '%s%s%s' % (override_field_delim, v, override_field_delim)
-        return columns_delim(field_name)
+        return columns_delim(field_name, datasource)
 
     if isinstance(values, (int, float, str)):
         values = (values,)
 
     lst = [_f(s) for s in values]
 
-    sql = '%s IN (%s)' % (_getdelim(field_name), ','.join(lst))
+    sql = '%s IN (%s)' % (field_name, ','.join(lst))
     return sql
 
 
@@ -74,17 +72,29 @@ def strip_where(sql):
     return sql
 
 
-def query_where_and(table, **kwargs):
-    """ Generates an SQL WHERE matching the kwargs passed. """
+def query_where_and(datasource: str = '', **kwargs) -> str:
+    """ Generates an SQL WHERE matching the kwargs passed.
+
+    Args:
+        datasource (str): The datasource, can be shapefile path, or path to a database. Used to get the correct column delimiters. Uses current workspace if evaluates to False.
+        kwargs: The keyword arguments from which to build the ANDed where.
+
+    Returns:
+        str: The query
+
+    Examples:
+        >>> query_where_and(a=1, b='here')
+        'a=1 AND b="here"'
+    """
     sql = list()
     if kwargs:
-        sql.append( + " 1=1 " + " AND ".join("%s = '%s'" % (columns_delim(k), v)
-                                           for k, v in kwargs.items()))
+        sql.append(" 1=1 " + " AND ".join("%s = '%s'" % (columns_delim(k, datasource), v)
+                                            for k, v in kwargs.items()))
     sql.append(";")
     return "".join(sql)
 
 
-def is_not_null(fld: str)->str:
+def is_not_null(fld: str) -> str:
     """
     More a memory aid for the syntax for now
 
@@ -101,7 +111,7 @@ def is_not_null(fld: str)->str:
     return '%s IS NOT NULL' % fld
 
 
-def is_null(fld: str)->str:
+def is_null(fld: str) -> str:
     """
     More a memory aid for the syntax for now
 
@@ -128,5 +138,6 @@ def str_not_start_with_digit(fld) -> str:
     Returns:
         str: the query
     """
-    s = "{0} NOT LIKE '0%' And {0} NOT LIKE '1%' And {0} NOT LIKE '2%' And {0} NOT LIKE '3%' And {0} NOT LIKE '4%' And {0} NOT LIKE '5%' And {0} NOT LIKE '6%' And {0} NOT LIKE '7%' And {0} NOT LIKE '8%' And {0} NOT LIKE '9%'".format(fld)
+    s = "{0} NOT LIKE '0%' And {0} NOT LIKE '1%' And {0} NOT LIKE '2%' And {0} NOT LIKE '3%' And {0} NOT LIKE '4%' And {0} NOT LIKE '5%' And {0} NOT LIKE '6%' And {0} NOT LIKE '7%' And {0} NOT LIKE '8%' And {0} NOT LIKE '9%'".format(
+        fld)
     return s
