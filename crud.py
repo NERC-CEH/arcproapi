@@ -40,26 +40,30 @@ class SearchCursor(_da.SearchCursor):
         load_shape (bool): load the geometry, note that the name is mangled in the underlying Row, as the @ symbol is invalid
         **kwargs: Keyword arguments, passed to the arcpy SearchCursor call. See https://pro.arcgis.com/en/pro-app/latest/arcpy/data-access/searchcursor-class.htm
 
+    Methods:
+        OIDField: The field name of the objectid field
+        OID: The OID value for current row
+
     Notes:
+        Always loads in the OID field, exposed as method <instance>.OID
         Unexpected 'A column was specified which does not exist' may be solved by using 'FID' instead of 'ObjectID'. Sometimes using OID@ doesnt even work.
         A useful kwarg is where_clause, e.g. where_clause='OBJECTID=10'
 
     Examples:
-        >>> with SearchCursor('c:/my.gdb/mytable', ['OBJECTID'], where_clause='OBJECTID=10', load_shape=True) as Cur:
+        >>> with SearchCursor('c:/my.gdb/mytable', ['country'], where_clause='OBJECTID=10', load_shape=True) as Cur:
         >>>     for R in Cur:
-        >>>         R.OBJECTID, R['OBJECTID']  # noqa
+        >>>         R.OID, R['OID']  # noqa
         >>>         R.SHAPEat.area, R['SHAPE@'].area # noqa
+        >>>         R.country  # noqa
         10,10
         23.223, 23.223
+        'wales'
         """
 
     def __init__(self, fname: str, field_names: (str, list, tuple), load_shape: bool = False, **kwargs):
         # no comments here, otherwise it breaks pycharms ctrl-Q documentation
-        if fname[-4:] == '.shp' and 'objectid' in [s.lower() for s in field_names]:
-            _warn('This may error with an unexpected "A column was specified which does not exist."'
-                  'Shapefiles have their primary key named "FID", not "ObjectID". ObjectID is used in geodatabases.'
-                  )
-
+        fname = _path.normpath(fname)
+        self.OIDField: str = _struct.field_oid(fname)
         if kwargs.get('where_clause') and '"' in kwargs['where_clause']:
             # It is likely that different ESRI feature classes will use double quotes for strings in the where
             # But this works for geodatabases and shapefiles ...
@@ -76,6 +80,12 @@ class SearchCursor(_da.SearchCursor):
 
         if load_shape and 'SHAPE@' not in field_names:
             field_names.append('SHAPE@')  # noqa
+
+        fn = field_names
+        fn += ['OID@']
+        if self.OIDField.lower() not in map(str.lower, fn):
+            field_names += [self.OIDField]
+
         super().__init__(fname, field_names, **kwargs)
 
     def __enter__(self):
@@ -112,8 +122,12 @@ class SearchCursor(_da.SearchCursor):
         raise _errors.ReadOnlyError('SearchCursor items are read only')
 
     @property
-    def rowcount(self):
-        """Get row count. This can be called first, then the cursor can still be reused"""
+    def rowcount(self) -> int:
+        """Get row count. This can be called first, then the cursor can still be reused
+
+        Returns:
+            int: The row count
+        """
         if self._rowcount:
             return self._rowcount
         i = 0
@@ -125,6 +139,15 @@ class SearchCursor(_da.SearchCursor):
         self._rowcount = i
         self.reset()
         return i
+
+    @property
+    def OID(self) -> int:
+        """Return the objectid value.
+
+        Returns:
+            int: The objectid value for current row
+        """
+        return self.__dict__.get([self.OIDField])
 
 
 class UpdateCursor(_da.UpdateCursor):

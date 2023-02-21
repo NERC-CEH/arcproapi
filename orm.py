@@ -39,18 +39,18 @@ class EnumMembers(_Enum):
     all_members = 4 + 2 + 1
 
 
-def class_def_to_clip(fname, workspace='None', composite_key_cols='()', short_super=True):
+def class_def_to_clip(fname: str, workspace: str = 'None', composite_key_cols: str = '()', short_super=True):
     """(str, str, list|str)->s
 
     Get columns from feature class/table fname and create
      a class definition based on _BaseORM
 
      Args:
-        fname: path to feature class/table etc
-        workspace: path to workspace, e.g. geodatabase
-        composite_key_cols: either a list:str definining a composite key or a string representing that list
-        .
-        short_super:
+        fname (str): path to feature class/table etc
+        workspace (str): path to workspace, e.g. geodatabase
+        composite_key_cols (str, list): either a list:str definining a composite key or a string representing that list
+
+        short_super (bool):
             set the members up in the created class,
             rather than passing to super() to set in the parent class
 
@@ -139,9 +139,7 @@ def class_def(fname: str, composite_key_cols: (str, list), workspace: str,
             init_args[init_args.index(v)] = '\n%s' % init_args[init_args.index(v)]
 
     init_str = init_str.replace('#', ', '.join(init_args))
-    # memb_str = '\n\t\t'.join(members)
     hdr = class_dec + init_str + super_
-
     return hdr
 
 
@@ -179,14 +177,14 @@ def class_def2(fname: str, composite_key_cols: (list, tuple), workspace: (str, N
     class_dec = class_dec + '\n\tworkspace = %s  # %s' % (workspace, "****DONT FORGET TO CHEK THE WORKSPACE****")
     class_dec = class_dec + '\n\n'
 
-    init_str = '\tdef __init__(self, is_edit_session=False, enable_transactions=False, lazy_load=True #):\n'
+    init_str = '\tdef __init__(self, enable_transactions=False, lazy_load=True, #):\n'
 
     init_args = []
     members = []
     for fld in _struct.field_list(fname, objects=True):  # type:_arcpy.Field
         if fld.baseName.lower() not in map(str.lower, exclude):
             init_args.append('%s=None' % fld.baseName)
-            members.append('\t\tself.%s = %s' % (fld.baseName, fld.baseName))
+            members.append('\tself.%s = %s' % (fld.baseName, fld.baseName))
 
     super_ = ('\t\tsuper().__init__(%s, %s, %s, %s)' %
               ('%s.fname' % _make_class_name(fname),

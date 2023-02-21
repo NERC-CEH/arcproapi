@@ -882,16 +882,20 @@ def fields_copy_by_join(fc_dest: str, fc_dest_key_col: str, fc_src: str, fc_src_
 def fields_apply_func(fname, cols, *args, where_clause=None, show_progress=False) -> int:
     """
     Applys each function passed to args to each column in cols.
+    *** Each function must accept the same args in the same order ***
 
     Args:
         fname (str): path to feature class/shapefile (e.g. c:\tmp\myfile.shp)
-        cols (str, iter): iterable of columns to transform with func(s) in args (str for single col is ok)
+        cols (str, iter): iterable of columns to transform with func(s) in args. Accepts a str for single col.
         args (any): 1 or more single argument function pointers
         where_clause (str, None): applied to filter rows to be updated (STATE="Washington")
         show_progress (bool): Have this func print a progress bar to the console
 
-    Returuns:
+    Returns:
         int: Number of records processed
+
+    Notes:
+        TIP: Use inspect.getfullargspec(<func>).args to get a function argument lists when calling this function.
 
     Examples:
         >>> f1 = str.lower: f2 = str.upper
@@ -900,7 +904,7 @@ def fields_apply_func(fname, cols, *args, where_clause=None, show_progress=False
     fname = _path.normpath(fname)
     if show_progress:
         max_ = int(_arcpy.GetCount_management(fname)[0])  # yes get count management gets the count as a fucking string
-        PP = _iolib.PrintProgress(maximum=max_)
+        PP = _iolib.PrintProgress(maximum=max_, init_msg='Running fields_apply_func...')
 
     if isinstance(cols, str): cols = [cols]
     try:
@@ -965,6 +969,7 @@ def field_recalculate(fc: str, arg_cols: (str, list, tuple), col_to_update: str,
 
     Notes:
         arcproapi.structure exposes AddField, use this to add your field to recalculate if it doesnt exist!
+        TIP: Use inspect.getfullargspec(<func>).args to get a function argument list when calling this function.
 
     Examples:
         Set field "coord_sum" to be the product of fields easting, northing, elevation for all rows in Bangor.
@@ -976,7 +981,7 @@ def field_recalculate(fc: str, arg_cols: (str, list, tuple), col_to_update: str,
     fc = _path.normpath(fc)
     if show_progress:
         max_ = _struct.get_row_count2(fc, where=where_clause)
-        PP = _iolib.PrintProgress(maximum=max_)
+        PP = _iolib.PrintProgress(maximum=max_, init_msg='Applying func "%s" to column "%s" ...' % (func.__name__, col_to_update))  # noqa
 
     if isinstance(arg_cols, str): arg_cols = [arg_cols]
     j = 0
