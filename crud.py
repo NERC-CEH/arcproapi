@@ -52,7 +52,7 @@ class SearchCursor(_da.SearchCursor):
     Examples:
         >>> with SearchCursor('c:/my.gdb/mytable', ['country'], where_clause='OBJECTID=10', load_shape=True) as Cur:
         >>>     for R in Cur:
-        >>>         R.OID, R['OID']  # noqa
+        >>>         R.OIDat, R['OID@']  # noqa
         >>>         R.SHAPEat.area, R['SHAPE@'].area # noqa
         >>>         R.country  # noqa
         10,10
@@ -139,15 +139,6 @@ class SearchCursor(_da.SearchCursor):
         self._rowcount = i
         self.reset()
         return i
-
-    @property
-    def OID(self) -> int:
-        """Return the objectid value.
-
-        Returns:
-            int: The objectid value for current row
-        """
-        return self.__dict__.get([self.OIDField])
 
 
 class UpdateCursor(_da.UpdateCursor):
