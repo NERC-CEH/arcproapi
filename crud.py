@@ -113,7 +113,11 @@ class SearchCursor(_da.SearchCursor):
             r = _Row(super().__next__(), self.fields)
         except RuntimeError as e:
             if 'invalid SQL' in str(e):
-                raise RuntimeError('Invalid SQL statement. Check that the feature class isnt using a text type to store numerics and/or adjust your kwargs')
+                raise RuntimeError('Invalid SQL statement.\n'
+                                   'Check your kwargs.\n'
+                                   'Common errors are mismatched python and geodatabase field types, e.g. writing a python int to a database Long.\n'
+                                   'This can also happen if you inadvertantly set python members to lists or tuples. e.g. <instance>.OBJECTID = (1,)\n'
+                                   'Error was %s' % e)
             else:
                 raise e
         return r
@@ -349,7 +353,6 @@ class CRUD:
                 self._enable_transactions = True
         else:
             self._enable_transactions = False
-
 
     def __enter__(self):
         """enter"""

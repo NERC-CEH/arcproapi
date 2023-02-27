@@ -927,3 +927,46 @@ def version() -> Version:
     """
     d = _arcpy.GetInstallInfo()
     return Version.ArcPro if d['ProductName'] == 'ArcGISPro' else Version.ArcMap
+
+
+def pretty_field_mapping(field_map_str: str, to_console: bool = True, return_it: bool = False) -> (str, None):
+    """Prettify a field mapping.
+    Field mappings look messy when directly pasted from the arcpro tool history.
+    Take the field mapping as pasted, and this will prettify it so that each line
+    represent the mapping for a single field.
+
+    This can be pasted in place of the long fieldmapping string pasted by default from arcpro tool history.
+
+    Also see https://pro.arcgis.com/en/pro-app/latest/tool-reference/analysis/spatial-join.htm
+
+    Args:
+        field_map_str (str): The field mapping string
+        to_console (bool): Print it to the console
+        return_it (bool): return the value
+
+    Returns:
+        str: The field mapping, prettified, if return_it == True
+        None: if not return_it
+
+    Notes:
+        In pycharm, *** send this func to the python console by highlighting and pressing ALT-SHIFT-E ***
+
+    Examples:
+        >>> print(pretty_field_mapping(r'PLOT_TYPE "PLOT_TYPE" true true false 1 Text 0 0,First,#,veg_plot,PLOT_TYPE,0,1;PLOT_NUMBER "PLOT_NUMBER" true...'))
+        (
+        r'PLOT_TYPE "PLOT_TYPE" true ....
+    """
+    lst = ["r'%s;'\n" % v for v in field_map_str.split(';')]
+    lst[-1] = lst[-1].replace(';', '')
+    ss = '%s%s%s' % ('(\n', "".join(lst), ')')
+    if ss[-1:] == ';':
+        ss = ss[0:-1]
+    if field_map_str[-1] == ',': ss += ','
+    if to_console:
+        print(ss)
+    if return_it: return ss
+
+
+if __name__ == '__main__':
+    """ Quick debug/test """
+    pass
