@@ -2,12 +2,17 @@
 
 TODO: Migrate some of these functions to info, structure should be things that ALTER structure, and not query it. However, there would be some crossover risking circular references
 """
+import enum as _enum
 import os.path as _path
 from copy import deepcopy as _deepcopy
 from warnings import warn as _warn
 
 from arcpy.management import CreateFeatureclass, AddJoin, AddRelate, AddFields, AddField, DeleteField, AlterField  # noqa Add other stuff as find it useful ...
-from arcpy.conversion import ExcelToTable, TableToExcel, TableToGeodatabase, TableToDBASE, TableToSAS  # noqa Add other stuff as find it useful ...
+
+# See https://pro.arcgis.com/en/pro-app/latest/tool-reference/data-management/create-domain.htm
+from arcpy.management import CreateDomain, AlterDomain, AssignDomainToField, AddCodedValueToDomain, SortCodedValueDomain  # noqa
+
+from arcpy.conversion import ExcelToTable, TableToExcel, TableToGeodatabase, TableToDBASE, TableToSAS  # noqa
 
 import pandas as _pd
 import fuckit as _fuckit
@@ -27,6 +32,7 @@ from arcproapi.common import get_row_count as get_row_count  # noqa
 import arcproapi.environ as _environ
 import arcproapi.errors as _errors
 import arcproapi.decs as _decs
+
 
 def field_oid(fname):
     """Return name of the object ID field in table table"""
@@ -241,6 +247,61 @@ def fcs_delete(fnames, err_on_not_exists=False):
         except Exception as e:
             if err_on_not_exists:
                 raise e
+
+
+@_decs.environ_persist
+def domains_assign(fname: str, domain_field_dict: dict[str: list[list, str]], show_progress: bool = False) -> tuple[list[str], list[str]]:
+    """
+    Assign domains to multiple fields in layer fname.
+
+    Args:
+        fname (str): The feature class/table
+        domain_field_dict (dict): A dictionary of domain names, as already defined in the geodatabase, with the column name(s) as a list, also accepts the col name as a string.
+        The keys of dict can also be an enumeration, where the enumeration class name is the domain name.
+        show_progress (bool): show progress
+
+    Returns:
+        tuple[list[str], list[str]]: A tuple of successes, failures
+
+    Notes:
+        Further work on supporting linking domains with python enums is anticipated. Hence the enum support for field keys.
+
+    Examples:
+        domain1, valid fields, domain2 - invalid
+        >>> domains_assign({'domain1': ['field11','field12'], 'domain2': 'field2_DOESNOTEXIST'})  # noqa
+        (['domain1:field1', 'domain1:field12'], ['domain2:field2:DOESNOTEXIST'])
+
+        Now passing an enum
+        >>> class E(enum.Enum): a = 1  # noqa
+        >>> domains_assign({E: 'field1'})
+        (['domain1:field1'], [])
+
+    """
+    # TODO: Debug/test domains_assign
+    fname = _path.normpath(fname)
+    _arcpy.env.workspace = _common.workspace_from_fname(fname, simple_gdb_test=True)
+    failed = []
+    success = []
+    if show_progress: PP = _iolib.PrintProgress(iter_=domain_field_dict.items(), init_msg='Setting domains ...')  # noqa
+    for dname, cols in domain_field_dict.items():
+        if isinstance(dname, _enum.EnumMeta):
+            dname = dname.__name__
+        if isinstance(cols, str):
+            cols = [cols]
+        for col in cols:
+            try:
+                AssignDomainToField(fname, col, dname)
+                success += ['%s:%s' % (dname, col)]
+            except Exception as e:
+                if 'schema lock' in str(e):
+                    _warn('Domain assignment failed. *** Schema Lock ***')
+                    serr = '**schema lock**'
+                else:
+                    serr = str(e)
+                failed += ['%s:%s  %s' % (dname, col, serr)]
+        if show_progress:
+            PP.increment()  # noqa
+    return success, failed
 
 
 def cleanup(fname_list, verbose=False, **args):
@@ -485,7 +546,6 @@ def field_list(fname, cols_exclude=(), oid=True, shape=True, objects=False, func
         return [func(f.name) for f in _arcpy.ListFields(fname)
                 if f.name.lower() not in exclude and _filt_fld(f)]
 
-
 def field_type_get(in_field, fc: str = '') -> (str, None):
     """Converts esri field type returned from list fields or describe fields
     to format for adding fields to tables.
@@ -538,7 +598,8 @@ def field_exists(fname: str, field_name: str, case_insensitive: bool = True) -> 
     return field_name in fields_get(fname)
 
 
-def field_add(in_table, field_name, field_type, field_precision=None, field_scale=None, field_length=None, field_alias=None, field_is_nullable=None, field_is_required=None, field_domain=None) -> (None, int, float, complex, str, dict):
+def field_add(in_table, field_name, field_type, field_precision=None, field_scale=None, field_length=None, field_alias=None, field_is_nullable=None, field_is_required=None, field_domain=None) -> (
+        None, int, float, complex, str, dict):
     """
     Wrapper for arcpy.AddField, this does an exists check first, hence
     will not raise an error if the field exists
@@ -1391,7 +1452,6 @@ def gdb_tables_and_fcs_list(gdb: str, full_path: bool = False, include_dataset: 
     if not _common.is_gdb(gdb):
         raise ValueError('%s is not a valid file geodatabase path' % gdb)
 
-    curws = _arcpy.env.workspace
     _environ.workspace_set(gdb)
 
     fcs, tbls = [], []
@@ -1597,5 +1657,4 @@ def rel_one_to_many_create(fname1: str, col1: str, fname_many: str, col_many: st
 
 if __name__ == '__main__':
     #  Quick debugging here
-    rel_one_to_many_create()
     pass

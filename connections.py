@@ -7,6 +7,7 @@ Excel:https://pro.arcgis.com/en/pro-app/latest/help/data/excel/work-with-excel-i
 Currently these connection are read only and return datasets as pandas dataframes.
 """
 import os.path as _path
+import pathlib as _pathlib
 from enum import Enum as _Enum
 
 import pandas as _pd
@@ -15,6 +16,7 @@ import xlwings as _xlwings
 import fuckit as _fuckit
 
 import funclite.iolib as _iolib
+from funclite.iolib import fixp as _fixp
 import arcproapi.data as _data
 
 
@@ -37,6 +39,45 @@ class EnumDataSourceType(_Enum):
 
     OracleTable = 6
     OracleSpatialTable = 7
+
+
+class OracleSDELayer:
+    """ Define connections using an SDE file.
+    Assumes that password and username have been persisted to the file (at least for the moment!).
+
+    Args:
+        sde_file (str): The sde file
+        layer_name (str): The layer name (prepended with dataset, if in dataset)
+        schema (str): The schema, in Oracle SDE the schema is prepended to datasets and the layer name.
+        If this is provided, then the schema will be prepended to create a refrence
+        to the layer as a shortcut to typing out this details in full.
+
+    Notes:
+        normpaths arguments, as always.
+
+    Examples:
+        No schema
+        >>> SDELyr = OracleSDELayer('C:/my.sde', 'MYSCHEMA.mydataset/MYSCHEMA.my_layer', schema='')
+        >>> SDELyr.file
+        'C:\\my.sde\\MYSCHEMA.mydataset/MYSCHEMA.my_layer'
+
+        We cant be arsed writing out the full path with the schama
+        >>> SDELyr = OracleSDELayer('C:/my.sde', 'my_layer', schema='MYSCHEMA')
+        >>> SDELyr.file
+        'C:\\my.sde\\MYSCHEMA.mydataset/MYSCHEMA.my_layer'
+
+    TODO: Integrate into ESRISDE connections
+    """
+    def __init__(self, sde_file: str, layer_name: str, schema: str = ''):
+        self._sde_file = _path.normpath(sde_file)
+        self._layer_name = layer_name
+        self._schema = schema
+
+        if schema:
+            bits = ['%s.%s' % (schema, s) for s in _pathlib.Path(self._layer_name).parts]
+            self.file = _fixp(self._sde_file, *bits)
+        else:
+            self.file = _fixp(self._sde_file, self._layer_name)
 
 
 class _BaseFileSource:

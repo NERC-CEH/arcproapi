@@ -9,7 +9,6 @@ feature classes and tables. This module is intended for the big standalone summa
 Structure on-the-other-hand, has many methods which are consumed directly by other library functions
 """
 
-
 import os.path as _path  # noqa
 
 import arcpy as _arcpy
@@ -30,6 +29,51 @@ from arcproapi.data import key_info  # noqa - expose here as well - makes sense
 import arcproapi.environ as _environ
 import arcproapi.errors as _errors
 import arcproapi.decs as _arcdecs
+
+
+@_arcdecs.environ_persist
+def domain_usage(db_: str) -> (_pd.DataFrame, None):
+    """
+    Get a list of domain usage across a geodatabase
+
+    Args:
+        db_ (str): Path to the geodatabase, should support enterprise and fGDBs
+
+    Returns:
+        Pandas.DataFrame: Pandas dataframe
+        None: If there are no domains in db_
+
+    Credit:
+        Adapted from https://gis.stackexchange.com/a/413675/197165
+
+    Examples:
+        >>> domain_usage('C:/my.gdb')
+        feature_class   domain  field_name
+                   fc  domain1      field1
+
+    """
+    # TODO: DEBUG/TEST domain_usage
+    db_ = _path.normpath(db_)
+    _arcpy.env.workspace = db_
+    domains = _arcpy.da.ListDomains(db_)
+    if not domains: return None
+
+    datasets = _arcpy.ListDatasets(feature_type='Feature')
+
+    out = _baselib.DictList()
+
+    for domain in domains:
+        for fd in datasets:
+            # get the feature classes
+            fcs = _arcpy.ListFeatureClasses(feature_dataset=fd)
+            for fc in fcs:
+                fields = _arcpy.ListFields(fc)
+                for field in fields:
+                    if field.domain == domain:
+                        out['feature_class'] = fc
+                        out['domain'] = domain
+                        out['field_name'] = field.name
+    return _pd.DataFrame(out)
 
 
 def gdb_row_counts(gdb: str, match: (str, list) = '*', where: (str, None) = None) -> _pd.DataFrame:  # noqa
@@ -81,7 +125,7 @@ def gdb_row_counts(gdb: str, match: (str, list) = '*', where: (str, None) = None
 
 
 def gdb_dump_tables_and_fcs(gdb: str, save_to: (str, None) = None,
-                    overwrite_xlsx: bool = False) -> _pd.DataFrame:  # noqa
+                            overwrite_xlsx: bool = False) -> _pd.DataFrame:  # noqa
     """
     Write out the tables and feature classes of a gdb to excel
 
@@ -121,7 +165,6 @@ def gdb_dump_tables_and_fcs(gdb: str, save_to: (str, None) = None,
     for fc in fcs:
         _add_fld(_iolib.fixp(gdb, fc), fc, 'feature class')
 
-
     for tbl in tbls:
         _add_fld(_iolib.fixp(gdb, tbl), tbl, 'table')
     df = _pd.DataFrame(out)
@@ -131,7 +174,6 @@ def gdb_dump_tables_and_fcs(gdb: str, save_to: (str, None) = None,
             _iolib.file_delete(save_to)
         df.to_excel(save_to)
     return df
-
 
 
 @_arcdecs.environ_persist
@@ -254,7 +296,6 @@ def gdb_dump_struct(gdb: str, save_to: (str, None) = None,
     return df
 
 
-
 def sde_fname_struct_as_dict(file_path: str) -> dict:
     """
     Return a dict describing a sde feature class or table details and structure.
@@ -319,7 +360,6 @@ def sde_fname_struct_as_dict(file_path: str) -> dict:
     return sde_dict
 
 
-
 if __name__ == '__main__':
     with _fuckit:
         import xlwings  # noqa
@@ -338,6 +378,7 @@ if __name__ == '__main__':
                               overwrite_xlsx=True)
         xlwings.view(df_)
 
-        gdb_dump_tables_and_fcs(r'S:\GMEP_Restricted\WP3_Restricted\WG_Data_Handover\EIDC_GMEP_SPATIAL\GMEP_SPATIAL_v2.gdb', save_to=r'S:\GMEP_Restricted\WP3_Restricted\WG_Data_Handover\EIDC_GMEP_SPATIAL\GMEP_SPATIAL_v2_checkout.xlsx')
+        gdb_dump_tables_and_fcs(r'S:\GMEP_Restricted\WP3_Restricted\WG_Data_Handover\EIDC_GMEP_SPATIAL\GMEP_SPATIAL_v2.gdb',
+                                save_to=r'S:\GMEP_Restricted\WP3_Restricted\WG_Data_Handover\EIDC_GMEP_SPATIAL\GMEP_SPATIAL_v2_checkout.xlsx')
     pass
     exit()

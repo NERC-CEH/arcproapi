@@ -6,11 +6,16 @@ import os.path as _path
 import datetime as _datetime
 import sys as _sys
 import math as _math
+from pathlib import Path as _Path
 
+
+import arcpy
 import fuckit as _fuckit
 import arcpy as _arcpy
 
 import arcproapi.errors as _errors
+
+import funclite.iolib as _iolib
 
 # Keys is the field type string as a property of arcpy ListFields Field instance
 # Values are the type strings used by arcpy AddField
@@ -741,6 +746,7 @@ def gdb_from_fname(fname: str) -> str:
     Notes:
         Just looks for gdb and slices the string out accordingly.
         Hence will fail if you have a path with multiple occurences of ".gdb"
+        *** Superseeded by workspace_from_fname which handles any compatible spatial data source ***
 
     Examples:
         >>> gdb_from_fname('C:/my.gdb/my/layer')
@@ -749,6 +755,64 @@ def gdb_from_fname(fname: str) -> str:
     if '.gdb' in fname:
         return fname[0:fname.index('.gdb\\') + 4]
     return ''
+
+
+def workspace_from_fname(fname: str, simple_gdb_test: bool = True) -> (str, None):
+    """ Get the workspace from a given layer/table name.
+
+    Also see gdb_from_fname - which this superceeds, but performs quicker for file geodatabases.
+
+    Currently supports Enterprise geodatabases and file geodatabases'
+
+    Args:
+        fname (str): The layer or feature class path
+        simple_gdb_test (bool): Enable calling gdb_from_fname first to try and get the workspace, can save time if know we have a gdb.
+
+    Returns:
+        str: The workspace name
+        None: If no geodatabase could be discerned from fname
+
+    Notes:
+        Oracle SDE layers are a pain and need fully qualifying with schema names.
+        Use an instance of arcproapi.connection.OracleSDELayer to ease creation of fully qualified paths for SDE layers.
+
+        This attempt to call Describe until it gets a match on known properties for spatial databases. Hence performance will probably be slow.
+        At some time, ESRI will hopefully implement the database source when Describe-ing a table or feature class
+
+    Examples:
+        >>> workspace_from_fname('C:/my.gdb/my_layer', simple_gdb_test=True)
+        'C:/my.gdb'
+    """
+    fname = _path.normpath(fname)
+    parts = _Path(fname).parts
+
+    if simple_gdb_test:
+        # if we have a gdb, lets just use that and get out of here for performance reasons, but stick in try catch so don't have to think.
+        ws = None
+        try:
+            ws = gdb_from_fname(fname)  # returns empty string if fails
+        except:
+            pass
+        if ws: return ws
+
+    # TODO Debug/test workspace_from_fname
+    for i in reversed(range(len(parts))):
+        root = _iolib.fixp(*parts[0:i])
+        # Add more try catches for other geodatabases - currently pGDBs and Enterprise Geodbs catered for
+        try:
+            D = _arcpy.Describe(root)
+            try:
+                if D.connectionproperties.instance:
+                    return root
+            except:
+                pass
+
+            if D.connectionproperties.database:
+                return root
+        except:
+            pass
+    return None
+
 
 
 # this is reproduced in stuct, but don'as_rows import as will end up with circular reference issues
