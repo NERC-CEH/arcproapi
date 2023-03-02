@@ -615,9 +615,13 @@ def get_row_count2(fname: str, where: (str, None) = None) -> int:
         2
     """
     n = 0
-    with _arcpy.da.SearchCursor(fname, ['OID@'], where_clause=where) as Cur:
-        for _ in Cur:
-            n += 1
+    try:
+        with _arcpy.da.SearchCursor(fname, ['OID@'], where_clause=where) as Cur:
+            for _ in Cur:
+                n += 1
+    except RuntimeError as e:
+        if 'field was not found' in str(e):
+            raise ValueError('Get_row_count2 failed. The where clause "%s" referenced a field that does not exist in %s' % (where, fname))
     return n
 
 

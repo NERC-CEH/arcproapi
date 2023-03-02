@@ -595,7 +595,7 @@ def field_update_from_dict2(fname: str, key_dict: dict, update_dict: dict, where
 
 def field_update_from_dict1(fname: str, dict_: dict, col_to_update: str, key_col: str,
                             where: str = '', na: any = (1,1),
-                            field_length: int = 50, show_progress=False):
+                            field_length: int = 50, show_progress=False, init_msg: str = ''):
     """Update column in a table with values from a dictionary.
     Will add the column (col_to_update) if it does not exist.
 
@@ -618,6 +618,7 @@ def field_update_from_dict1(fname: str, dict_: dict, col_to_update: str, key_col
 
         field_length (int): Field length
         show_progress (bool): Show progress
+        init_msg (str): Passed to progress status
 
     Returns:
         int: Number of updated records
@@ -634,11 +635,11 @@ def field_update_from_dict1(fname: str, dict_: dict, col_to_update: str, key_col
     """
     if not _struct.field_exists(fname, col_to_update):
         _struct.AddField(fname, col_to_update, 'TEXT', field_length=field_length, field_is_nullable=True)
-    i = field_update_from_dict(fname, dict_, col_to_update, key_col, where=where, na=na, show_progress=show_progress)
+    i = field_update_from_dict(fname, dict_, col_to_update, key_col, where=where, na=na, show_progress=show_progress, init_msg=init_msg)
     return i
 
 
-def field_update_from_dict(fname: str, dict_: dict, col_to_update: str, key_col: str = None, where: str = '', na: any = (1, 1), show_progress=False) -> int:
+def field_update_from_dict(fname: str, dict_: dict, col_to_update: str, key_col: str = None, where: str = '', na: any = (1, 1), show_progress=False, init_msg: str = '') -> int:
     """Update column in a table with values from a dictionary.
 
     Return number of updated records.
@@ -653,6 +654,7 @@ def field_update_from_dict(fname: str, dict_: dict, col_to_update: str, key_col:
         na: value to be used instead of new value for non-matching records,
             default is (1,1), which leaves original value. Else use na=None to null unmatched values.
         show_progress (bool): Show progress
+        init_msg (str): Passed to the progress status
 
     Returns:
         int: Number of updated records
@@ -692,7 +694,7 @@ def field_update_from_dict(fname: str, dict_: dict, col_to_update: str, key_col:
         _warn('No records matched where query "%s" in %s. Did you expect this?' % (where, fname))
 
     if show_progress:
-        PP = _iolib.PrintProgress(maximum=n)
+        PP = _iolib.PrintProgress(maximum=n, init_msg=init_msg)
 
     with _arcpy.da.UpdateCursor(fname, cols, where_clause=where) as uc:
         for row in uc:

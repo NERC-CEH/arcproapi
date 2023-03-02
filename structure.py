@@ -250,7 +250,7 @@ def fcs_delete(fnames, err_on_not_exists=False):
 
 
 @_decs.environ_persist
-def domains_assign(fname: str, domain_field_dict: dict[str: list[list, str]], show_progress: bool = False) -> tuple[list[str], list[str]]:
+def domains_assign(fname: str, domain_field_dict: dict[str: list[list, str]], show_progress: bool = False) -> dict[str:list[str]]:
     """
     Assign domains to multiple fields in layer fname.
 
@@ -261,7 +261,7 @@ def domains_assign(fname: str, domain_field_dict: dict[str: list[list, str]], sh
         show_progress (bool): show progress
 
     Returns:
-        tuple[list[str], list[str]]: A tuple of successes, failures
+       dict[str:list[str]]: A diction of successes and failues {'success':[...], 'fail':[...]}
 
     Notes:
         Further work on supporting linking domains with python enums is anticipated. Hence the enum support for field keys.
@@ -269,12 +269,12 @@ def domains_assign(fname: str, domain_field_dict: dict[str: list[list, str]], sh
     Examples:
         domain1, valid fields, domain2 - invalid
         >>> domains_assign({'domain1': ['field11','field12'], 'domain2': 'field2_DOESNOTEXIST'})  # noqa
-        (['domain1:field1', 'domain1:field12'], ['domain2:field2:DOESNOTEXIST'])
+        {'success': ['domain1:field1', 'domain1:field12'], 'fail': ['domain2:field2:DOESNOTEXIST']}
 
         Now passing an enum
         >>> class E(enum.Enum): a = 1  # noqa
         >>> domains_assign({E: 'field1'})
-        (['domain1:field1'], [])
+        {'success':'domain1:field1'], 'fail': [])
 
     """
     # TODO: Debug/test domains_assign
@@ -301,7 +301,7 @@ def domains_assign(fname: str, domain_field_dict: dict[str: list[list, str]], sh
                 failed += ['%s:%s  %s' % (dname, col, serr)]
         if show_progress:
             PP.increment()  # noqa
-    return success, failed
+    return {'success':success, 'fail':failed}
 
 
 def cleanup(fname_list, verbose=False, **args):
