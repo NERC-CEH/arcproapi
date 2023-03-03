@@ -60,7 +60,7 @@ class Test(unittest.TestCase):
                             , FIPS='C'
                             , Shape=shp
                      ) as B:
-            B.add(tran_commit=False)
+            B.add(tran_commit=False, fail_on_exists=False)
 
             # After the add, change values, refresh and add with a commit
             B.NAME='NAME1'
@@ -85,6 +85,42 @@ class Test(unittest.TestCase):
             ok = B.delete(tran_commit=True)
             assert self.assertTrue(ok)
 
+
+    # @unittest.skip("Temporaily disabled while debugging")
+    def test_add(self):
+        with orm.ORM(self.illinois_gdb, ['NAME', 'STATE_NAME', 'CNTY_FIPS'],
+                     workspace=self.gdb,
+                     NAME='NAME'
+                , STATE_NAME='STATE_NAME'
+                , CNTY_FIPS='A'
+                , STATE_FIPS='B'
+                , FIPS='C'
+                , Shape=
+                     ) as B:
+            B.add(tran_commit=False, fail_on_exists=False)
+
+            # After the add, change values, refresh and add with a commit
+            B.NAME='NAME1'
+            B.STATE_NAME='STATE_NAME1'
+            B.CNTY_FIPS='AA'
+            B.STATE_FIPS='BB'
+            B.FIPS='CC'
+            B.Shape=shp
+            i = B.add(tran_commit=True)
+
+            # change one value and recall update - this edit will use the OID, allowing update of STATE_NAME (part of commposite key)
+            B.STATE_NAME = 'UPDATE'
+            B.update(tran_commit=True)
+
+        with orm.ORM(self.illinois_gdb, workspace=self.gdb, enable_transactions=True) as B:
+            B.STATE_NAME='STATE_NAME'
+            B.delete(err_on_no_key=False)
+
+        with orm.ORM(self.illinois_gdb, workspace=self.gdb, enable_transactions=True, OBJECTID=i, STATE_NAME=None) as B:
+            B.read()  # read in STATE_NAME from the objectid
+            self.assertEquals(B['STATE_NAME'], 'UPDATE')
+            ok = B.delete(tran_commit=True)
+            assert self.assertTrue(ok)
 
 
 

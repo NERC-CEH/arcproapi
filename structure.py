@@ -34,6 +34,24 @@ import arcproapi.errors as _errors
 import arcproapi.decs as _decs
 
 
+def field_alter(fname: str, field_name: str, **kwargs) -> bool:
+    """
+    Just delegates to alter field, but checks if it exists first.
+
+    Args:
+        fname (str): fname
+        field_name (str): field name
+        kwargs: kwargs passed to AlterField. Def: AlterField(new_field_name=None, new_field_alias=None, field_type=None, field_length=None, field_is_nullable=None, clear_field_alias=None)
+
+    Returns:
+       bool: True if altered, otherwise false
+    """
+    field_alter.__doc__ += '\n\n*********************\n%s' % _arcpy.management.AlterField.__doc__
+    fname = _path.normpath(fname)
+    if field_exists(fname, field_name): return False
+    AlterField(fname, field_name, **kwargs)
+    return True
+
 def field_oid(fname):
     """Return name of the object ID field in table table"""
     fname = _path.normpath(fname)
