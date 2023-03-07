@@ -8,6 +8,9 @@ import fuckit as _fuckit
 import arcpy as _arcpy
 from arcpy.conversion import TableToDBASE, TableToExcel, TableToGeodatabase, TableToSAS, TableToTable, ExcelToTable  # noqa
 
+#  from arcpy.management import MakeAggregationQueryLayer, MakeQueryLayer, MakeQueryTable
+
+
 with _fuckit:
     from arcproapi.common import release
 

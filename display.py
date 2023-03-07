@@ -547,12 +547,17 @@ class Map:
 
         # retrieve values with search cursor
         ret = []
-        with _arcpy.da.SearchCursor(obj, cols, where_clause=w, sql_clause=(None, o)) as sc:
-            for row in sc:
-                if multicols:
-                    ret.append(row)
-                else:
-                    ret.append(row[0])
+        try:
+            with _arcpy.da.SearchCursor(obj, cols, where_clause=w, sql_clause=(None, o)) as sc:
+                for row in sc:
+                    if multicols:
+                        ret.append(row)
+                    else:
+                        ret.append(row[0])
+        except Exception as e:
+            if 'returned NULL without setting an error' in str(e):
+                raise ValueError('It is likely that that arpx project refers to a layer that no longer exists. Check your project.') from e
+            raise e
 
         if unique:
             ret = list(set(ret))
