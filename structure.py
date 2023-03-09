@@ -103,8 +103,8 @@ def fields_delete(fname, fields: (list, None) = None, where: (str, None) = None,
 
     Args:
         fname (str): Feature class or table
-        fields (list, None): list of field names
-        where (str, None): where, passed to ListFields to identify fields
+        fields (list, None): list of field names. Cannot be used if where is specified
+        where (str, None): where, passed to ListFields to identify fields. This cannot be used with the fields argument.
         show_progress (bool): Show progress
 
     Raises:
@@ -119,6 +119,7 @@ def fields_delete(fname, fields: (list, None) = None, where: (str, None) = None,
     """
     good = []
     bad = []
+    all_flds = []
     fname = _path.normpath(fname)
     if where and fields:
         raise ValueError('The "where" and "fields" argument cannot both be passed. Use one or the other')
@@ -129,6 +130,8 @@ def fields_delete(fname, fields: (list, None) = None, where: (str, None) = None,
 
     if where:
         flds = _arcpy.ListFields(fname, where)
+    else:
+        all_flds = field_list(fname)
 
     if not flds:
         return None  # noqa
@@ -136,8 +139,16 @@ def fields_delete(fname, fields: (list, None) = None, where: (str, None) = None,
         PP = _iolib.PrintProgress(iter_=flds, init_msg='Deleting %s fields...' % len(flds))
     for f in flds:
         try:
-            DeleteField(fname, f)
-            good += [f]
+            if where:
+                DeleteField(fname, f)
+                good += [f]
+            else:
+                if f.lower() in map(str.lower, all_flds):
+                    DeleteField(fname, f)
+                    good += [f]
+                else:
+                    bad += [f]
+
         except Exception as e:
             bad += [f]
             _warn('Failed to delete field "%s". The error was:\n\n%s' % (f, e))
@@ -1467,8 +1478,8 @@ def gdb_tables_and_fcs_list(gdb: str, full_path: bool = False, include_dataset: 
         [['C:/my.gdb/coutries', 'C:/my.gdb/roads'], ['C:/my.gdb/population', 'C:/my.gdb/junctions']]
     """
     gdb = _path.normpath(gdb)
-    if not _common.is_gdb(gdb):
-        raise ValueError('%s is not a valid file geodatabase path' % gdb)
+    #if not _common.is_gdb(gdb):
+     #   raise ValueError('%s is not a valid file geodatabase path' % gdb)
 
     _environ.workspace_set(gdb)
 

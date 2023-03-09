@@ -57,12 +57,13 @@ class FieldNamesSpecial:
 
 
 class EnumFieldTypeText(_Enum):
-    """Field Type text as required for addfield.
-    
-    Use as_text to get the required string.
+    """Field Type text as required for addfield..
 
     See also eFieldTypeTextForListFields which is the values
     returned by the the type property of an arcpy.Field instance.
+
+    Notes:
+        FLOAT is single precision, DOUBLE is double precision.
 
     Examples:
         >>> EnumFieldTypeText.DATE.name
