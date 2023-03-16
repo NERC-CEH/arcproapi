@@ -181,10 +181,19 @@ def class_def2(fname: str, composite_key_cols: (list, tuple), workspace: (str, N
 
     init_args = []
     members = []
+    add_created_date = False
+    add_last_edited_date = False
     for fld in _struct.field_list(fname, objects=True):  # type:_arcpy.Field
         if fld.baseName.lower() not in map(str.lower, exclude):
             init_args.append('%s=None' % fld.baseName)
             members.append('\t\tself.%s = %s' % (fld.baseName, fld.baseName))
+        else:
+            # bit of a kludge, should detect the name of fields used in tracking, but need a quick fix. Note we dont want these as passed arguments as they are read only
+            # TODO: Enable proper support for tracking fields in orm creation
+            if fld == 'created_date': members.append('\t\tself.created_date = None')
+            if fld == 'last_edited_date': members.append('\t\tself.last_edited_date = None')
+
+
 
     super_ = ('\t\tsuper().__init__(%s, %s, %s, %s)' %
               ('%s.fname' % _make_class_name(fname),
