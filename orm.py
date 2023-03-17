@@ -24,6 +24,7 @@ import funclite.baselib as _baselib
 import funclite.stringslib as _stringslib
 
 
+
 class EnumLogAction(_Enum):
     add = 1
     update = 2
@@ -418,9 +419,10 @@ class ORM(_crud.CRUD):
         """
         Add a record
 
-        Args: tran_commit (bool): Commit the transaction
-        fail_on_exists (bool): Raise an error if the record already exists by the composite key. This is a useful override, for example when we are
-        adding log records where the composite key can be duplicated
+        Args:
+            tran_commit (bool): Commit the transaction
+            force_add (bool): Force adding the record, forces fail_on_exists to False.
+            fail_on_exists (bool): Raise an error if the record already exists by the composite key. This is a useful override, for example when we are adding log records where the composite key can be duplicated
 
         Returns:
             None if add failed, otherwise int of the OID
@@ -434,7 +436,7 @@ class ORM(_crud.CRUD):
             Add's should generally not cause any unforseen issues.
             tran_commit does nothing if the use_transaction is not True for the instance
         """
-
+        if force_add: fail_on_exists = False
         search_dict = self._members_as_dict(self._cols_as_list(EnumMembers.composite_key))  # noqa
         if not search_dict:
             search_dict = self.members_as_dict(EnumMembers.members)

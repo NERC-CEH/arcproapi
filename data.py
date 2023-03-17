@@ -7,7 +7,7 @@ import fuckit as _fuckit
 
 import arcpy as _arcpy
 from arcpy.conversion import TableToDBASE, TableToExcel, TableToGeodatabase, TableToSAS, TableToTable, ExcelToTable  # noqa
-
+import arcproapi.decs as _decs
 #  from arcpy.management import MakeAggregationQueryLayer, MakeQueryLayer, MakeQueryTable
 
 
@@ -407,7 +407,7 @@ def pandas_to_table(df: _pd.DataFrame, fname: str, overwrite=False, max_str_len=
     recarray = df_copy.to_records(index=False)
     _arcpy.da.NumPyArrayToTable(recarray, fname)
 
-
+@_decs.environ_persist
 def pandas_to_table2(df: _pd.DataFrame, workspace: str, tablename: str, overwrite=False, del_cols=(), **kwargs):
     """
     Uses a different kludge to get around bugs with pandas no-ascii strings
@@ -432,8 +432,9 @@ def pandas_to_table2(df: _pd.DataFrame, workspace: str, tablename: str, overwrit
         >>> df = _pd.DataFrame({'A':['a','aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa']})  # noqa
         >>> pandas_to_table2(df, 'C:/my.gdb', 'my_table_name')  # noqa
     """
-
     workspace = _path.normpath(workspace)
+    _arcpy.env.workspace = workspace
+    _arcpy.env.overwriteOutput = overwrite
     tmp_file = _iolib.get_temp_fname(suffix='.csv')
     df.replace('"', "'", inplace=True)
     df.to_csv(tmp_file, sep=',', index=False, **kwargs)  # noqa
@@ -442,8 +443,8 @@ def pandas_to_table2(df: _pd.DataFrame, workspace: str, tablename: str, overwrit
     if _common.is_locked(fname):
         raise IOError('%s is locked. Make sure all projects are closed')
 
-    if overwrite:
-        _struct.fc_delete2(fname)
+    # if overwrite:
+    #    _struct.fc_delete2(fname)
     _arcpy.conversion.TableToTable(tmp_file, workspace, tablename)  # noqa
 
     if del_cols:
