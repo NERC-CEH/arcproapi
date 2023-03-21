@@ -385,7 +385,7 @@ class Map:
             for name in wildcard_or_list:
                 self.layer_clear_filters(name, clear_definition_query=clear_definition_query, clear_selection=clear_selection)
 
-    def features_show(self, lyrname: str, feat_col: str = '', fid: str = '', override_where: str = ''):
+    def features_show(self, lyrname: str, feat_col: str = '', fid: (str, int, float) = '', override_where: str = ''):
         """
         Show features in layer lyrname.
         Clears any selected features and removes the definition
@@ -394,7 +394,7 @@ class Map:
         Args:
             lyrname (str): Name of layer
             feat_col (str): Name of column in the layer
-            fid: A value or iterable to search for in field feat_col
+            fid (int, float, str): A value or iterable to search for in field feat_col
             override_where (str): provide a custom where statement to pass to the definition query, overriding feat_col and fid.
 
         Returns: None
@@ -408,11 +408,9 @@ class Map:
         if override_where:
             sql = override_where
         else:
-            if isinstance(fid, (int, float, str)):
+            if isinstance(fid, (str, int, float)):
                 fid = (fid,)
-
             lst = [_f(s) for s in fid]
-
             sql = '%s IN (%s)' % (feat_col, ','.join(lst))
 
         self.layer_clear_filters(lyrname)
