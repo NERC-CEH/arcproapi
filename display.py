@@ -235,10 +235,12 @@ class Map:
         if len(lyrs) > 1:
             _warn('Map "%s" had %s layers named "%s". Picked the first one.' % (self._map_name, len(lyrs), lyr_name))
         lyr = lyrs[0]
+        # These shouldnt be necessary, but was hitting an arcpy bug.
+        lyr.definitionQuery = ''
+        lyr.updateDefinitionQueries([])
 
         q = '%s = %s' % (feat_col, fid)
-        _arcpy.management.SelectLayerByAttribute(lyr, "NEW_SELECTION", q,
-                                                 None)  # If this is failing unexpectedly, check that data types are as expected, e.g. if doing sqid=1, make sure the underlying table data type is int/long
+        res = _arcpy.management.SelectLayerByAttribute(lyr, "NEW_SELECTION", q, None)  # If this is failing unexpectedly, check that data types are as expected, e.g. if doing sqid=1, make sure the underlying table data type is int/long
         self.MapFrame.zoomToAllLayers()  # zooms to currently selected feature, honest
 
         factor = scale_factor * self.MapFrame.camera.scale if scale_factor != 1 else abs_scale  # zoom in/out by scale factor
@@ -341,6 +343,7 @@ class Map:
             lyr = self.Map.listLayers(lyr_name_or_lyr)[0] if isinstance(lyr_name_or_lyr, str) else lyr_name_or_lyr
             if clear_definition_query:
                 lyr.definitionQuery = ''
+                lyr.updateDefinitionQueries([])  # Make sure. https://pro.arcgis.com/en/pro-app/latest/arcpy/mapping/layer-class.htm
             if clear_selection:
                 lyr.setSelectionSet([], 'NEW')
         except:
@@ -360,12 +363,12 @@ class Map:
         except:
             self.Logger.log('layer_set_transparency failed for layer %s' % lyr_name_or_lyr)
 
-    def layers_clear_filters(self, wildcard_or_list: str = '', clear_definition_query: bool = True, clear_selection: bool = True):
+    def layers_clear_filters(self, wildcard_or_list: str = '*', clear_definition_query: bool = True, clear_selection: bool = True):
         """
         Clear filters or definition queries from all layers
 
         Args:
-            wildcard_or_list: string to match to layer names, * is wildcarded, or pass a list
+            wildcard_or_list: string to match to layer names, * is wildcarded (the default), or pass a list
             clear_definition_query: clear the definition query from the layer
             clear_selection: deselect selected features
 
@@ -379,8 +382,8 @@ class Map:
             >>> layers_clear_filters(['mylayer', 'mynextlayer'], clear_definition_query=False)  # noqa
         """
         if isinstance(wildcard_or_list, str):
-            _ = (self.layer_clear_filters(lyr, clear_definition_query, clear_selection) for lyr in
-                 self.Map.listLayers(wildcard_or_list))
+            for lyr in self.Map.listLayers(wildcard_or_list):
+                self.layer_clear_filters(lyr, clear_definition_query, clear_selection)
         else:
             for name in wildcard_or_list:
                 self.layer_clear_filters(name, clear_definition_query=clear_definition_query, clear_selection=clear_selection)
