@@ -12,13 +12,14 @@ import arcproapi.structure as _struct
 import funclite.iolib as _iolib
 import funclite.baselib as _baselib
 
-def gdb_to_csv(gdb: str, export_root: str, overwrite: bool = False, clean_extras: (list, None) = ('.xml', '.ini'), show_progress=False, **kwargs) -> list:
+def gdb_to_csv(gdb: str, export_root: str, match: (str, list[str], tuple[str]) = '*', overwrite: bool = False, clean_extras: (list, None) = ('.xml', '.ini'), show_progress=False, **kwargs) -> list:
     """
     Export all tables and fcs to folder export_root.
 
     Args:
         gdb (str): The geodatabase, support other formats (see link below), but these are currently untested.
         export_root (str): Root file system folder to export the csv files to
+        match (str, list[str], tuple[str]): wildcard match on tables/fcs
         overwrite (bool): Overwrite files without warning
         clean_extras (list, None): If nome, leaves the xml and ini file info in place, else delete files that match the extensions passed
         show_progress (bool): print progress to terminal
@@ -38,10 +39,18 @@ def gdb_to_csv(gdb: str, export_root: str, overwrite: bool = False, clean_extras
         >>> gdb_to_csv('c:/my.gdb', 'C:/temp')
         ['C:/temp/countries.csv', 'C:/temp/states.csv', ...]
     """
+    if isinstance(match, str):
+        match = [match]
+    if match == ['*']: match = None
+
     fcs, ts = _struct.gdb_tables_and_fcs_list(gdb, full_path=True)
+    fcs = _baselib.list_filter_by_list(fcs, match)
+    ts = _baselib.list_filter_by_list(ts, match)
+
     all_in = []
     all_out = []
     success = []
+
 
     if show_progress:
         PP = _iolib.PrintProgress(iter_=fcs + ts, init_msg='Collating file names....')  # noqa
@@ -154,7 +163,7 @@ def excel_sheets_to_gdb(xlsx: str, gdb: str, match_sheet: (list, tuple, str) = (
 
     Args:
         xlsx (str): Excel workbook
-        gdb ():
+        gdb (str): Geodatabase to export to
         match_sheet (): Case insensitive
         exclude_sheet (): Case insensitive. Overrides match_sheet on clash.
         allow_overwrite (bool): Performs a delete prior to importing into gdb, otherwise raises standard arcpy error
@@ -168,7 +177,7 @@ def excel_sheets_to_gdb(xlsx: str, gdb: str, match_sheet: (list, tuple, str) = (
         Does not currently support listobjects
 
     Examples:
-        >>> excel_sheets_to_gdb('C:/temp/my.xlsx', ('countries', 'regions'), 'principalities')
+        >>> excel_sheets_to_gdb('C:/temp/my.xlsx', 'C:/temp/my.gdb', ('countries', 'regions'), 'principalities')
         ['countries_europe', 'countries_america', 'regions_europe', 'regions_america']
 
     TODO: Add another function to support listobjects
