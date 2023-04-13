@@ -573,29 +573,6 @@ def table_dump_from_sde_to_excel(sde_file: str, lyr, xlsx_root_folder: str, **kw
     return dest_xlsx
 
 
-def field_update_from_dict2(fname: str, key_dict: dict, update_dict: dict, where: str = '', na: any = None, case_insentive: bool = True) -> int:  # noqa
-    """Update columns in a table which match values in key_dict.
-
-    Differs from field_update_from_dict as dicts are in long form and column updates.
-
-    Args:
-        fname (str): table to update
-        key_dict (dict): match this dict, where keys are col names and values are values to match
-        update_dict (dict): update values, keys are col names, values oare value to write
-        where (str): where clause to prefilter rows
-        na (bool): value to be used instead of new value for non-matching records,
-            default is None, use (1,1) to leave original value if match is not found
-        case_insentive (bool): ignore case for key_dict
-
-    Returns:
-        int: Number of updated records
-
-    Examples:
-        Write values of keyA and keyB to keyACopy and keyBCopy where (kayA==1 AND keyB==10) OR (kayA==2 AND keyB==20)
-        >>> field_update_from_dict2('c:/my.gdb', {'keyA':[1,2],'keyB':[10,20]}, {'keyACopy':[1,2], 'keyBCopy':[10,20]})  # noqa
-    """
-    raise NotImplementedError
-
 
 def field_update_from_dict1(fname: str, dict_: dict, col_to_update: str, key_col: str,
                             where: str = '', na: any = (1,1),
