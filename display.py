@@ -208,7 +208,7 @@ class Map:
         fname = _path.normpath(fname)
         self.Layout.exportToPDF(fname, dpi, image_quality, **args)
 
-    def mapframe_zoom_to_feature(self, lyr_name: str, feat_col: str, fid: int, scale_factor: float = 1, abs_scale: float = None) -> None:
+    def mapframe_zoom_to_feature(self, lyr_name: str, feat_col: str, fid: int, scale_factor: float = 1, abs_scale: float = None, clear_definition_query=True) -> None:
         """
         Pan and zoom to feature with OID=fid.
 
@@ -218,10 +218,15 @@ class Map:
             fid: Row data to find in the column
             scale_factor: after zooming, either grow or shrink the extent by this factor
             abs_scale: zoom to this absolute scale
+            clear_definition_query (bool): Clear the definition query in layer "lyr_name"
 
         Returns:
             None
 
+        Notes:
+            Clearing definition queries for lyr_name is recommended to avoid conflicts where the feature we wish to select is unavailable because of an active query definition.
+            We do have to clear the selection in all layers as their is currently no way of zooming to the selected features in an individual layer in a mapframe object.
+            Unexpected outputs, e.g. blank maps may be caused by code here, where we could not select the feature, and is a likely candidate for debugging.
 
         TODO:
             This is a hacky and relies on clearing filters. Redesign so find a feature then zoom to that features extent
@@ -230,14 +235,17 @@ class Map:
             _warn('scale_factor and abs_scale arguments both set. Using scale_factor, ignoring abs_scale')
             abs_scale = None
 
-        self.layers_clear_filters()
+        self.layers_clear_filters(clear_selection=True, clear_definition_query=False)
+
         lyrs = self.Map.listLayers(lyr_name)
         if len(lyrs) > 1:
             _warn('Map "%s" had %s layers named "%s". Picked the first one.' % (self._map_name, len(lyrs), lyr_name))
         lyr = lyrs[0]
         # These shouldnt be necessary, but was hitting an arcpy bug.
-        lyr.definitionQuery = ''
-        lyr.updateDefinitionQueries([])
+
+        if clear_definition_query:
+            lyr.definitionQuery = ''
+            lyr.updateDefinitionQueries([])
 
         q = '%s = %s' % (feat_col, fid)
         res = _arcpy.management.SelectLayerByAttribute(lyr, "NEW_SELECTION", q, None)  # If this is failing unexpectedly, check that data types are as expected, e.g. if doing sqid=1, make sure the underlying table data type is int/long
