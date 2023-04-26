@@ -35,14 +35,11 @@ class Test(unittest.TestCase):
 
         self.topo = 'base_group_layer/Topographic'
 
-
-
     #  @unittest.skip("Temporaily disabled while debugging")
     def test_class_def(self):
         """testfunc"""
         s = orm.class_def_to_clip(self.illinois_gdb, self.gdb, ['NAME', 'STATE_NAME', 'CNTY_FIPS'])
         print(s)
-
 
     @unittest.skip("Temporaily disabled while debugging")
     def test_add_update_delete(self):
@@ -54,21 +51,21 @@ class Test(unittest.TestCase):
         with orm.ORM(self.illinois_gdb, ['NAME', 'STATE_NAME', 'CNTY_FIPS'],
                      workspace=self.gdb,
                      NAME='NAME'
-                            , STATE_NAME='STATE_NAME'
-                            , CNTY_FIPS='A'
-                            , STATE_FIPS='B'
-                            , FIPS='C'
-                            , Shape=shp
+                , STATE_NAME='STATE_NAME'
+                , CNTY_FIPS='A'
+                , STATE_FIPS='B'
+                , FIPS='C'
+                , Shape=shp
                      ) as B:
             B.add(tran_commit=False, fail_on_exists=False)
 
             # After the add, change values, refresh and add with a commit
-            B.NAME='NAME1'
-            B.STATE_NAME='STATE_NAME1'
-            B.CNTY_FIPS='AA'
-            B.STATE_FIPS='BB'
-            B.FIPS='CC'
-            B.Shape=shp
+            B.NAME = 'NAME1'
+            B.STATE_NAME = 'STATE_NAME1'
+            B.CNTY_FIPS = 'AA'
+            B.STATE_FIPS = 'BB'
+            B.FIPS = 'CC'
+            B.Shape = shp
             i = B.add(tran_commit=True)
 
             # change one value and recall update - this edit will use the OID, allowing update of STATE_NAME (part of commposite key)
@@ -76,7 +73,7 @@ class Test(unittest.TestCase):
             B.update(tran_commit=True)
 
         with orm.ORM(self.illinois_gdb, workspace=self.gdb, enable_transactions=True) as B:
-            B.STATE_NAME='STATE_NAME'
+            B.STATE_NAME = 'STATE_NAME'
             B.delete(err_on_no_key=False)
 
         with orm.ORM(self.illinois_gdb, workspace=self.gdb, enable_transactions=True, OBJECTID=i, STATE_NAME=None) as B:
@@ -85,9 +82,10 @@ class Test(unittest.TestCase):
             ok = B.delete(tran_commit=True)
             assert self.assertTrue(ok)
 
-
     # @unittest.skip("Temporaily disabled while debugging")
     def test_add(self):
+        from arcproapi import geom
+        shp = geom.Square([0.0], 10)
         with orm.ORM(self.illinois_gdb, ['NAME', 'STATE_NAME', 'CNTY_FIPS'],
                      workspace=self.gdb,
                      NAME='NAME'
@@ -95,17 +93,17 @@ class Test(unittest.TestCase):
                 , CNTY_FIPS='A'
                 , STATE_FIPS='B'
                 , FIPS='C'
-                , Shape=
+                , Shape=shp
                      ) as B:
             B.add(tran_commit=False, fail_on_exists=False)
 
             # After the add, change values, refresh and add with a commit
-            B.NAME='NAME1'
-            B.STATE_NAME='STATE_NAME1'
-            B.CNTY_FIPS='AA'
-            B.STATE_FIPS='BB'
-            B.FIPS='CC'
-            B.Shape=shp
+            B.NAME = 'NAME1'
+            B.STATE_NAME = 'STATE_NAME1'
+            B.CNTY_FIPS = 'AA'
+            B.STATE_FIPS = 'BB'
+            B.FIPS = 'CC'
+            B.Shape = shp
             i = B.add(tran_commit=True)
 
             # change one value and recall update - this edit will use the OID, allowing update of STATE_NAME (part of commposite key)
@@ -113,7 +111,7 @@ class Test(unittest.TestCase):
             B.update(tran_commit=True)
 
         with orm.ORM(self.illinois_gdb, workspace=self.gdb, enable_transactions=True) as B:
-            B.STATE_NAME='STATE_NAME'
+            B.STATE_NAME = 'STATE_NAME'
             B.delete(err_on_no_key=False)
 
         with orm.ORM(self.illinois_gdb, workspace=self.gdb, enable_transactions=True, OBJECTID=i, STATE_NAME=None) as B:
@@ -121,8 +119,6 @@ class Test(unittest.TestCase):
             self.assertEquals(B['STATE_NAME'], 'UPDATE')
             ok = B.delete(tran_commit=True)
             assert self.assertTrue(ok)
-
-
 
 
 if __name__ == '__main__':

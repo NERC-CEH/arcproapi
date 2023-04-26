@@ -57,7 +57,7 @@ class MetadataBaseInfo:
             return return_on_error
 
 
-# One off, only used in enums, no point putting it in mixins.py
+
 class MixinEnumHelper:
     """
     Mixin property for enums declared in this module.

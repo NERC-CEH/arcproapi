@@ -40,7 +40,7 @@ class EnumMembers(_Enum):
     all_members = 4 + 2 + 1
 
 
-def class_def_to_clip(fname: str, workspace: str = 'None', composite_key_cols: str = '()', short_super=True):
+def class_def_to_clip(fname: str, workspace: str = 'None', composite_key_cols: (str, list[str]) = '()', short_super=True):
     """(str, str, list|str)->s
 
     Get columns from feature class/table fname and create
@@ -49,7 +49,7 @@ def class_def_to_clip(fname: str, workspace: str = 'None', composite_key_cols: s
      Args:
         fname (str): path to feature class/table etc
         workspace (str): path to workspace, e.g. geodatabase
-        composite_key_cols (str, list): either a list:str definining a composite key or a string representing that list
+        composite_key_cols (str, list[str]): either a list:str definining a composite key or a string representing that list
 
         short_super (bool):
             set the members up in the created class,
@@ -182,8 +182,7 @@ def class_def2(fname: str, composite_key_cols: (list, tuple), workspace: (str, N
 
     init_args = []
     members = []
-    add_created_date = False
-    add_last_edited_date = False
+
     for fld in _struct.field_list(fname, objects=True):  # type:_arcpy.Field
         if fld.baseName.lower() not in map(str.lower, exclude):
             init_args.append('%s=None' % fld.baseName)
