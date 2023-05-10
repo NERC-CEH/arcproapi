@@ -198,3 +198,37 @@ def list_from_polygon(poly: _arcpy.Polygon):
         [[0,0], [0, 1], [1, 1], [1, 0], [0, 0]]
     """
     return [[pt.X, pt.Y] for pt in poly[0]]
+
+
+
+def extent_zoom(extent: _arcpy.Extent, factor_perc: float = None, factor_abs: float = None) -> _arcpy.Extent:
+    """
+    Expand or contract an extent by a percent or absolute factor
+
+    Args:
+        extent:
+        factor_perc:
+        factor_abs:
+
+    Returns:
+        "arcpy.Extent": An arcpy extent object
+    """
+    if not (factor_abs or factor_perc):
+        return extent
+
+    if factor_abs and factor_perc:
+        raise ValueError('factor_perc and factor_abs were passed')
+
+    if factor_abs:
+        buff_dist = factor_abs
+    else:
+        buff_dist = ((int(abs(extent.lowerLeft.X - extent.lowerRight.X))) * (factor_perc/100))
+
+    return extent.polygon.buffer(buff_dist).extent
+
+
+
+if __name__ == '__main__':
+    # quick tests here
+    ply = polygon_from_list([(0,0), (0, 1), (1, 1), (1, 0), (0, 0)])
+    extent_zoom(ply.extent, factor_abs=0.4)

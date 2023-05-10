@@ -1,8 +1,11 @@
 """Projection related stuff"""
+import os.path as _path
 
 import arcpy as _arcpy
 
 import arcproapi.httplib as _http
+
+
 
 def epsg(epsgcode, form='esriwkt'):
     """Get spatial reference system by EPSG code as string.
@@ -85,3 +88,16 @@ def spatial_ref_get(wkid: int = 27700):
     sr.factoryCode = wkid
     sr.create()
     return sr
+
+
+def spatial_ref_is_bng(fname:str) -> bool:
+    """
+    Is the projection of layer <fname> BNG.
+
+    Args:
+        fname (str): layer
+
+    Returns:
+        bool: True if is BNG else False
+    """
+    return _arcpy.da.Describe(_path.normpath(fname))['spatialReference'].name == 'British_National_Grid'
