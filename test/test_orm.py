@@ -93,17 +93,30 @@ class Test(unittest.TestCase):
                 , CNTY_FIPS='A'
                 , STATE_FIPS='B'
                 , FIPS='C'
+<<<<<<< HEAD
                 , Shape=shp
+=======
+                , Shape=None
+>>>>>>> 487fe0ed63a6bf58076296b70f5f351de2fad195
                      ) as B:
             B.add(tran_commit=False, fail_on_exists=False)
 
             # After the add, change values, refresh and add with a commit
+<<<<<<< HEAD
             B.NAME = 'NAME1'
             B.STATE_NAME = 'STATE_NAME1'
             B.CNTY_FIPS = 'AA'
             B.STATE_FIPS = 'BB'
             B.FIPS = 'CC'
             B.Shape = shp
+=======
+            B.NAME='NAME1'
+            B.STATE_NAME='STATE_NAME1'
+            B.CNTY_FIPS='AA'
+            B.STATE_FIPS='BB'
+            B.FIPS='CC'
+            # B.Shape=shp
+>>>>>>> 487fe0ed63a6bf58076296b70f5f351de2fad195
             i = B.add(tran_commit=True)
 
             # change one value and recall update - this edit will use the OID, allowing update of STATE_NAME (part of commposite key)

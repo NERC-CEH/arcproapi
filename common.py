@@ -7,9 +7,8 @@ import datetime as _datetime
 import sys as _sys
 import math as _math
 from pathlib import Path as _Path
+import functools as _functools
 
-
-import arcpy
 import fuckit as _fuckit
 import arcpy as _arcpy
 
@@ -816,7 +815,7 @@ def workspace_from_fname(fname: str, simple_gdb_test: bool = True) -> (str, None
                 return root
         except:
             pass
-    return None
+    return None  # noqa
 
 
 
@@ -1036,6 +1035,53 @@ def pretty_field_mapping(field_map_str: str, to_console: bool = True, return_it:
     if return_it: return ss
 
 
+def extent_where(fname: str, where: (str, None) = None) -> _arcpy.Extent:
+    """
+    Return an extent from shapes in where
+
+    Args:
+        fname (str): feature class
+        where (str, None):
+
+    Returns:
+        _arcpy.Extent: The extent of the union for all shapes which match the where
+    """
+    fname = _path.normpath(fname)
+    with _arcpy.da.SearchCursor(fname, 'SHAPE@', where) as cur:
+        ext: _arcpy.Extent = _functools.reduce(_arcpy.Geometry.union, [shp for shp, in cur]).extent
+    return ext
+
+def extent_wheres(fnames: list[str], wheres: list[str]) -> _arcpy.Extent:
+    """
+    Get the union extent from multiple layers with matched wheres.
+    Matching is by index
+
+    Args:
+        fnames (list[str]): list of feature class paths
+        wheres (list[str]): list of wheres, None can be used to match all in a layer
+
+    Raises:
+        ValueError: If length of fnames and wheres does not match
+
+    Returns:
+        _arcpy.Extent: An extent object, of the union of all matching features
+
+    Examples:
+        Extent of all cities in England and Wales with a population > 10000
+        >>> print(extent_wheres(['C:/my.gdb/country', 'C:/my.gdb/city'], ['country in ("England", "Wales")', 'population>10000']))
+        227873.762207031 333000 229010.31060791 334146.519592285 NaN NaN NaN NaN
+    """
+    if len(fnames) != len(wheres):
+        raise ValueError('length of fnames and wheres should be the same')
+    exts = tuple(map(extent_where, fnames, wheres))
+    ext = _functools.reduce(_arcpy.Geometry.union, [ex.polygon for ex in exts]).extent
+    return ext
+
+
 if __name__ == '__main__':
     """ Quick debug/test """
+    sq = r'S:\SPECIAL-ACL\ERAMMP2 Survey Restricted\common\data\GIS\erammp_common.gdb\sq'
+    poll = r'S:\SPECIAL-ACL\ERAMMP2 Survey Restricted\common\data\GIS\erammp_common.gdb\pollinator_transect'
+    EX = extent_wheres([sq, poll], ['sq_id=35573']*2)
     pass
+    # extall = _arcpy.Geometry(ext.po) .union()
