@@ -217,7 +217,7 @@ def extent_zoom(extent: _arcpy.Extent, factor_perc: float = None, factor_abs: fl
         return extent
 
     if factor_abs and factor_perc:
-        raise ValueError('factor_perc and factor_abs were passed')
+        raise ValueError('factor_perc and factor_abs were passed. Use one or the other.')
 
     if factor_abs:
         buff_dist = factor_abs

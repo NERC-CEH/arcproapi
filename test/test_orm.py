@@ -95,7 +95,7 @@ class Test(unittest.TestCase):
                 , CNTY_FIPS='A'
                 , STATE_FIPS='B'
                 , FIPS='C'
-                , Shape=
+                , Shape=None
                      ) as B:
             B.add(tran_commit=False, fail_on_exists=False)
 
@@ -105,7 +105,7 @@ class Test(unittest.TestCase):
             B.CNTY_FIPS='AA'
             B.STATE_FIPS='BB'
             B.FIPS='CC'
-            B.Shape=shp
+            # B.Shape=shp
             i = B.add(tran_commit=True)
 
             # change one value and recall update - this edit will use the OID, allowing update of STATE_NAME (part of commposite key)
