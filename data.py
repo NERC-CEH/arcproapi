@@ -417,7 +417,7 @@ def pandas_to_table2(df: _pd.DataFrame, workspace: str, tablename: str, overwrit
     Args:
         df (pandas.DataFrame): the pandas dataframe
         workspace (str): gdb
-        tablename (str): tablename to create in workspace
+        tablename (str): tablename to create in workspace. Should be the table name only, and not a fully specified path
         overwrite (bool): Overwrite fname, otherwise an error will be raised if fname exists
         del_cols (tuple): Tuple of columns to discard, arcpy.conversion.table2table can create eroneous cols.
         **kwargs: passed to pandas.to_csv (used as an intermediary to get over bugs in ArcPy
@@ -445,6 +445,9 @@ def pandas_to_table2(df: _pd.DataFrame, workspace: str, tablename: str, overwrit
 
     # if overwrite:
     #    _struct.fc_delete2(fname)
+    if '/' in tablename or '\\' in tablename:
+        tablename = _path.basename(tablename)
+
     _arcpy.conversion.TableToTable(tmp_file, workspace, tablename)  # noqa
 
     if del_cols:
