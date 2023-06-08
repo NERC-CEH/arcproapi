@@ -5,48 +5,41 @@ import os.path as _path
 
 import fuckit as _fuckit
 
-import arcpy as _arcpy
-from arcpy.conversion import TableToDBASE, TableToExcel, TableToGeodatabase, TableToSAS, TableToTable, ExcelToTable  # noqa
-import arcproapi.decs as _decs
-#  from arcpy.management import MakeAggregationQueryLayer, MakeQueryLayer, MakeQueryTable
-
-
-with _fuckit:
-    from arcproapi.common import release
-
-    if int(release()[0]) > 2 and _arcpy.GetInstallInfo()['ProductName'] == 'ArcGISPro':
-        from arcpy.conversion import ExportTable, ExportFeatures  # noqa
-
 import pandas as _pd
 import numpy as _np
 
-# If on linux, wont have xlwings, so fuckit
-with _fuckit:
-    import xlwings as _xlwings
+import arcpy as _arcpy
+from arcpy.conversion import TableToDBASE, TableToExcel, TableToGeodatabase, TableToSAS, TableToTable, ExcelToTable  # noqa
+from arcpy.management import MakeAggregationQueryLayer, MakeQueryLayer, MakeQueryTable  # noqa   Expose here as useful inbult tools
+
 
 import funclite.iolib as _iolib
 import funclite.baselib as _baselib
 import funclite.stringslib as _stringslib
 from funclite.pandaslib import df_to_dict_as_records_flatten1 as df_to_dict  # noqa Used to convert a standard dataframe into one accepted by field_update_from_dict and field_update_from_dict1
-
+import funclite.pandaslib as pandaslib  # noqa   no _ as want to expose it to pass agg funcs to ResultsAsPandas instances
 
 import arcproapi.structure as _struct
-#  The following are data-like operations defined in structure. They
-#  are imported here for convieniance
-from arcproapi.structure import gdb_csv_import as csv_to_table  # noqa
+from arcproapi.structure import gdb_csv_import as csv_to_table  # noqa  data-like operations defined in structure. They are imported here for convieniance
 
 import arcproapi.errors as _errors
 import arcproapi.crud as _crud
 import arcproapi.orm as _orm
 import arcproapi.sql as _sql
-
+import arcproapi.decs as _decs
 import arcproapi.common as _common
+import arcproapi.conversion as conversion
+
 #  More data-like functions, imported for convieniance
 from arcproapi.common import get_row_count2 as get_row_count2
 from arcproapi.common import get_row_count as get_row_count  # noqa
 from arcproapi.export import excel_sheets_to_gdb as excel_import_sheets  # noqa Rearranged, import here so as not to break scripts/compatibility
 
-
+with _fuckit:
+    from arcproapi.common import release
+    if int(release()[0]) > 2 and _arcpy.GetInstallInfo()['ProductName'] == 'ArcGISPro':
+        from arcpy.conversion import ExportTable, ExportFeatures  # noqa
+    import xlwings as _xlwings  # never will be implemented on linux
 
 
 class Excel:
@@ -100,32 +93,236 @@ class Excel:
         return out
 
 
+class _MixinResultsAsPandas:
+    def __init__(self):
+        self.df = None
+        self.df_lower = None
+
+    def aggregate(self, groupflds: (str, list[str]), valueflds: (str, list[str]), *funcs, **kwargs) -> (_pd.DataFrame, None):
+        """
+        Return an aggregated dataframe.
+        This is a call to funclite.pandaslib.GroupBy. See documentation for more help.
+
+        Everything is forced to lower case, so don't worry about the case of underlying fields in the table/fc
+
+        Args:
+            groupflds: List of fields to groupby, or single string
+            valueflds: list of fields to apply the aggregate funcs on. Accepts a string as well
+            funcs: functions, pass as arguments
+            kwargs: keyword arguments, passed to pandaslib.GroupBy
+
+        Returns:
+            None: If self.df_lower evaluates to False
+            pandas.DataFrame: The aggregation of cls.df_lower.
+
+        Examples:
+            >>> import numpy as np
+            >>> ResultsAsPandas(..args..).aggregate('country', ['population', 'age'], np.max, np.mean, pandaslib.GroupBy.fMSE)  # noqa
+            country population_max  population_mean age_max age_mean
+            Wales   3500000        1234567          101     56
+            England ...
+        """
+        if not self.df_lower: return None  # noqa
+        if isinstance(groupflds, str): groupflds = [groupflds]
+        if isinstance(valueflds, str): valueflds = [valueflds]
+        groupflds = list(map(str.lower, groupflds))
+        valueflds = list(map(str.lower, valueflds))
+
+        return pandaslib.GroupBy(self.df_lower, groupflds=groupflds, valueflds=valueflds, *funcs, **kwargs).result
+
+    def view(self) -> None:
+        """Open self.df in excel"""
+        _xlwings.view(self.df)
+
+    def fields_get(self, as_objs: bool = False) -> (list[str], list[_arcpy.Field]):
+        """
+        Get list of field names, either as arcpy Fields or as strings
+
+        Args:
+            as_objs (bool): As Fields, otherwise strings
+
+        Returns:
+            list[str]: If as_objs is False
+            list[_arcpy.Field]: If as_objs is True
+
+        """
+        return _struct.fc_fields_get(self.fname_output, as_objs=as_objs)  # noqa
+
+    def shape_area(self, where: (str, None) = None, conv_func=conversion.m2_to_km2, **kwargs) -> float:
+        """
+        Sum the area of the shapes matching the where filter, and convert using conv_func
+
+        Args:
+            where (str, None): where to filter records, applied to the class instance of **df_lower** using the pandas.DataFrame.query method and ** not ** the underlying database.
+            conv_func: A conversion function, if None is passed, then no conversion is applied
+            kwargs: Additional kwargs passed to DataFrame.query
+
+        Returns:
+            float: Sum of polygon areas, returns 0 if no records matched.
+
+        Notes:
+            Assumed that layers have BNG spatial reference, hence Shape_Area is square meters. If this is not the case, then use a custom conversion function, otherwise the returned area will be wrong.
+
+        Examples:
+            >>> ResultsAsPandas(..args..).shape_area(where="crn in ('A123', 'A234')")  # noqa
+            0.43245
+        """
+        if not conv_func:
+            conv_func = lambda v: v
+        lst = self.df_lower.query(expr=where, **kwargs)['shape_area'].to_list()
+        if lst:
+            return conv_func(sum(lst))
+        return 0
+
+    @property
+    def row_count(self, query: (str, None) = None, **kwargs) -> int:
+        """
+        Get row count
+
+        Args:
+            query (str, None): Expression passed to DataFrame.query to filter records
+            kwargs: keyword arguments passed to DataFrame.query. e.g. engine='python'. See the pandas documentation.
+
+        Returns: int: Row count
+        """
+        if query:
+            return len(self.df_lower.query(expr=query, **kwargs))
+        return len(self.df_lower)
+
+    def shape_length(self, where: (str, None) = None, conv_func=lambda v: v, **kwargs) -> float:
+        """
+        Sum the length of the shapes matching the where filter, and convert using conv_func
+
+        Args:
+            where (str, None): where to filter records, applied to the class instance of **df_lower** using the pandas.DataFrame.query method and ** not ** the underlying database.
+            conv_func: A conversion function, if None is passed, then no conversion is applied
+            kwargs: Additional kwargs passed to DataFrame.query
+
+        Returns:
+            float: Sum of feature lengths, returns 0 if no records matched.
+
+        Notes:
+            Assumed that layers have BNG spatial reference, hence Shape_Length is meters.
+            Unlike the shape_area method, this defaults to returning lengths uncoverted (i.e. in meters if spatial ref is BNG).
+            Currently the additional tables functionality does not allow providing custom where, as_int or as_float to the additional dataframes
+
+        Examples:
+            Total shape lengths for the specified crns in kilometers
+            >>> ResultsAsPandas(..args..).shape_length(where="crn in ('A123', 'A234'), conv_func=lambda v:v/1000")  # noqa
+            0.3245
+        """
+        if not conv_func:
+            conv_func = lambda v: v
+
+        lst = self.df_lower.query(expr=where, **kwargs)['shape_length'].to_list()
+        if lst:
+            return conv_func(sum(lst))
+        return 0
 
 
 
-def poly_from_extent(ext, sr):
-    """Make an arcpy polygon object from an input extent object.
 
-    Returns a polygon geometry object.
-
-    Required:
-    ext -- extent object
-    sr -- spatial reference
-
-    Example
-    >>> ext_ =
-    .,.
-    326  #WKID for WGS 84
-    >>> poly = poly_from_extent(ext_, sr)
-    >>> _arcpy.CopyFeatures_management(poly, r'C:\Temp\Project_boundary.shp')
+class ResultAsPandas(_MixinResultsAsPandas):
     """
-    array = _arcpy.Array()
-    array.add(ext.lowerLeft)
-    array.add(ext.lowerRight)
-    array.add(ext.upperRight)
-    array.add(ext.upperLeft)
-    array.add(ext.lowerLeft)
-    return _arcpy.Polygon(array, sr)
+    Retreieve the results of any arcpy operation which returns and table or layer as a pandas dataframe.
+    Also exposes pandas aggregate functions to summarise the data and some other "helper" methods.
+
+    Also has a mechanism to load secondary results sets. These are exposed as a dictionary collection of _LayerDataFrame objects. See example
+
+    Args:
+        tool: An arcpy tool which supports the in_features argument and a single out_feature class
+        columns: columns to retain in the resulting dataframe
+        additional_layer_args (tuple[str]): List of the kwargs that point to additional output tables. This allows additional dataframe to be exposed. As an example, see the CountOverlappingFeatures which accepts an argument to define output_overlap_table.
+        where: where query to apply to the underlying spatial results table/feature class, passed to data.table_as_pandas2
+        as_int (tuple[str], list[str]): List of cols forced to an int in the resulting dataframe
+        as_float (tuple[str], list[str]): List of cols forced to a float in the resulting dataframe
+
+    Members:
+        df (_pd.DataFrame): Dataframe of the output layer
+        df_lower (_pd.DataFrame): Dataframe of the output layer, all col names forced to lower case
+        _fname_output (str): Name of the in-memory layer/table created by applying "tool"
+        tool_execution_result (_arcpy.Result): The result object returned from "tool"
+        Results: A dictionary of all Results, the main result is keyed as "main", with any additional results keyed with the values in the additional_layer_args member.
+
+    Notes:
+        Currently assumes that the in_features list is always called in_features in the tool
+        The arguments "columns", "where", "as_int", "as_float" and "exclude_cols" are all passed to data.table_as_pandas2
+
+    Examples:
+        Get shape area sum from main results from an arcpy tool (assumpes Shape is returned)
+        >>> RaP = ResultAsPandas(_arcpy.analysis.CountOverlappingFeatures, ['./my.gdb/england', './my.gdb/uk'])  # noqa
+        >>> RaP.shape_area()
+        334523.1332
+
+        Get the additional results table from CountOverlappingFeatures
+        >>> RaP = ResultAsPandas(_arcpy.analysis.CountOverlappingFeatures, ['./my.gdb/england', './my.gdb/uk'], additional_layer_args=('out_overlap_table',))  # noqa
+        >>> RaP.Results['out_overlap_table'].df
+        id  cola    colb    colc
+        1   'a'     'cc'    5
+        2   'b'     'dd'    10
+        2   'b'     'dd'    10
+        ...
+
+        Now aggregate on the main result
+        >>> import numpy as np
+        >>> RaP.aggregate(['cols'], ['colc'], np.sum)  # noqa
+        cola    sum_colc
+        'a'     5
+        'b'     20
+
+    """
+    class _LayerDataFrame(_MixinResultsAsPandas):
+        def __init__(self, arg_name: str, fname_output: str, df: _pd.DataFrame = None):
+            super().__init__()  # does nothing at moment, except stopping pycharm complaining
+            self.arg_name = arg_name
+            self.fname_output = fname_output
+            self.df_lower = None
+            self._df = df
+
+        @property
+        def df(self):
+            return self._df
+
+        @df.setter
+        def df(self, df: _pd.DataFrame):
+            if self._df is None:
+                self._df = df
+                return
+
+            self.df_lower = df.copy()
+            self.df_lower.columns = self.df_lower.columns.str.lower()
+
+
+    def __init__(self, tool, in_features: (list[str], str), columns: list[str] = None, additional_layer_args: (tuple[str], str) = (), where: str = None, exclude_cols: tuple[str] = ('Shape',),
+                 as_int: (tuple[str], list[str]) = (), as_float: (tuple[str], list[str]) = (), **kwargs):
+        super().__init__()  # does nothing at moment, except stopping pycharm complaining
+        self._kwargs = kwargs
+        self._tool = tool
+        self._in_features = in_features
+        self._fname_output = r'%s\%s' % ('memory', _stringslib.rndstr(from_=string.ascii_lowercase))
+
+        self.Results = {}
+
+        if additional_layer_args:
+            if isinstance(additional_layer_args, str): additional_layer_args = (additional_layer_args, )
+            for s in additional_layer_args:
+                lyr_tmp = r'%s\%s' % ('memory', _stringslib.rndstr(from_=string.ascii_lowercase))
+                self.Results[s] = ResultAsPandas._LayerDataFrame(s, lyr_tmp)
+                kwargs[s] = lyr_tmp
+
+        self.execution_result = tool(in_features=in_features, out_feature_class=self._fname_output, **kwargs)
+        self.df = table_as_pandas2(self._fname_output, cols=columns, where=where, exclude_cols=exclude_cols, as_int=as_int, as_float=as_float)
+        self.df_lower = self.df.copy()
+        self.df_lower.columns = self.df_lower.columns.str.lower()
+
+        # check, LDF should behave as byref
+        for LDF in self.Results.values():
+            LDF.df = table_as_pandas2(LDF.fname_output, exclude_cols=('Shape',))
+
+        self.Results['main'] = ResultAsPandas._LayerDataFrame('main', self._fname_output, self.df)
+
+
+
 
 
 def tuple_list_to_table(x, out_tbl, cols, null_number=None, null_text=None):
@@ -578,7 +775,7 @@ def table_dump_from_sde_to_excel(sde_file: str, lyr, xlsx_root_folder: str, **kw
 
 
 def field_update_from_dict1(fname: str, dict_: dict, col_to_update: str, key_col: str,
-                            where: str = '', na: any = (1,1),
+                            where: str = '', na: any = (1, 1),
                             field_length: int = 50, show_progress=False, init_msg: str = ''):
     """Update column in a table with values from a dictionary.
     Will add the column (col_to_update) if it does not exist.
@@ -1456,4 +1653,10 @@ if __name__ == '__main__':
     # dfout = table_summary_as_pandas(fname_local, [['OBJECTID', 'MEAN'], ['PLOT_NuMBER', 'RANGE']], ['plot_type'])  # noqa
 
     # i = vertext_add(r'C:\GIS\erammp_local\submission\curated_raw\freshwater_curated_raw.gdb\stream_sites', 1, x_field='easting_vertex', y_field='northing_vertex', fail_on_exists=False, show_progress=True)
+    RaP = ResultAsPandas(_arcpy.analysis.CountOverlappingFeatures,  # noqa
+                         [r'S:\SPECIAL-ACL\ERAMMP2 Survey Restricted\common\data\GIS\erammp_common.gdb\sq',
+                          r'S:\SPECIAL-ACL\ERAMMP2 Survey Restricted\current\data\GIS\erammp_current.gdb\sq_in_survey'],
+                         additional_layer_args=('out_overlap_table',)
+                         )
+
     pass

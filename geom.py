@@ -96,12 +96,12 @@ def polygon_from_list(lst: (list, tuple)) -> _arcpy.Polygon:
         Include the closing point, so a square is defined by 5 points
 
     Examples:
-        >>> ply = polygon_from_list([(0,0), (0, 1), (1, 1), (1, 0), (0, 0)])
+        >>> ply = polygon_from_list([(0,0), (0, 1), (1, 1), (1, 0), (0, 0)])  # noqa
         >>> ply.centroid
         <Point (0.50006103515625, 0.50006103515625, #, #)>
 
         With Z and M
-        >>> ply = polygon_from_list([(0, 0, 2, 2), (0, 1, 2, 2), (1, 1, 2, 2), (1, 0, 2, 2), (0, 0, 2, 2)])
+        >>> ply = polygon_from_list([(0, 0, 2, 2), (0, 1, 2, 2), (1, 1, 2, 2), (1, 0, 2, 2), (0, 0, 2, 2)])  # noqa
         >>> ply.centroid
         <Point (0.50006103515625, 0.50006103515625, #, #)>
 
@@ -110,6 +110,29 @@ def polygon_from_list(lst: (list, tuple)) -> _arcpy.Polygon:
     poly = _arcpy.Polygon(pts)
     return poly
 
+def polygon_from_extent(ext: _arcpy.Extent):
+    """Make an arcpy polygon object from an input extent object.
+
+    Largely superflous because Extent instances expose the Polygon obj as a property and vica-versa
+
+    Args:
+        ext (_arcpy.Extent): Instance of arcpy.Extent
+
+    Returns:
+        _arcpy.Polygon: A Polygon instance representation of the extent
+
+    Examples:
+        Circular example for illustration
+        >>> poly = polygon_from_extent(arcpy.da.SearchCursor('C:/my.gdb/countries', ['SHAPE@']).next()[0].extent)  # noqa
+        >>> arcpy.CopyFeatures_management(poly, r'C:\Temp\Project_boundary.shp')  # noqa
+    """
+    array = _arcpy.Array()
+    array.add(ext.lowerLeft)
+    array.add(ext.lowerRight)
+    array.add(ext.upperRight)
+    array.add(ext.upperLeft)
+    array.add(ext.lowerLeft)
+    return _arcpy.Polygon(array, ext.spatialReference)
 
 def polyline_from_list(lst: (list[list[(int, float)]])) -> _arcpy.Polyline:
     """
@@ -230,5 +253,5 @@ def extent_zoom(extent: _arcpy.Extent, factor_perc: float = None, factor_abs: fl
 
 if __name__ == '__main__':
     # quick tests here
-    ply = polygon_from_list([(0,0), (0, 1), (1, 1), (1, 0), (0, 0)])
+    ply = polygon_from_list([(0, 0), (0, 1), (1, 1), (1, 0), (0, 0)])
     extent_zoom(ply.extent, factor_abs=0.4)

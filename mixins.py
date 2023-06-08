@@ -8,6 +8,8 @@ import bs4 as _bs4
 
 from funclite.baselib import classproperty as _classproperty
 
+import arcproapi.structure as _struct
+import arcproapi.conversion as conversion
 
 class MetadataBaseInfo:
     """ Get metadata given a layer name, returning it as a string
