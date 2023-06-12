@@ -240,8 +240,8 @@ class ResultAsPandas(_MixinResultsAsPandas):
     Members:
         df (_pd.DataFrame): Dataframe of the output layer
         df_lower (_pd.DataFrame): Dataframe of the output layer, all col names forced to lower case
-        _fname_output (str): Name of the in-memory layer/table created by applying "tool"
-        tool_execution_result (_arcpy.Result): The result object returned from "tool"
+        _fname_output (str): Name of the in-memory layer/table output created by execution of "tool"
+        tool_execution_result (_arcpy.Result): The result object returned from execution of "tool"
         Results: A dictionary of all Results, the main result is keyed as "main", with any additional results keyed with the values in the additional_layer_args member.
 
     Notes:
@@ -265,7 +265,7 @@ class ResultAsPandas(_MixinResultsAsPandas):
 
         Now aggregate on the main result
         >>> import numpy as np
-        >>> RaP.aggregate(['cols'], ['colc'], np.sum)  # noqa
+        >>> RaP.aggregate(['cola'], ['colc'], np.sum)  # noqa
         cola    sum_colc
         'a'     5
         'b'     20
