@@ -8,12 +8,14 @@ from copy import deepcopy as _deepcopy
 from warnings import warn as _warn
 
 from arcpy.management import CreateFeatureclass, AddJoin, AddRelate, AddFields, AddField, DeleteField, AlterField  # noqa Add other stuff as find it useful ...
+from arcpy import Exists  # noqa
 
 # See https://pro.arcgis.com/en/pro-app/latest/tool-reference/data-management/create-domain.htm
 from arcpy.management import CreateDomain, AlterDomain, AssignDomainToField, AddCodedValueToDomain, SortCodedValueDomain  # noqa
 
 from arcpy.conversion import ExcelToTable, TableToExcel, TableToGeodatabase, TableToDBASE, TableToSAS  # noqa
 
+import numpy as _np
 import pandas as _pd
 import fuckit as _fuckit
 
@@ -51,6 +53,7 @@ def field_alter(fname: str, field_name: str, **kwargs) -> bool:
     if field_exists(fname, field_name): return False
     AlterField(fname, field_name, **kwargs)
     return True
+
 
 def field_oid(fname):
     """Return name of the object ID field in table table"""
@@ -278,6 +281,40 @@ def fcs_delete(fnames, err_on_not_exists=False):
                 raise e
 
 
+def domain_create(geodb: str, domain_name: str, codes: (list, tuple), descriptions: (list, tuple) = (), update_option='REPLACE'):
+    """
+    Import as a domain into a geodatabase
+
+    Args:
+        geodb (str): The geodatabase
+        domain_name (str): Name of the domain
+        codes (list, tuple): List of the actual code values, can be int, float etc
+        descriptions (list, tuple): list of the descriptions, if evaluates to False then codes will also be used as the descriptions
+        update_option (str): Either 'APPEND' or 'REPLACE'. See https://pro.arcgis.com/en/pro-app/latest/tool-reference/data-management/table-to-domain.htm
+
+    Raises:
+        ValueError: If descriptions evaluates to True and len(descriptions) != len(codes)
+
+    Returns:
+        None
+    """
+    if codes and descriptions:
+        if len(codes) != len(descriptions):
+            raise ValueError('descriptions were provided, but the length of the iterable does not match the number of codes')
+
+    geodb = _path.normpath(geodb)
+
+    if descriptions:
+        code_desc = ((x, y) for x, y in zip(codes, descriptions))
+    else:
+        code_desc = [(v, v) for v in codes]
+    array = _np.array(code_desc, dtype=[('code', 'S3'), ('value', 'S50')])
+    table = 'in_memory/table'
+    _arcpy.da.NumPyArrayToTable(array, table)
+    # NB: You have to close and reopon any active client sessions before this appears as at ArcGISPro 3.0.1. Refreshing the geodb doesnt even work.
+    _arcpy.management.TableToDomain(table, 'code', 'value', geodb, domain_name, domain_name, update_option=update_option)  # noqa
+
+
 @_decs.environ_persist
 def domains_assign(fname: str, domain_field_dict: dict[str: list[list, str]], show_progress: bool = False) -> dict[str:list[str]]:
     """
@@ -330,7 +367,7 @@ def domains_assign(fname: str, domain_field_dict: dict[str: list[list, str]], sh
                 failed += ['%s:%s  %s' % (dname, col, serr)]
         if show_progress:
             PP.increment()  # noqa
-    return {'success':success, 'fail':failed}
+    return {'success': success, 'fail': failed}
 
 
 def cleanup(fname_list, verbose=False, **args):
@@ -574,6 +611,7 @@ def field_list(fname, cols_exclude=(), oid=True, shape=True, objects=False, func
     else:
         return [func(f.name) for f in _arcpy.ListFields(fname)
                 if f.name.lower() not in exclude and _filt_fld(f)]
+
 
 def field_type_get(in_field, fc: str = '') -> (str, None):
     """Converts esri field type returned from list fields or describe fields
@@ -1451,6 +1489,38 @@ def excel_import_worksheet(xls: str, fname: str, worksheet: str, header_row=1, o
     ExcelToTable(xls, fname, Sheet=worksheet, field_names_row=header_row, **kwargs)
 
 
+def gdb_table_or_fc_exists(gdb: str, fname_basename: str) -> bool:
+    """
+    Case insensitive check if the table of feature class "fname_basename" exists in geodatabase "gdb"
+
+    Args:
+        gdb (str): Path to geodatabase
+        fname_basename (str): The basename of the layer (e.g. "counties" NOT, 'C:/my.gdb/counties')
+
+    Returns:
+        bool: True if exists, else false
+
+    Notes:
+        This is superflous, the preferred method is to use arcpy.Exists. See https://pro.arcgis.com/en/pro-app/latest/arcpy/functions/exists.htm.
+        arcpy.Exists is exposed in this module for convieniance.
+
+    Examples:
+        >>> gdb_table_or_fc_exists('C:/my.gdb', 'countries')
+        True
+
+        This method does not care about case
+
+        >>> gdb_table_or_fc_exists('C:/my.gdb', 'COUntries')
+        True
+    """
+    basenames = gdb_tables_and_fcs_list(gdb)
+    return fname_basename.lower() in map(str.lower, basenames[0] + basenames[1])
+
+
+# For convieniance
+gdb_fc_or_table_exists = gdb_table_or_fc_exists
+
+
 @_decs.environ_persist
 def gdb_tables_and_fcs_list(gdb: str, full_path: bool = False, include_dataset: bool = True) -> tuple:
     """
@@ -1478,8 +1548,8 @@ def gdb_tables_and_fcs_list(gdb: str, full_path: bool = False, include_dataset: 
         [['C:/my.gdb/coutries', 'C:/my.gdb/roads'], ['C:/my.gdb/population', 'C:/my.gdb/junctions']]
     """
     gdb = _path.normpath(gdb)
-    #if not _common.is_gdb(gdb):
-     #   raise ValueError('%s is not a valid file geodatabase path' % gdb)
+    # if not _common.is_gdb(gdb):
+    #   raise ValueError('%s is not a valid file geodatabase path' % gdb)
 
     _environ.workspace_set(gdb)
 

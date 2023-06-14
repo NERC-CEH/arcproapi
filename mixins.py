@@ -8,17 +8,18 @@ import bs4 as _bs4
 
 from funclite.baselib import classproperty as _classproperty
 
-import arcproapi.structure as _struct
-import arcproapi.conversion as conversion
+import arcproapi.conversion as conversion  # noqa
 
 class MetadataBaseInfo:
     """ Get metadata given a layer name, returning it as a string
     Or get as a metadata object for further manipulation and querying
 
     Examples:
+        # Instantiate a class, which inherits from this mixin
         >>> class MyClass(MetadataBaseInfo):
         >>>     pass
         >>> MC = MyClass()
+        # Call the static metadata method on class instance of MC of MyClass
         >>> MC.metadata('C:/my.gdb/lyr')
         'This is the description and summary for layer lyr'
         >>> M = MC.metadata('C:/my.gdb/lyr', as_obj=True)

@@ -1235,10 +1235,10 @@ def del_rows(fname: str, cols: any, vals: any, where: str = None, show_progress:
         >>> del_rows('c:/shp.shp', 'cola', 1)  # deletes every record where cola==1
 
         Use wildcard delete, we don't care about cols, so just use OBJECTID\n
-        >>> del_rows('c:/my.gdb', 'OBJECTID', '*', where='OBJECTID<10')
+        >>> del_rows('c:/my.gdb/coutries', 'OBJECTID', '*', where='OBJECTID<10')
 
         Delete everything\n
-        >>> del_rows('c:/my.gdb', '*', '*', no_warn=True)
+        >>> del_rows('c:/my.gdb/countries', '*', '*', no_warn=True)
     """
     if cols == '*':
         cols = _struct.field_oid(fname)
