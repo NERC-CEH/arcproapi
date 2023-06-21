@@ -95,6 +95,7 @@ def fgdb_to_fgdb(source_gdb: str, dest_gdb: str, recreate: bool = True, show_pro
         dest_gdb (str): Dest
         recreate (bool): Delete dest_gdb if it exists
         show_progress (bool): Show progress
+
     Returns:
         int: Nr of entities exported
 
