@@ -566,6 +566,8 @@ class Map:
         except Exception as e:
             if 'returned NULL without setting an error' in str(e):
                 raise ValueError('It is likely that that arpx project refers to a layer that no longer exists. Check your project.') from e
+            elif 'Cannot find field ' in str(e):
+                raise  ValueError('A field was not found. If referring to a joined table or feature class, then check you are using the fully qualified name, eg sq.sq_id\nThe error was %s' % getattr(e, 'message', repr(e))) from e
             raise e
 
         if unique:
