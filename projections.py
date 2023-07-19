@@ -79,10 +79,11 @@ def spatial_ref_get(wkid: int = 27700):
     Args:
         wkid (int):  An ESRI Well Known ID (WKID) code for the required projection
 
-
     Return
         obj: An arcpy spatial reference object for the WKID.
 
+    Notes:
+        See https://developers.arcgis.com/rest/services-reference/enterprise/pdf/pcs_pdf_11.1.pdf for WKIDs under ESRI
     """
     sr = _arcpy.SpatialReference()
     sr.factoryCode = wkid

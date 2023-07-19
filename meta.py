@@ -155,21 +155,35 @@ def meta(datasource, mode="PREPEND", **args):
     return reader
 
 
-def write_basic(fname: str, summary: str = '', description: str = '') -> bool:
+def write_basic(fname: str, summary: str = '', description: str = '', title: str = '') -> bool:
     """
     Write out summary and description metadata to table/fc fname.
     All errors are suppressed.
 
     Args:
-        fname (str):
-        summary (str):
-        description (str):
+        fname (str): the layer
+        summary (str): the summary
+        description (str): the description
+        title (str): the title
 
     Returns:
         bool: True if write worked, false if error
 
+    Notes:
+        Title: The title should describe the data, not the project. It should describe what the data is. Good practive is to answer What, Where and When
+        Summary: Extent on title, but keep it succint. Think - What, Where, When, How, Who
+        Description: Recovering the summary is not required. But extent to include:
+            (i) Input datasets and processing
+            (ii) Quality Control
+            (iii) Missing and extra data
+            (iv) Caveats and limitations
+
+        See https://eidc.ac.uk/deposit/metadata/guidance
+
+
     Examples:
-        >>> write_basic('C:/my.gdb', 'my summary', 'my description')
+
+        >>> write_basic('C:/my.gdb', 'my summary', 'my description', 'my title')
         True
     """
     out = False
@@ -178,6 +192,7 @@ def write_basic(fname: str, summary: str = '', description: str = '') -> bool:
         M = _arcpy.metadata.Metadata(fname)
         M.summary = summary
         M.description = description
+        M.title = title
         M.save()  # noqa
         out = True
     finally:

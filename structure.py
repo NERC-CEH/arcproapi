@@ -11,9 +11,9 @@ from arcpy.management import CreateFeatureclass, AddJoin, AddRelate, AddFields, 
 from arcpy import Exists  # noqa
 
 # See https://pro.arcgis.com/en/pro-app/latest/tool-reference/data-management/create-domain.htm
-from arcpy.management import CreateDomain, AlterDomain, AssignDomainToField, AddCodedValueToDomain, SortCodedValueDomain  # noqa
+from arcpy.management import CreateDomain, AlterDomain, AssignDomainToField, AddCodedValueToDomain, SortCodedValueDomain, CreateFeatureclass  # noqa
 
-from arcpy.conversion import ExcelToTable, TableToExcel, TableToGeodatabase, TableToDBASE, TableToSAS  # noqa
+from arcpy.conversion import ExcelToTable, TableToExcel, TableToGeodatabase, TableToDBASE, TableToSAS, ExportTable, ExportFeatures  # noqa
 
 import numpy as _np
 import pandas as _pd
@@ -634,7 +634,7 @@ def field_type_get(in_field, fc: str = '') -> (str, None):
         TEXT
     """
     if fc:
-        field = [f.type for f in _arcpy.ListFields(fc) if f.name == in_field][0]
+        field = [f.type for f in _arcpy.ListFields(fc) if f.name.lower() == in_field.lower()][0]
     else:
         field = in_field
     if field in _common.lut_field_types:

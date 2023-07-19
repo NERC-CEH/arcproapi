@@ -74,7 +74,7 @@ class CompositeKeyColumnsInvalid(Exception):
 # END OF ORM ERRORS
 
 
-# struct.py errors
+# region struct.py errors
 class StructMultipleFieldMatches(Exception):
     """Multiple fields matched, expected a single field match"""
 
@@ -95,7 +95,10 @@ class DataUnexpectedRowCount(Exception):
 
 class DataDeleteAllRowsWithNoWhere(Exception):
     """Delete all rows with now where clause"""
-# end data.py
+
+class DataUnknownKeywordsForTool(Exception):
+    """ An arcpy tool had unknown keywords"""
+# endregion data.py
 
 
 # display errors

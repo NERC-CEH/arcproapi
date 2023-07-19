@@ -2,6 +2,7 @@
 import string
 from warnings import warn as _warn
 import os.path as _path
+import inspect as _inspect
 
 import fuckit as _fuckit
 
@@ -94,10 +95,6 @@ class Excel:
 
 
 class _MixinResultsAsPandas:
-    def __init__(self):
-        self.df = None
-        self.df_lower = None
-
     def aggregate(self, groupflds: (str, list[str]), valueflds: (str, list[str]), *funcs, **kwargs) -> (_pd.DataFrame, None):
         """
         Return an aggregated dataframe.
@@ -244,6 +241,9 @@ class ResultAsPandas(_MixinResultsAsPandas):
         tool_execution_result (_arcpy.Result): The result object returned from execution of "tool"
         Results: A dictionary of all Results, the main result is keyed as "main", with any additional results keyed with the values in the additional_layer_args member.
 
+    Raises:
+        errors.DataUnknownKeywordsForTool: If the arcpy tool does not support in_features or in_dataset keyword arguments
+
     Notes:
         Currently assumes that the in_features list is always called in_features in the tool
         The arguments "columns", "where", "as_int", "as_float" and "exclude_cols" are all passed to data.table_as_pandas2
@@ -273,11 +273,11 @@ class ResultAsPandas(_MixinResultsAsPandas):
     """
     class _LayerDataFrame(_MixinResultsAsPandas):
         def __init__(self, arg_name: str, fname_output: str, df: _pd.DataFrame = None):
-            super().__init__()  # does nothing at moment, except stopping pycharm complaining
             self.arg_name = arg_name
             self.fname_output = fname_output
             self.df_lower = None
             self._df = df
+            super().__init__()
 
         @property
         def df(self):
@@ -295,7 +295,6 @@ class ResultAsPandas(_MixinResultsAsPandas):
 
     def __init__(self, tool, in_features: (list[str], str), columns: list[str] = None, additional_layer_args: (tuple[str], str) = (), where: str = None, exclude_cols: tuple[str] = ('Shape',),
                  as_int: (tuple[str], list[str]) = (), as_float: (tuple[str], list[str]) = (), **kwargs):
-        super().__init__()  # does nothing at moment, except stopping pycharm complaining
         self._kwargs = kwargs
         self._tool = tool
         self._in_features = in_features
@@ -310,7 +309,13 @@ class ResultAsPandas(_MixinResultsAsPandas):
                 self.Results[s] = ResultAsPandas._LayerDataFrame(s, lyr_tmp)
                 kwargs[s] = lyr_tmp
 
-        self.execution_result = tool(in_features=in_features, out_feature_class=self._fname_output, **kwargs)
+        if 'in_dataset' in dict(_inspect.signature(tool).parameters).keys():
+            self.execution_result = tool(in_dataset=in_features, out_dataset=self._fname_output, **kwargs)
+        elif 'in_features' in dict(_inspect.signature(tool).parameters).keys():
+            self.execution_result = tool(in_features=in_features, out_feature_class=self._fname_output, **kwargs)
+        else:
+            raise _errors.DataUnknownKeywordsForTool('The tool "%s" had unknown keywords. Currently code only accepts tools which support "in_features" and "in_dataset" arguments.\n\nThis will need fixing in code.' % str(tool))
+
         self.df = table_as_pandas2(self._fname_output, cols=columns, where=where, exclude_cols=exclude_cols, as_int=as_int, as_float=as_float)
         self.df_lower = self.df.copy()
         self.df_lower.columns = self.df_lower.columns.str.lower()
@@ -322,35 +327,29 @@ class ResultAsPandas(_MixinResultsAsPandas):
         self.Results['main'] = ResultAsPandas._LayerDataFrame('main', self._fname_output, self.df)
 
 
-
-
-
 def tuple_list_to_table(x, out_tbl, cols, null_number=None, null_text=None):
     """Save a list of tuples as table out_tbl and return catalog path to it.
 
-    Required:
-    x -- list of tuples (no nesting!), can be list of lists or tuple of tuples
-    out_tbl -- path to the output table
-    cols -- list of tuples defining columns of x. Can be defined as:
-        [('colname1', 'type1'), ('colname2', 'type2'), ...]
-        ['colname1:type1:lgt1', 'colname2:type2', ('colname3', 'type3')]
-        [('colname1', 'type1'), 'colname2:type2:lgt2, ...]
-        where types are case insensitive members of:
-        ('SHORT', 'SMALLINTEGER', 'LONG', 'INTEGER', 'TEXT', 'STRING', 'DOUBLE',
-        'FLOAT')
-        Each column definition can have third element for length of the field,
-        e.g.: ('ATextColumn', 'TEXT', 250).
-        To leave out length, simply leave it out or set to '#'
+    Args:
+        x (tuple[tuple], list[list]): list of tuples (no nesting!), can be list of lists or tuple of tuples
+        out_tbl (str): path to the output table
 
-    Optional:
-    nullNumber -- a value to replace null (None) values in numeric columns, default is None and does no replacement
-    nullText -- a value to replace null (None) values in text columns, default is None and does no replacement
+        cols list[tuple]: list of tuples defining columns of x. Can be defined as:
+            [('colname1', 'type1'), ('colname2', 'type2'), ...]
+            ['colname1:type1:lgt1', 'colname2:type2', ('colname3', 'type3')]
+            [('colname1', 'type1'), 'colname2:type2:lgt2, ...]
+            where types are case insensitive members of ('SHORT', 'SMALLINTEGER', 'LONG', 'INTEGER', 'TEXT', 'STRING', 'DOUBLE', 'FLOAT')
+            Each column definition can have third element for length of the field,
+            e.g.: ('ATextColumn', 'TEXT', 250).
+            To leave out length, simply leave it out or set to '#'
 
-    Example:
-    >>> x_ = [(...),(...),(...),(...),(...), ...]
-    >>> ot = 'c:\\temp\\foo.dbf'
-    >>> tuple_list_to_table(x_, ot, [('IDO', 'SHORT'), ('NAME', 'TEXT', 200)]
-    >>> tuple_list_to_table(x_, ot, ['IDO:SHORT', 'NAME:TEXT:200']
+        nullNumber (int, None): A value to replace null (None) values in numeric columns, default is None and does no replacement
+        nullText (str, None): A value to replace null (None) values in text columns, default is None and does no replacement
+
+    Examples:
+        >>> x_ = [(...),(...),(...),(...),(...), ...]
+        >>> tuple_list_to_table(x_, 'c:\\temp\\foo.dbf', [('IDO', 'SHORT'), ('NAME', 'TEXT', 200)]
+        >>> tuple_list_to_table(x_, 'c:\\temp\\foo.dbf', ['IDO:SHORT', 'NAME:TEXT:200']
     """
 
     # decode column names, types, and lengths
