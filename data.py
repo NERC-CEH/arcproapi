@@ -875,7 +875,7 @@ def field_update_from_dict(fname: str, dict_: dict, col_to_update: str, key_col:
 
     if show_progress:
         PP = _iolib.PrintProgress(maximum=n, init_msg=init_msg)
-
+    # if you are here debugging an unexplained da.UpdateCursor invalid col error - check the where clause - you get an invalid col error if there are Nones in an IN query e.g. cola in (None,'a')
     with _arcpy.da.UpdateCursor(fname, cols, where_clause=where) as uc:
         for row in uc:
             ido = row[0]
