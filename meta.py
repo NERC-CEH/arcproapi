@@ -17,9 +17,14 @@ class MetaBuilderBasic:
         description (str): Built from all attributes, except title
         write_basic: Convieniance function to write out the metadata to the specified fname
 
+    Examples:
+
+        >>> Build = MetaBuilderBasic(title='title', purpose='purpose', ...)  # noqa
+        >>> Build.caveats_and_limitations = 'caveats'
+        >>> Build.write_basic('C:/my.gdb/fc')
     """
     def __init__(self, title: str, what: str = '', purpose: str = '', where: str = '', when: str = '', how: str = '', missing_data: str = '', caveats_and_limitations: str = '',
-                 quality_control: str = '', inputs=(), scripts=()):
+                 quality_control: str = '', credit: str = '', inputs: (tuple[str], list[str]) = (), scripts: (tuple[str], list[str]) = ()):
         self.title = title
         self.purpose = purpose
         self.what = what
@@ -30,7 +35,8 @@ class MetaBuilderBasic:
         self.caveats_and_limitations = caveats_and_limitations
         self.quality_control = quality_control
         self.inputs = inputs
-        self.scrits = scripts
+        self.scripts = scripts
+        self.credit = credit
 
     def summary(self) -> str:
         return self.description(filt=('what', 'purpose'))
@@ -209,6 +215,7 @@ def write_basic(fname: str, summary: str = '', description: str = '', title: str
     Write out summary and description metadata to table/fc fname.
     All errors are suppressed.
 
+
     Args:
         fname (str): the layer
         summary (str): the summary
@@ -219,6 +226,7 @@ def write_basic(fname: str, summary: str = '', description: str = '', title: str
         bool: True if write worked, false if error
 
     Notes:
+        *** Recommend use MetaBuilderBasic to construct and write basic metadata to title, summary and description ***
         Title: The title should describe the data, not the project. It should describe what the data is. Good practive is to answer What, Where and When
         Summary: Extend on title, but keep it succint. Think - What, Where, When, How, Who
         Description: Recovering the summary is not required. But extent to include:
@@ -241,6 +249,12 @@ def write_basic(fname: str, summary: str = '', description: str = '', title: str
         M.summary = summary
         M.description = description
         M.title = title
+
+        if False:
+            # Exposed, but can't write it, even though it is not set to the layer extent, well done ESRI. Leaving code here incase it is ever fixed
+            if write_extent:
+                d = _arcpy.Describe(fname).extent
+                M.xMin, M.xMax, M.yMin, M.yMax = d.XMin, d.XMax, d.YMin, d.YMax
         M.save()  # noqa
         out = True
     finally:

@@ -11,7 +11,7 @@ import numpy as _np
 
 import arcpy as _arcpy
 from arcpy.conversion import TableToDBASE, TableToExcel, TableToGeodatabase, TableToSAS, TableToTable, ExcelToTable  # noqa
-from arcpy.management import MakeAggregationQueryLayer, MakeQueryLayer, MakeQueryTable  # noqa   Expose here as useful inbult tools
+from arcpy.management import MakeAggregationQueryLayer, MakeQueryLayer, MakeQueryTable, CalculateField, CalculateStatistics  # noqa   Expose here as useful inbult tools
 
 
 import funclite.iolib as _iolib
@@ -125,11 +125,11 @@ class _MixinResultsAsPandas:
         groupflds = list(map(str.lower, groupflds))
         valueflds = list(map(str.lower, valueflds))
 
-        return pandaslib.GroupBy(self.df_lower, groupflds=groupflds, valueflds=valueflds, *funcs, **kwargs).result
+        return pandaslib.GroupBy(self.df_lower, groupflds=groupflds, valueflds=valueflds, *funcs, **kwargs).result  # noqa
 
     def view(self) -> None:
         """Open self.df in excel"""
-        _xlwings.view(self.df)
+        _xlwings.view(self.df)  # noqa
 
     def fields_get(self, as_objs: bool = False) -> (list[str], list[_arcpy.Field]):
         """
@@ -166,7 +166,7 @@ class _MixinResultsAsPandas:
         """
         if not conv_func:
             conv_func = lambda v: v
-        lst = self.df_lower.query(expr=where, **kwargs)['shape_area'].to_list()
+        lst = self.df_lower.query(expr=where, **kwargs)['shape_area'].to_list()  # noqa
         if lst:
             return conv_func(sum(lst))
         return 0
@@ -183,8 +183,8 @@ class _MixinResultsAsPandas:
         Returns: int: Row count
         """
         if query:
-            return len(self.df_lower.query(expr=query, **kwargs))
-        return len(self.df_lower)
+            return len(self.df_lower.query(expr=query, **kwargs))  # noqa
+        return len(self.df_lower)  # noqa
 
     def shape_length(self, where: (str, None) = None, conv_func=lambda v: v, **kwargs) -> float:
         """
@@ -211,7 +211,7 @@ class _MixinResultsAsPandas:
         if not conv_func:
             conv_func = lambda v: v
 
-        lst = self.df_lower.query(expr=where, **kwargs)['shape_length'].to_list()
+        lst = self.df_lower.query(expr=where, **kwargs)['shape_length'].to_list()  # noqa
         if lst:
             return conv_func(sum(lst))
         return 0
@@ -1234,7 +1234,7 @@ def del_rows(fname: str, cols: any, vals: any, where: str = None, show_progress:
         >>> del_rows('c:/shp.shp', 'cola', 1)  # deletes every record where cola==1
 
         Use wildcard delete, we don't care about cols, so just use OBJECTID\n
-        >>> del_rows('c:/my.gdb/coutries', 'OBJECTID', '*', where='OBJECTID<10')
+        >>> del_rows('c:/my.gdb/coutries', '*', '*', where='OBJECTID<10')
 
         Delete everything\n
         >>> del_rows('c:/my.gdb/countries', '*', '*', no_warn=True)
@@ -1333,6 +1333,56 @@ def pandas_join(from_: _pd.DataFrame, to_: _pd.DataFrame, from_key: str, to_key:
         join.drop(list(join.filter(regex=drop_wildcard)), axis=1, inplace=True)  # drop duplicate cols
     join = join.reset_index()
     return join
+
+def features_overlapping(fname: str, fields: (str, list[str]) = None) -> tuple[bool, (None, list[list[int]])]:
+    """
+    Get overlapping features in a single feature class.
+    and test if there were overlaps.
+
+    Args:
+        fname (str): feature class
+        fields (str, list[str]): fields passed to FindIdentical, see https://pro.arcgis.com/en/pro-app/latest/tool-reference/data-management/find-identical.htm
+
+    Returns:
+        tuple[bool, (None, list[list[int]])]: are there overlaps, and a list of lists, where the inner lists are the overlapping polygon ids from the input layer.
+        The returned dataframe has columns objectid, in_fid, feat_seq. NB: objectid is just the key for these results and has no relation to the source layer.
+
+    Examples:
+
+        No overlaps in layer
+
+        >>> features_overlapping('C:/my.gdb/lyr')
+        False, None
+
+
+        Has overlaps, polygons with ids of 10 and 20 overlap and polygons with ids 25, 26 and 27 overlap.
+
+        >>> features_overlapping('C:/my.gdb/lyr')
+        True, [[10, 20], [25, 26, 27], ...]
+    """
+    fname = _path.normpath(fname)
+    if isinstance(fields, str): fields = [fields]
+    if fields is None: fields = []
+    lyr_union = r"memory\%s" % _stringslib.rndstr(from_=string.ascii_lowercase)
+
+    try:
+        _arcpy.analysis.Union([fname], lyr_union, "ALL", None, "GAPS")  # noqa
+        idcol = 'FID_%s' % _path.basename(fname)
+        # arcpy.management.FindIdentical("address_crn_lpis_sq_Union", r"S:\SPECIAL-ACL\ERAMMP2 Survey Restricted\common\data\GIS\_arcpro_projects\gmep_surveys\gmep_surveys.gdb\address_crn_lp_FindIdentical", "Shape", None, 0, "ONLY_DUPLICATES")
+        Res = ResultAsPandas(_arcpy.management.FindIdentical, lyr_union, as_int=['OBJECTID', 'IN_FID', 'FEAT_SEQ'], output_record_option='ONLY_DUPLICATES', fields=['Shape'] + fields)
+        if not len(Res.df) or len(Res.df) == 0: return False, None  # noqa
+
+        df_lyr_union = table_as_pandas2(lyr_union, ['OBJECTID', idcol])
+        ddf = pandas_join(Res.df_lower, df_lyr_union, 'in_fid', 'OBJECTID')
+        out = []
+        for row in ddf.iterrows():
+            if len(out) < row[1].feat_seq:  # noqa
+                out.append([])
+            out[row[1].feat_seq - 1] += [row[1].FID_address_crn_lpis_sq]  # noqa
+    finally:
+        _struct.fc_delete2(lyr_union)
+    return True, out  # noqa
+
 
 
 def features_copy_to_new(source: str, dest: str, where_clause: (None, str) = None, **kwargs):
@@ -1652,10 +1702,9 @@ if __name__ == '__main__':
     # dfout = table_summary_as_pandas(fname_local, [['OBJECTID', 'MEAN'], ['PLOT_NuMBER', 'RANGE']], ['plot_type'])  # noqa
 
     # i = vertext_add(r'C:\GIS\erammp_local\submission\curated_raw\freshwater_curated_raw.gdb\stream_sites', 1, x_field='easting_vertex', y_field='northing_vertex', fail_on_exists=False, show_progress=True)
-    RaP = ResultAsPandas(_arcpy.analysis.CountOverlappingFeatures,  # noqa
-                         [r'S:\SPECIAL-ACL\ERAMMP2 Survey Restricted\common\data\GIS\erammp_common.gdb\sq',
-                          r'S:\SPECIAL-ACL\ERAMMP2 Survey Restricted\current\data\GIS\erammp_current.gdb\sq_in_survey'],
-                         additional_layer_args=('out_overlap_table',)
-                         )
+
+    a, lst_out = features_overlapping(r'\\nerctbctdb\shared\shared\SPECIAL-ACL\ERAMMP2 Survey Restricted\2022\data\GIS\erammp.gdb\address_crn_lpis_sq')
+    # a, lst_out = features_overlapping(r'\\nerctbctdb\shared\shared\SPECIAL-ACL\ERAMMP2 Survey Restricted\current\data\GIS\erammp_current.gdb\address_crn_lpis_sq')
+    # a, lst_out = features_overlapping(r'\\nerctbctdb\shared\shared\SPECIAL-ACL\ERAMMP2 Survey Restricted\2021\data\GIS\erammp_current.gdb\address_crn_lpis_sq')
 
     pass

@@ -1091,6 +1091,25 @@ def fc_schema_copy(template: str, new: str, sr: str = ''):
         _arcpy.CreateFeatureclass_management(path, name, stype, template, sm, sm, sr)
     return new
 
+def feature_dataset_create(feature_name:str, gdb: str, fname: str):
+    """
+    Create a feature dataset using the spatial reference system of fname.
+    Useful when you want to stick the layer in a feature dataset, but getting an error complaining that spatial refs don't match.
+
+    Args:
+        feature_name: the name of the created feature dataset
+        gdb: geodatabase in which to create the feature dataset
+        fname: the feature class to get the spatial ref form
+
+    Returns:
+        None
+
+    Examples:
+        Create feature dataset topo in my.gdb, using spatial ref of mylayer
+        >>> feature_dataset_create('topo', 'C:/my.gdb', 'C:/my.gdb/mylayer')
+    """
+    sr = _arcpy.Describe(_path.normpath(fname)).spatialReference
+    _arcpy.management.CreateFeatureDataset(_path.normpath(gdb), feature_name, sr)
 
 def table_to_points(tbl, out_fc, xcol, ycol, sr, zcol='#', w='') -> str:
     """Convert table to point feature class, return path to the feature class.
