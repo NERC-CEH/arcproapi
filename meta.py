@@ -8,6 +8,11 @@ import arcproapi as _arcapi
 import arcproapi.common as _common
 
 
+class LicenseText:
+    OGL_v3 = 'Open Government License v3. See https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/ for conditions'
+
+
+
 class MetaBuilderBasic:
     """ A way to build summary and description for the write_basic metadata method, to get some standard structure/formatting and as an aide-memoir in what to include
 
@@ -23,8 +28,9 @@ class MetaBuilderBasic:
         >>> Build.caveats_and_limitations = 'caveats'
         >>> Build.write_basic('C:/my.gdb/fc')
     """
+    # No license as this is exposed through arcpy metadata class
     def __init__(self, title: str, what: str = '', purpose: str = '', where: str = '', when: str = '', how: str = '', missing_data: str = '', caveats_and_limitations: str = '',
-                 quality_control: str = '', credit: str = '', inputs: (tuple[str], list[str]) = (), scripts: (tuple[str], list[str]) = ()):
+                 quality_control: str = '', credit: str = '', license: str = '', inputs: (tuple[str], list[str]) = (), scripts: (tuple[str], list[str]) = ()):
         self.title = title
         self.purpose = purpose
         self.what = what
@@ -37,6 +43,7 @@ class MetaBuilderBasic:
         self.inputs = inputs
         self.scripts = scripts
         self.credit = credit
+        self.license = license
 
     def summary(self) -> str:
         return self.description(filt=('what', 'purpose'))
