@@ -1091,7 +1091,8 @@ def fc_schema_copy(template: str, new: str, sr: str = ''):
         _arcpy.CreateFeatureclass_management(path, name, stype, template, sm, sm, sr)
     return new
 
-def feature_dataset_create(feature_name:str, gdb: str, fname: str):
+
+def feature_dataset_create(feature_name: str, gdb: str, fname: str):
     """
     Create a feature dataset using the spatial reference system of fname.
     Useful when you want to stick the layer in a feature dataset, but getting an error complaining that spatial refs don't match.
@@ -1110,6 +1111,7 @@ def feature_dataset_create(feature_name:str, gdb: str, fname: str):
     """
     sr = _arcpy.Describe(_path.normpath(fname)).spatialReference
     _arcpy.management.CreateFeatureDataset(_path.normpath(gdb), feature_name, sr)
+
 
 def table_to_points(tbl, out_fc, xcol, ycol, sr, zcol='#', w='') -> str:
     """Convert table to point feature class, return path to the feature class.
@@ -1771,6 +1773,65 @@ def rel_one_to_many_create(fname1: str, col1: str, fname_many: str, col_many: st
     finally:
         if ws_orig:
             _arcpy.env.workspace = ws_orig
+
+
+@_decs.environ_persist
+def datasets_get(gdb: str) -> list[str]:
+    """ 
+    Args:
+        gdb (str): database 
+
+    Returns:
+        list[str]: List of feature datasets in database
+        
+    Examples:
+        >>> datasets_get('C:/my.gdb')
+        ['featuredataset1', 'fd2', ...]
+    """
+    _arcpy.env.workspace = _path.normpath(gdb)
+    return _arcpy.ListDatasets(wild_card=None, feature_type='Feature')
+
+
+def topos_get(gdb: str) -> list[str]:
+    """
+    List topologies on dataset
+
+    Args:
+        gdb:
+
+    Returns:
+        list[str]: list of all toplogy names in geodatabase gdb
+    """
+    # TODO: Needs checking with non-fGDB databases
+    out = []
+    for ds in datasets_get(gdb):
+        desc_dataset = _arcpy.Describe(ds)
+        if desc_dataset.datasetType == 'Topology':  # finding out whether is topology
+            out += [ds]
+    return out
+
+
+def fc_in_toplogy(fname: str) -> bool:
+    """
+    Is the fully named feature class in a toplogy.
+
+    Args:
+        fname:
+
+    Returns:
+        bool: True if the feature class is in a toplogy
+
+    Notes:
+        Check is case insenitive
+        Feature classes in topologies need to be in a transactional edit section otherwise write/delete operations fail (e.g. those in module "data".
+    """
+    # TODO Needs debugging to check status with full paths, along with the dependent functions
+    gdb, lyr = _iolib.get_file_parts2(fname)[0:2]
+    isin = False  # noqa
+    for topo in topos_get(gdb):
+        isin = lyr.lower() in map(str.lower, _arcpy.Describe(topo).featureClassNames())
+        if isin: return True
+    return False
 
 
 if __name__ == '__main__':
