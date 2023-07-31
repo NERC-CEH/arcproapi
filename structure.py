@@ -98,7 +98,7 @@ def fields_delete_not_in(fname, not_in):
     _arcpy.DeleteField_management(fname, flds)
 
 
-def fields_delete(fname, fields: (list, None) = None, where: (str, None) = None, show_progress: bool = False) -> (tuple[list[str]], None):
+def fields_delete(fname, fields: (str, list[str], None) = None, where: (str, None) = None, show_progress: bool = False) -> (tuple[list[str]], None):
     """
     Delete fields that are in the list "fields" OR that match "where".
 
@@ -106,7 +106,7 @@ def fields_delete(fname, fields: (list, None) = None, where: (str, None) = None,
 
     Args:
         fname (str): Feature class or table
-        fields (list, None): list of field names. Cannot be used if where is specified
+        fields (str, list[str], None): list of field names. Cannot be used if where is specified. Accepts a string.
         where (str, None): where, passed to ListFields to identify fields. This cannot be used with the fields argument.
         show_progress (bool): Show progress
 
@@ -126,7 +126,7 @@ def fields_delete(fname, fields: (list, None) = None, where: (str, None) = None,
     fname = _path.normpath(fname)
     if where and fields:
         raise ValueError('The "where" and "fields" argument cannot both be passed. Use one or the other')
-
+    if isinstance(fields, str): fields = [fields]
     flds = _deepcopy(fields)
     if not flds:
         flds = []
