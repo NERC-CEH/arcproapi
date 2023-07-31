@@ -17,7 +17,7 @@ from arcpy.management import MakeAggregationQueryLayer, MakeQueryLayer, MakeQuer
 import funclite.iolib as _iolib
 import funclite.baselib as _baselib
 import funclite.stringslib as _stringslib
-from funclite.pandaslib import df_to_dict_as_records_flatten1 as df_to_dict  # noqa Used to convert a standard dataframe into one accepted by field_update_from_dict and field_update_from_dict1
+from funclite.pandaslib import df_to_dict_as_records_flatten1 as df_to_dict  # noqa Used to convert a standard dataframe into one accepted by field_update_from_dict and field_update_from_dict_addnew
 import funclite.pandaslib as pandaslib  # noqa   no _ as want to expose it to pass agg funcs to ResultsAsPandas instances
 
 import arcproapi.structure as _struct
@@ -776,9 +776,9 @@ def table_dump_from_sde_to_excel(sde_file: str, lyr, xlsx_root_folder: str, **kw
 
 
 
-def field_update_from_dict1(fname: str, dict_: dict, col_to_update: str, key_col: str,
-                            where: str = '', na: any = (1, 1),
-                            field_length: int = 50, show_progress=False, init_msg: str = ''):
+def field_update_from_dict_addnew(fname: str, dict_: dict, col_to_update: str, key_col: str,
+                                  where: str = '', na: any = (1, 1),
+                                  field_length: int = 50, show_progress=False, init_msg: str = ''):
     """Update column in a table with values from a dictionary.
     Will add the column (col_to_update) if it does not exist.
 
@@ -814,7 +814,7 @@ def field_update_from_dict1(fname: str, dict_: dict, col_to_update: str, key_col
         >>> d = {1: 'EN', 2:'ST', 3:'WL', 4:'NI'}
         Explicit declaration of update and key columns. Here we assume the numerics in d are "country_num"
         and we update country_code accordingly.
-        >>> field_update_from_dict1(fc, d, col_to_update='country_code', key_col='country_num', na='Other')
+        >>> field_update_from_dict_addnew(fc, d, col_to_update='country_code', key_col='country_num', na='Other')
     """
     if not _struct.field_exists(fname, col_to_update):
         _struct.AddField(fname, col_to_update, 'TEXT', field_length=field_length, field_is_nullable=True)
@@ -878,6 +878,12 @@ def field_update_from_dict(fname: str, dict_: dict, col_to_update: str, key_col:
 
     if show_progress:
         PP = _iolib.PrintProgress(maximum=n, init_msg=init_msg)
+
+    if _arcpy.env.workspace or _struct.fc_in_toplogy(fname):  # debug the fc_in_topology call
+        edit = _arcpy.da.Editor(_arcpy.env.workspace)
+        edit.startEditing(False, False)
+        edit.startOperation()
+
     # if you are here debugging an unexplained da.UpdateCursor invalid col error - check the where clause - you get an invalid col error if there are Nones in an IN query e.g. cola in (None,'a')
     with _arcpy.da.UpdateCursor(fname, cols, where_clause=where) as uc:
         for row in uc:
@@ -905,6 +911,13 @@ def field_update_from_dict(fname: str, dict_: dict, col_to_update: str, key_col:
                 cnt += 1
             if show_progress:
                 PP.increment()  # noqa
+
+    if _arcpy.env.workspace or _struct.fc_in_toplogy(fname):
+        edit.stopOperation()  # noqa
+        if edit.isEditing:
+            edit.stopEditing(save_changes=True)  # noqa
+        del edit
+
     return cnt
 
 
@@ -1101,6 +1114,7 @@ def fields_apply_func(fname, cols, *args, where_clause=None, show_progress=False
             edit = _arcpy.da.Editor(_arcpy.env.workspace)
             edit.startEditing(False, False)
             edit.startOperation()
+
         n = 0
         with _arcpy.da.UpdateCursor(fname, cols, where_clause=where_clause) as cursor:
             for i, row in enumerate(cursor):
@@ -1175,7 +1189,8 @@ def field_recalculate(fc: str, arg_cols: (str, list, tuple), col_to_update: str,
         # Specifically, updates must be put in an edit session, otherwise arcpy raises
         # an error about not being able to make changes outside of an edit session
         # Hence the following code triggering an edit session if we have a workspace
-        if _arcpy.env.workspace:
+        # Also if the layer is in a topology, then it can only be edited in an Editor session
+        if _arcpy.env.workspace or _struct.fc_in_toplogy(fc):
             edit = _arcpy.da.Editor(_arcpy.env.workspace)
             edit.startEditing(False, False)
             edit.startOperation()
@@ -1188,7 +1203,7 @@ def field_recalculate(fc: str, arg_cols: (str, list, tuple), col_to_update: str,
                     PP.increment()  # noqa
                 j += 1
 
-        if _arcpy.env.workspace:
+        if _arcpy.env.workspace or _struct.fc_in_toplogy(fc):
             edit.stopOperation()  # noqa
             if edit.isEditing:
                 edit.stopEditing(save_changes=True)  # noqa
@@ -1493,7 +1508,7 @@ def features_delete_orphaned(parent: str, parent_field: str, child: str, child_f
 
 
 def features_copy(source: str, dest: str, workspace: str, where_clause: str = '*', fixed_values=None, copy_shape: bool = True, force_add: bool = True, fail_on_exists: bool = True,
-                  expected_row_cnt: int = None, no_progress: bool = False, **kwargs) -> int:
+                  expected_row_cnt: int = None, no_progress: bool = False, enable_transactions:bool = False, **kwargs) -> int:
     """Copy features from one table or featureclass to another. i.e. The shape and fields as given as kwargs.
 
     If you get an error, double check field names, noting that field names are case sensitive.
@@ -1523,6 +1538,7 @@ def features_copy(source: str, dest: str, workspace: str, where_clause: str = '*
         Read this as <detination field>='target field'
 
         no_progress (bool): Suppress printing progress bar to the console
+        enable_transactions (bool): Enable transactions, leaving disabled should increase performance
 
         kwargs (any): Keyword arguments, where key is field in dest, and value is field in src. E.g. dest_field='src_field'
 
@@ -1564,7 +1580,7 @@ def features_copy(source: str, dest: str, workspace: str, where_clause: str = '*
     if copy_shape:
         kws['SHAPE@'] = None
     i = 0
-    with _orm.ORM(dest, workspace=workspace, enable_transactions=True, enable_log=False, **kws) as Dest:
+    with _orm.ORM(dest, workspace=workspace, enable_transactions=enable_transactions, enable_log=False, **kws) as Dest:
         with _crud.SearchCursor(source, field_names=list(kwargs.values()), load_shape=copy_shape, where_clause=where_clause) as Cur:
             for row in Cur:
 

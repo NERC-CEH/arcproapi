@@ -18,6 +18,8 @@ import fuckit as _fuckit
 import arcpy as _arcpy
 import arcpy.da as _da
 
+import funclite.iolib as _iolib
+
 import arcproapi.environ as _environ
 import arcproapi.sql as _sql
 import arcproapi.errors as _errors
@@ -509,6 +511,8 @@ class CRUD:
             For INSERTS, keylist alone can just be populated as a shortcut.
             Also see crud.fieldNamesSpecial which has ESRI's special field names
             Use Shape=<arcpy shape instance> to insert a shape.
+            Update speed can be increased by skipping checks, i.e. fail_on_multi=False, fail_on_not_exists=False
+
         Examples:
             >>> with CRUD('c:/my.gdb', enable_transactions=True) as C:
             >>>     C.upsert({'orderid':1, 'supplier':'Widget Company'}, orderid=1, supplier='Foo Company')
@@ -533,18 +537,22 @@ class CRUD:
                 cols[cols.index(v)] = 'Shape@'
 
         exists = False
-        if isinstance(search_dict, dict):
-            exists = self.exists_by_compositekey(**search_dict)
+        if fail_on_not_exists:
+            if isinstance(search_dict, dict):
+                exists = self.exists_by_compositekey(**search_dict)
 
         if not exists and fail_on_not_exists:
             raise _errors.UpsertExpectedUpdateButMatchedRow('Upsert expected an update but no records matched %s in %s' % (str(search_dict), self._fname))
 
-        if exists and not force_add:
-            if not kwargs or fail_on_exists:
-                raise _errors.UpsertExpectedInsertButHadMatchedRow(_errors.UpsertExpectedInsertButHadMatchedRow.__doc__)
-
-            if get_row_cnt(self._fname, where) > 1 and fail_on_multi:  # noqa
+        if fail_on_multi:
+            if get_row_cnt(self._fname, where) > 1:  # noqa
                 raise _errors.UpdateCursorGotMultipleRecords(_errors.UpdateCursorGotMultipleRecords.__doc__)
+
+        if not force_add:
+            exists = self.exists_by_compositekey(**search_dict)
+            if exists:
+                if not kwargs or fail_on_exists:
+                    raise _errors.UpsertExpectedInsertButHadMatchedRow(_errors.UpsertExpectedInsertButHadMatchedRow.__doc__)
 
             with _da.UpdateCursor(self._fname, cols, where_clause=where) as Cur:
                 for row in Cur:
@@ -573,6 +581,68 @@ class CRUD:
                     del Cur
 
         return i
+
+    def insert(self, **kwargs) -> int:
+        """
+        Insert a record. This is more efficient than using upsert.
+
+        Args:
+            kwargs: Field/value pairs to insert/update
+
+        Returns:
+            int: new OID if a record was inserted.
+
+        Notes:
+            See crud.fieldNamesSpecial which has ESRI's special field names
+            Use Shape=<arcpy shape instance> to insert a shape.
+
+        Examples:
+            >>> with CRUD('c:/my.gdb', enable_transactions=True) as C:
+            >>>     C.insert(orderid=1, supplier='Foo Company')
+            1
+        """
+        i = None
+        cols = list(kwargs.keys())
+        values = list(kwargs.values())
+
+
+        # writing back, you have to use Shape@, otherwise you get a null feature
+        for i, v in enumerate(cols):
+            if v.lower() == 'shape':
+                cols[cols.index(v)] = 'Shape@'
+
+        try:
+            Cur = _da.InsertCursor(self._fname, cols)
+            i = Cur.insertRow(values)
+        except RuntimeError as r:
+            raise RuntimeError('Runtime errors in arcpy cursor operations are usually the result of incorrect column names, mismatched data types, '
+                               'string truncation or locking issues.') from r
+        finally:
+            with _fuckit:
+                del Cur
+
+        return i
+
+    def insertmulti(self, dics: list[dict], show_progress: bool = True, init_msg: str = '') -> list[int]:
+        """
+        Insert multiple rows, from a list of dictionaries.
+
+        Args:
+            dics (list[dict]): list of dictionaries.
+            show_progress (bool): show progress
+            init_msg (str): init msg for show progress
+
+        Returns:
+            list[int]: list of oids created
+        """
+        out = []
+        if show_progress:
+            PP = _iolib.PrintProgress(iter_=dics, init_msg=init_msg)
+
+        for d in dics:
+            out += self.insert(**d)
+            if show_progress: PP.increment()  # noqa
+        return out
 
     def updatew(self, where: str, **kwargs) -> int:
         """(str, str, **kwargs)->None
@@ -623,15 +693,16 @@ class CRUD:
         >>>     C.delete(orderid=1, supplier='Foo Company')
         """
         where = CRUD._kwargs_where(kwargs)
-        n = get_row_cnt(self._fname, where)
-        if n > 1 and fail_on_multi:
-            raise _errors.DeleteMatchedMutlipleRecords(
-                'Delete key-value pairs %s matched more than 1 record in feature class %s' % (str(kwargs),
-                                                                                              self._fname)
-            )
+        if fail_on_multi or error_on_no_rows:
+            n = get_row_cnt(self._fname, where)
+            if n > 1 and fail_on_multi:
+                raise _errors.DeleteMatchedMutlipleRecords(
+                    'Delete key-value pairs %s matched more than 1 record in feature class %s' % (str(kwargs),
+                                                                                                  self._fname)
+                )
 
-        if n == 0 and error_on_no_rows:
-            raise _errors.DeleteHadNoMatchingRecords(_errors.DeleteHadNoMatchingRecords.__doc__)
+            if n == 0 and error_on_no_rows:
+                raise _errors.DeleteHadNoMatchingRecords(_errors.DeleteHadNoMatchingRecords.__doc__)
 
         with _da.UpdateCursor(self._fname, ['OID@'], where_clause=where) as Cur:
             for _ in Cur:
