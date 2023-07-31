@@ -10,7 +10,7 @@ from arcproapi.common import columns_delim
 from funclite.stringslib import get_between as _getb
 
 
-def query_where_in(field_name: str, values: (tuple, str, list), datasource: str = '', override_field_delim: str = ''):
+def query_where_in(field_name: str, values: (tuple, str, list), datasource: str = '', override_field_delim: str = '', exclude_none: bool = False):
     """(str, iter, str) -> str
     build a simple where IN ( query
 
@@ -21,6 +21,7 @@ def query_where_in(field_name: str, values: (tuple, str, list), datasource: str 
             path to datasource, passed to columns_delim to add delimited for field_name
             see https://desktop.arcgis.com/en/arcmap/10.3/analyze/arcpy-functions/addfielddelimiters.htm
         override_field_delim (str): override the field delim
+        exclude_none (bool): Exclude None values from the where. The None value can cause an error to be raised when using the where for da.<Cursor>, with an error that misdirects you to think the columns are invalid.
 
     Returns:
             str: the query string
@@ -37,6 +38,8 @@ def query_where_in(field_name: str, values: (tuple, str, list), datasource: str 
         '"ID" IN (123, 345)'
     """
     if isinstance(values, str): values = [values]
+    if exclude_none:
+        values = [v for v in values if v is not None]
 
     def _f(v):
         if isinstance(v, str):

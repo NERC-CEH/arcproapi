@@ -12,7 +12,7 @@ from arcpy import Exists  # noqa
 
 # See https://pro.arcgis.com/en/pro-app/latest/tool-reference/data-management/create-domain.htm
 from arcpy.management import CreateDomain, AlterDomain, AssignDomainToField, AddCodedValueToDomain, SortCodedValueDomain, CreateFeatureclass  # noqa
-
+from arcpy.da import Describe  # this is the dict version of Describe
 from arcpy.conversion import ExcelToTable, TableToExcel, TableToGeodatabase, TableToDBASE, TableToSAS, ExportTable, ExportFeatures  # noqa
 
 import numpy as _np
@@ -1092,6 +1092,27 @@ def fc_schema_copy(template: str, new: str, sr: str = ''):
     return new
 
 
+def feature_dataset_create(feature_name: str, gdb: str, fname: str):
+    """
+    Create a feature dataset using the spatial reference system of fname.
+    Useful when you want to stick the layer in a feature dataset, but getting an error complaining that spatial refs don't match.
+
+    Args:
+        feature_name: the name of the created feature dataset
+        gdb: geodatabase in which to create the feature dataset
+        fname: the feature class to get the spatial ref form
+
+    Returns:
+        None
+
+    Examples:
+        Create feature dataset topo in my.gdb, using spatial ref of mylayer
+        >>> feature_dataset_create('topo', 'C:/my.gdb', 'C:/my.gdb/mylayer')
+    """
+    sr = _arcpy.Describe(_path.normpath(fname)).spatialReference
+    _arcpy.management.CreateFeatureDataset(_path.normpath(gdb), feature_name, sr)
+
+
 def table_to_points(tbl, out_fc, xcol, ycol, sr, zcol='#', w='') -> str:
     """Convert table to point feature class, return path to the feature class.
 
@@ -1752,6 +1773,78 @@ def rel_one_to_many_create(fname1: str, col1: str, fname_many: str, col_many: st
     finally:
         if ws_orig:
             _arcpy.env.workspace = ws_orig
+
+
+@_decs.environ_persist
+def datasets_get(gdb: str, full_path: bool = True) -> list[str]:
+    """ 
+    Args:
+        gdb (str): database 
+        full_path (bool): Return full path, otherwise just the name
+
+    Returns:
+        list[str]: List of feature datasets in database
+
+    Examples:
+        >>> datasets_get('C:/my.gdb', full_path=False)
+        ['featuredataset1', 'fd2', ...]
+    """
+    gdb = _path.normpath(gdb)
+    _arcpy.env.workspace = gdb
+    pths = _arcpy.ListDatasets(wild_card=None, feature_type='Feature')
+    return [_path.join(gdb, s) if full_path else s for s in pths]
+
+
+def topos_get(gdb: str, full_path: bool = True) -> list[str]:
+    """
+    List topologies on dataset
+
+    Args:
+        gdb (str): database
+        full_path (bool): Get full path, otherwise just the name
+
+    Returns:
+        list[str]: list of all toplogy names in geodatabase gdb
+    """
+    # TODO: Needs checking with non-fGDB databases
+    gdb = _path.normpath(gdb)
+    out = []
+    for ds in datasets_get(gdb):
+        desc_dataset: dict = _arcpy.da.Describe(ds)
+        for dic in desc_dataset.get('children', []):
+            if dic.get('datasetType', '') == 'Topology':
+                out += [dic['catalogPath'] if full_path else dic['baseName']]
+    return out
+
+
+def fc_in_toplogy(fname: str) -> bool:
+    """
+    Is the fully named feature class in a toplogy.
+
+    Args:
+        fname:
+
+    Returns:
+        bool: True if the feature class is in a toplogy
+
+    Notes:
+        Check is case insenitive
+        Feature classes in topologies need to be in a transactional edit section otherwise write/delete operations fail (e.g. those in module "data".
+
+    Examples:
+
+        >>> fc_in_toplogy('C:/my.gdb/countries')
+        False
+    """
+    # TODO Needs debugging to check status with full paths, along with the dependent functions
+    fname = _path.normpath(fname)
+    D = Describe(fname)
+    gdb, lyr = D['path'], D['name']
+    isin = False  # noqa
+    for topo in topos_get(gdb, full_path=True):
+        isin = lyr.lower() in map(str.lower, _arcpy.Describe(topo).featureClassNames)
+        if isin: return True
+    return False
 
 
 if __name__ == '__main__':

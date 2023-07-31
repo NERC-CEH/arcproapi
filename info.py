@@ -12,6 +12,8 @@ Structure on-the-other-hand, has many methods which are consumed directly by oth
 import os.path as _path  # noqa
 
 import arcpy as _arcpy
+from arcpy.da import Describe  # noqa this is the dict version of Describe
+
 import pandas as _pd
 import fuckit as _fuckit
 

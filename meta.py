@@ -8,8 +8,70 @@ import arcproapi as _arcapi
 import arcproapi.common as _common
 
 
+class LicenseText:
+    OGL_v3 = 'Open Government License v3. See https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/ for conditions'
 
-def meta(datasource, mode="PREPEND", **args):
+
+
+class MetaBuilderBasic:
+    """ A way to build summary and description for the write_basic metadata method, to get some standard structure/formatting and as an aide-memoir in what to include
+
+    Methods:
+        summary (str): Text for summary, constructed from "when" and "purpose2
+        title (str): Passed and written as provided at class instantiation
+        description (str): Built from all attributes, except title
+        write_basic: Convieniance function to write out the metadata to the specified fname
+
+    Examples:
+
+        >>> Build = MetaBuilderBasic(title='title', purpose='purpose', ...)  # noqa
+        >>> Build.caveats_and_limitations = 'caveats'
+        >>> Build.write_basic('C:/my.gdb/fc')
+    """
+    # No license as this is exposed through arcpy metadata class
+    def __init__(self, title: str, what: str = '', purpose: str = '', where: str = '', when: str = '', how: str = '', missing_data: str = '', caveats_and_limitations: str = '',
+                 quality_control: str = '', credit: str = '', license: str = '', inputs: (tuple[str], list[str]) = (), scripts: (tuple[str], list[str]) = ()):
+        self.title = title
+        self.purpose = purpose
+        self.what = what
+        self.where = where
+        self.when = when
+        self.how = how
+        self.missing_data = missing_data
+        self.caveats_and_limitations = caveats_and_limitations
+        self.quality_control = quality_control
+        self.inputs = inputs
+        self.scripts = scripts
+        self.credit = credit
+        self.license = license
+
+    def summary(self) -> str:
+        return self.description(filt=('what', 'purpose'))
+
+    def description(self, filt=()) -> str:
+        jn = []
+        for k, v in self.__dict__.items():
+            if k[0:2] == '__': continue
+            if filt and k not in filt: continue
+            if not v: continue
+            if isinstance(v, (str, int, float)):
+                jn += [MetaBuilderBasic.addhdr(k)]
+                jn += [v]
+            elif isinstance(v, (list, tuple)):
+                jn += [MetaBuilderBasic.addhdr(k)]
+                jn += ['\n'.join(v)]
+        return '\n\n'.join(jn)
+
+
+    def write_basic(self, fname):
+        write_basic(fname, self.summary(), self.description(), self.title)
+
+    @staticmethod
+    def addhdr(s):
+        return '%s\n%s' % (s.upper(), '=' * len(s))
+
+
+def meta(datasource, mode="PREPEND", **args):  # noqa
     """Read/write metadata of ArcGIS Feature Class, Raster Dataset, Table, etc.
 
     Returns a dictionary of all accessible (if readonly) or all editted entries.
@@ -73,7 +135,7 @@ def meta(datasource, mode="PREPEND", **args):
     }
 
     # work
-    r = _arcpy.XSLTransform_conversion(datasource, xslt, tmpmetadatafile)
+    r = _arcpy.XSLTransform_conversion(datasource, xslt, tmpmetadatafile)  # noqa
     tmpmetadatafile = r.getOutput(0)
     with open(tmpmetadatafile, "r") as f:
         mf = f.read()
@@ -89,7 +151,7 @@ def meta(datasource, mode="PREPEND", **args):
         if tree.find('dataIdInfo') is None:
             _arcpy.conversion.UpgradeMetadata(datasource, 'ESRIISO_TO_ARCGIS')
             _os.remove(tmpmetadatafile)
-            r = _arcpy.XSLTransform_conversion(datasource, xslt, tmpmetadatafile)
+            r = _arcpy.XSLTransform_conversion(datasource, xslt, tmpmetadatafile)  # noqa
             tmpmetadatafile = r.getOutput(0)
             with open(tmpmetadatafile, "r") as f:
                 mf = f.read()
@@ -105,7 +167,7 @@ def meta(datasource, mode="PREPEND", **args):
         entries.update({'dataIdInfo/idAbs': args.get('abstract')})
 
     # update entries
-    for p, t in entries.iteritems():
+    for p, t in entries.iteritems():  # noqa
         el = tree.find(p)
         if el is None:
             if not readonly:
@@ -160,6 +222,7 @@ def write_basic(fname: str, summary: str = '', description: str = '', title: str
     Write out summary and description metadata to table/fc fname.
     All errors are suppressed.
 
+
     Args:
         fname (str): the layer
         summary (str): the summary
@@ -170,8 +233,9 @@ def write_basic(fname: str, summary: str = '', description: str = '', title: str
         bool: True if write worked, false if error
 
     Notes:
+        *** Recommend use MetaBuilderBasic to construct and write basic metadata to title, summary and description ***
         Title: The title should describe the data, not the project. It should describe what the data is. Good practive is to answer What, Where and When
-        Summary: Extent on title, but keep it succint. Think - What, Where, When, How, Who
+        Summary: Extend on title, but keep it succint. Think - What, Where, When, How, Who
         Description: Recovering the summary is not required. But extent to include:
             (i) Input datasets and processing
             (ii) Quality Control
@@ -182,7 +246,6 @@ def write_basic(fname: str, summary: str = '', description: str = '', title: str
 
 
     Examples:
-
         >>> write_basic('C:/my.gdb', 'my summary', 'my description', 'my title')
         True
     """
@@ -193,7 +256,12 @@ def write_basic(fname: str, summary: str = '', description: str = '', title: str
         M.summary = summary
         M.description = description
         M.title = title
-        M.credits
+
+        if False:
+            # Exposed, but can't write it, even though it is not set to the layer extent, well done ESRI. Leaving code here incase it is ever fixed
+            if write_extent:
+                d = _arcpy.Describe(fname).extent
+                M.xMin, M.xMax, M.yMin, M.yMax = d.XMin, d.XMax, d.YMin, d.YMax
         M.save()  # noqa
         out = True
     finally:

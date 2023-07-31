@@ -11,13 +11,13 @@ import numpy as _np
 
 import arcpy as _arcpy
 from arcpy.conversion import TableToDBASE, TableToExcel, TableToGeodatabase, TableToSAS, TableToTable, ExcelToTable  # noqa
-from arcpy.management import MakeAggregationQueryLayer, MakeQueryLayer, MakeQueryTable  # noqa   Expose here as useful inbult tools
+from arcpy.management import MakeAggregationQueryLayer, MakeQueryLayer, MakeQueryTable, CalculateField, CalculateStatistics  # noqa   Expose here as useful inbult tools
 
 
 import funclite.iolib as _iolib
 import funclite.baselib as _baselib
 import funclite.stringslib as _stringslib
-from funclite.pandaslib import df_to_dict_as_records_flatten1 as df_to_dict  # noqa Used to convert a standard dataframe into one accepted by field_update_from_dict and field_update_from_dict1
+from funclite.pandaslib import df_to_dict_as_records_flatten1 as df_to_dict  # noqa Used to convert a standard dataframe into one accepted by field_update_from_dict and field_update_from_dict_addnew
 import funclite.pandaslib as pandaslib  # noqa   no _ as want to expose it to pass agg funcs to ResultsAsPandas instances
 
 import arcproapi.structure as _struct
@@ -35,6 +35,9 @@ import arcproapi.conversion as conversion
 from arcproapi.common import get_row_count2 as get_row_count2
 from arcproapi.common import get_row_count as get_row_count  # noqa
 from arcproapi.export import excel_sheets_to_gdb as excel_import_sheets  # noqa Rearranged, import here so as not to break scripts/compatibility
+
+# TODO: All functions that write/delete/update spatial layers need to support transactions using the Editor object - otherwise an error is raised when layers are involved in a topology (and other similiar conditions)
+# See https://pro.arcgis.com/en/pro-app/latest/arcpy/data-access/editor.htm and https://pro.arcgis.com/en/pro-app/latest/tool-reference/tool-errors-and-warnings/160001-170000/tool-errors-and-warnings-160226-160250-160250.htm
 
 with _fuckit:
     from arcproapi.common import release
@@ -125,11 +128,11 @@ class _MixinResultsAsPandas:
         groupflds = list(map(str.lower, groupflds))
         valueflds = list(map(str.lower, valueflds))
 
-        return pandaslib.GroupBy(self.df_lower, groupflds=groupflds, valueflds=valueflds, *funcs, **kwargs).result
+        return pandaslib.GroupBy(self.df_lower, groupflds=groupflds, valueflds=valueflds, *funcs, **kwargs).result  # noqa
 
     def view(self) -> None:
         """Open self.df in excel"""
-        _xlwings.view(self.df)
+        _xlwings.view(self.df)  # noqa
 
     def fields_get(self, as_objs: bool = False) -> (list[str], list[_arcpy.Field]):
         """
@@ -166,7 +169,7 @@ class _MixinResultsAsPandas:
         """
         if not conv_func:
             conv_func = lambda v: v
-        lst = self.df_lower.query(expr=where, **kwargs)['shape_area'].to_list()
+        lst = self.df_lower.query(expr=where, **kwargs)['shape_area'].to_list()  # noqa
         if lst:
             return conv_func(sum(lst))
         return 0
@@ -183,8 +186,8 @@ class _MixinResultsAsPandas:
         Returns: int: Row count
         """
         if query:
-            return len(self.df_lower.query(expr=query, **kwargs))
-        return len(self.df_lower)
+            return len(self.df_lower.query(expr=query, **kwargs))  # noqa
+        return len(self.df_lower)  # noqa
 
     def shape_length(self, where: (str, None) = None, conv_func=lambda v: v, **kwargs) -> float:
         """
@@ -211,7 +214,7 @@ class _MixinResultsAsPandas:
         if not conv_func:
             conv_func = lambda v: v
 
-        lst = self.df_lower.query(expr=where, **kwargs)['shape_length'].to_list()
+        lst = self.df_lower.query(expr=where, **kwargs)['shape_length'].to_list()  # noqa
         if lst:
             return conv_func(sum(lst))
         return 0
@@ -773,9 +776,9 @@ def table_dump_from_sde_to_excel(sde_file: str, lyr, xlsx_root_folder: str, **kw
 
 
 
-def field_update_from_dict1(fname: str, dict_: dict, col_to_update: str, key_col: str,
-                            where: str = '', na: any = (1, 1),
-                            field_length: int = 50, show_progress=False, init_msg: str = ''):
+def field_update_from_dict_addnew(fname: str, dict_: dict, col_to_update: str, key_col: str,
+                                  where: str = '', na: any = (1, 1),
+                                  field_length: int = 50, show_progress=False, init_msg: str = ''):
     """Update column in a table with values from a dictionary.
     Will add the column (col_to_update) if it does not exist.
 
@@ -811,7 +814,7 @@ def field_update_from_dict1(fname: str, dict_: dict, col_to_update: str, key_col
         >>> d = {1: 'EN', 2:'ST', 3:'WL', 4:'NI'}
         Explicit declaration of update and key columns. Here we assume the numerics in d are "country_num"
         and we update country_code accordingly.
-        >>> field_update_from_dict1(fc, d, col_to_update='country_code', key_col='country_num', na='Other')
+        >>> field_update_from_dict_addnew(fc, d, col_to_update='country_code', key_col='country_num', na='Other')
     """
     if not _struct.field_exists(fname, col_to_update):
         _struct.AddField(fname, col_to_update, 'TEXT', field_length=field_length, field_is_nullable=True)
@@ -876,6 +879,12 @@ def field_update_from_dict(fname: str, dict_: dict, col_to_update: str, key_col:
     if show_progress:
         PP = _iolib.PrintProgress(maximum=n, init_msg=init_msg)
 
+    if _arcpy.env.workspace or _struct.fc_in_toplogy(fname):  # debug the fc_in_topology call
+        edit = _arcpy.da.Editor(_arcpy.env.workspace)
+        edit.startEditing(False, False)
+        edit.startOperation()
+
+    # if you are here debugging an unexplained da.UpdateCursor invalid col error - check the where clause - you get an invalid col error if there are Nones in an IN query e.g. cola in (None,'a')
     with _arcpy.da.UpdateCursor(fname, cols, where_clause=where) as uc:
         for row in uc:
             ido = row[0]
@@ -902,6 +911,13 @@ def field_update_from_dict(fname: str, dict_: dict, col_to_update: str, key_col:
                 cnt += 1
             if show_progress:
                 PP.increment()  # noqa
+
+    if _arcpy.env.workspace or _struct.fc_in_toplogy(fname):
+        edit.stopOperation()  # noqa
+        if edit.isEditing:
+            edit.stopEditing(save_changes=True)  # noqa
+        del edit
+
     return cnt
 
 
@@ -1098,6 +1114,7 @@ def fields_apply_func(fname, cols, *args, where_clause=None, show_progress=False
             edit = _arcpy.da.Editor(_arcpy.env.workspace)
             edit.startEditing(False, False)
             edit.startOperation()
+
         n = 0
         with _arcpy.da.UpdateCursor(fname, cols, where_clause=where_clause) as cursor:
             for i, row in enumerate(cursor):
@@ -1172,7 +1189,8 @@ def field_recalculate(fc: str, arg_cols: (str, list, tuple), col_to_update: str,
         # Specifically, updates must be put in an edit session, otherwise arcpy raises
         # an error about not being able to make changes outside of an edit session
         # Hence the following code triggering an edit session if we have a workspace
-        if _arcpy.env.workspace:
+        # Also if the layer is in a topology, then it can only be edited in an Editor session
+        if _arcpy.env.workspace or _struct.fc_in_toplogy(fc):
             edit = _arcpy.da.Editor(_arcpy.env.workspace)
             edit.startEditing(False, False)
             edit.startOperation()
@@ -1185,7 +1203,7 @@ def field_recalculate(fc: str, arg_cols: (str, list, tuple), col_to_update: str,
                     PP.increment()  # noqa
                 j += 1
 
-        if _arcpy.env.workspace:
+        if _arcpy.env.workspace or _struct.fc_in_toplogy(fc):
             edit.stopOperation()  # noqa
             if edit.isEditing:
                 edit.stopEditing(save_changes=True)  # noqa
@@ -1234,7 +1252,7 @@ def del_rows(fname: str, cols: any, vals: any, where: str = None, show_progress:
         >>> del_rows('c:/shp.shp', 'cola', 1)  # deletes every record where cola==1
 
         Use wildcard delete, we don't care about cols, so just use OBJECTID\n
-        >>> del_rows('c:/my.gdb/coutries', 'OBJECTID', '*', where='OBJECTID<10')
+        >>> del_rows('c:/my.gdb/coutries', '*', '*', where='OBJECTID<10')
 
         Delete everything\n
         >>> del_rows('c:/my.gdb/countries', '*', '*', no_warn=True)
@@ -1333,6 +1351,56 @@ def pandas_join(from_: _pd.DataFrame, to_: _pd.DataFrame, from_key: str, to_key:
         join.drop(list(join.filter(regex=drop_wildcard)), axis=1, inplace=True)  # drop duplicate cols
     join = join.reset_index()
     return join
+
+def features_overlapping(fname: str, fields: (str, list[str]) = None) -> tuple[bool, (None, list[list[int]])]:
+    """
+    Get overlapping features in a single feature class.
+    and test if there were overlaps.
+
+    Args:
+        fname (str): feature class
+        fields (str, list[str]): fields passed to FindIdentical, see https://pro.arcgis.com/en/pro-app/latest/tool-reference/data-management/find-identical.htm
+
+    Returns:
+        tuple[bool, (None, list[list[int]])]: are there overlaps, and a list of lists, where the inner lists are the overlapping polygon ids from the input layer.
+        The returned dataframe has columns objectid, in_fid, feat_seq. NB: objectid is just the key for these results and has no relation to the source layer.
+
+    Examples:
+
+        No overlaps in layer
+
+        >>> features_overlapping('C:/my.gdb/lyr')
+        False, None
+
+
+        Has overlaps, polygons with ids of 10 and 20 overlap and polygons with ids 25, 26 and 27 overlap.
+
+        >>> features_overlapping('C:/my.gdb/lyr')
+        True, [[10, 20], [25, 26, 27], ...]
+    """
+    fname = _path.normpath(fname)
+    if isinstance(fields, str): fields = [fields]
+    if fields is None: fields = []
+    lyr_union = r"memory\%s" % _stringslib.rndstr(from_=string.ascii_lowercase)
+
+    try:
+        _arcpy.analysis.Union([fname], lyr_union, "ALL", None, "GAPS")  # noqa
+        idcol = 'FID_%s' % _path.basename(fname)
+        # arcpy.management.FindIdentical("address_crn_lpis_sq_Union", r"S:\SPECIAL-ACL\ERAMMP2 Survey Restricted\common\data\GIS\_arcpro_projects\gmep_surveys\gmep_surveys.gdb\address_crn_lp_FindIdentical", "Shape", None, 0, "ONLY_DUPLICATES")
+        Res = ResultAsPandas(_arcpy.management.FindIdentical, lyr_union, as_int=['OBJECTID', 'IN_FID', 'FEAT_SEQ'], output_record_option='ONLY_DUPLICATES', fields=['Shape'] + fields)
+        if not len(Res.df) or len(Res.df) == 0: return False, None  # noqa
+
+        df_lyr_union = table_as_pandas2(lyr_union, ['OBJECTID', idcol])
+        ddf = pandas_join(Res.df_lower, df_lyr_union, 'in_fid', 'OBJECTID')
+        out = []
+        for row in ddf.iterrows():
+            if len(out) < row[1].feat_seq:  # noqa
+                out.append([])
+            out[row[1].feat_seq - 1] += [row[1].FID_address_crn_lpis_sq]  # noqa
+    finally:
+        _struct.fc_delete2(lyr_union)
+    return True, out  # noqa
+
 
 
 def features_copy_to_new(source: str, dest: str, where_clause: (None, str) = None, **kwargs):
@@ -1440,7 +1508,7 @@ def features_delete_orphaned(parent: str, parent_field: str, child: str, child_f
 
 
 def features_copy(source: str, dest: str, workspace: str, where_clause: str = '*', fixed_values=None, copy_shape: bool = True, force_add: bool = True, fail_on_exists: bool = True,
-                  expected_row_cnt: int = None, no_progress: bool = False, **kwargs) -> int:
+                  expected_row_cnt: int = None, no_progress: bool = False, enable_transactions:bool = False, **kwargs) -> int:
     """Copy features from one table or featureclass to another. i.e. The shape and fields as given as kwargs.
 
     If you get an error, double check field names, noting that field names are case sensitive.
@@ -1470,6 +1538,7 @@ def features_copy(source: str, dest: str, workspace: str, where_clause: str = '*
         Read this as <detination field>='target field'
 
         no_progress (bool): Suppress printing progress bar to the console
+        enable_transactions (bool): Enable transactions, leaving disabled should increase performance
 
         kwargs (any): Keyword arguments, where key is field in dest, and value is field in src. E.g. dest_field='src_field'
 
@@ -1511,7 +1580,7 @@ def features_copy(source: str, dest: str, workspace: str, where_clause: str = '*
     if copy_shape:
         kws['SHAPE@'] = None
     i = 0
-    with _orm.ORM(dest, workspace=workspace, enable_transactions=True, enable_log=False, **kws) as Dest:
+    with _orm.ORM(dest, workspace=workspace, enable_transactions=enable_transactions, enable_log=False, **kws) as Dest:
         with _crud.SearchCursor(source, field_names=list(kwargs.values()), load_shape=copy_shape, where_clause=where_clause) as Cur:
             for row in Cur:
 
@@ -1652,10 +1721,9 @@ if __name__ == '__main__':
     # dfout = table_summary_as_pandas(fname_local, [['OBJECTID', 'MEAN'], ['PLOT_NuMBER', 'RANGE']], ['plot_type'])  # noqa
 
     # i = vertext_add(r'C:\GIS\erammp_local\submission\curated_raw\freshwater_curated_raw.gdb\stream_sites', 1, x_field='easting_vertex', y_field='northing_vertex', fail_on_exists=False, show_progress=True)
-    RaP = ResultAsPandas(_arcpy.analysis.CountOverlappingFeatures,  # noqa
-                         [r'S:\SPECIAL-ACL\ERAMMP2 Survey Restricted\common\data\GIS\erammp_common.gdb\sq',
-                          r'S:\SPECIAL-ACL\ERAMMP2 Survey Restricted\current\data\GIS\erammp_current.gdb\sq_in_survey'],
-                         additional_layer_args=('out_overlap_table',)
-                         )
+
+    a, lst_out = features_overlapping(r'\\nerctbctdb\shared\shared\SPECIAL-ACL\ERAMMP2 Survey Restricted\2022\data\GIS\erammp.gdb\address_crn_lpis_sq')
+    # a, lst_out = features_overlapping(r'\\nerctbctdb\shared\shared\SPECIAL-ACL\ERAMMP2 Survey Restricted\current\data\GIS\erammp_current.gdb\address_crn_lpis_sq')
+    # a, lst_out = features_overlapping(r'\\nerctbctdb\shared\shared\SPECIAL-ACL\ERAMMP2 Survey Restricted\2021\data\GIS\erammp_current.gdb\address_crn_lpis_sq')
 
     pass

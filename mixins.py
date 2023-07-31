@@ -147,6 +147,7 @@ class MixinEnumHelper:
         return None  # noqa
 
 
+
 # region local helper funcs
 def _strip_html(s: str) -> str:
     """
