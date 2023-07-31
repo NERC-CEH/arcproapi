@@ -193,6 +193,7 @@ def write_basic(fname: str, summary: str = '', description: str = '', title: str
         M.summary = summary
         M.description = description
         M.title = title
+        M.credits
         M.save()  # noqa
         out = True
     finally:
