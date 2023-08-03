@@ -14,7 +14,11 @@ class LicenseText:
 
 
 class MetaBuilderBasic:
-    """ A way to build summary and description for the write_basic metadata method, to get some standard structure/formatting and as an aide-memoir in what to include
+    """ A way to build summary and description for the write_basic metadata method, to get some standard structure/formatting and as an aide-memoir in what to include.
+
+    The "what" and "purpose" builds the summary.
+
+    Everything except "title" builds the description.
 
     Methods:
         summary (str): Text for summary, constructed from "when" and "purpose2

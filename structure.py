@@ -160,8 +160,76 @@ def fields_delete(fname, fields: (str, list[str], None) = None, where: (str, Non
 
     return good, bad
 
+def fc_fields_not_required(fname: str, full_name: bool = True) -> list[str]:
+    """
+    Get list of fields that are not required.
 
-def fields_alias_clear(fname: str, where: str = '', fields: iter = None, show_progress: bool = False) -> list:
+    Args:
+        fname (str): fc
+        full_name (bool): Get the fully qualified name, otherwise just gets the basenames
+
+    Returns:
+        list[str]: list of fields that are not required, i.e. field.required is false
+    """
+    def _f(s):
+        return _iolib.fixp(fname, s) if full_name else s
+
+    fname = _path.normpath(fname)
+    return [_f(fld.name) for fld in _arcpy.da.Describe(fname)['fields'] if not fld.required]
+
+def fc_fields_required(fname: str, full_name: bool = True) -> list[str]:
+    """
+    Get list of fields that are required.
+
+    Args:
+        fname (str): fc
+        full_name (bool): Get the fully qualified name, otherwise just gets the basenames
+
+    Returns:
+        list[str]: list of fields that are  required, i.e. field.required is True
+    """
+    def _f(s):
+        return _iolib.fixp(fname, s) if full_name else s
+
+    fname = _path.normpath(fname)
+    return [_f(fld.name) for fld in _arcpy.da.Describe(fname)['fields'] if fld.required]
+
+def fc_fields_not_editable(fname: str, full_name: bool = True) -> list[str]:
+    """
+    Get list of fields that are not required.
+
+    Args:
+        fname (str): fc
+        full_name (bool): Get the fully qualified name, otherwise just gets the basenames
+
+    Returns:
+        list[str]: list of fields that are not required, i.e. field.required is false
+    """
+    def _f(s):
+        return _iolib.fixp(fname, s) if full_name else s
+
+    fname = _path.normpath(fname)
+    return [_f(fld.name) for fld in _arcpy.da.Describe(fname)['fields'] if not fld.editable]
+
+def fc_fields_editable(fname: str, full_name: bool = True) -> list[str]:
+    """
+    Get list of fields that are required.
+
+    Args:
+        fname (str): fc
+        full_name (bool): Get the fully qualified name, otherwise just gets the basenames
+
+    Returns:
+        list[str]: list of fields that are  required, i.e. field.required is True
+    """
+    def _f(s):
+        return _iolib.fixp(fname, s) if full_name else s
+
+    fname = _path.normpath(fname)
+    return [_f(fld.name) for fld in _arcpy.da.Describe(fname)['fields'] if fld.editable]
+
+
+def fc_fields_alias_clear(fname: str, where: str = '', fields: iter = None, show_progress: bool = False) -> list:
     """
     Clear field aliases that match either the fields list or the where.
 
@@ -179,10 +247,10 @@ def fields_alias_clear(fname: str, where: str = '', fields: iter = None, show_pr
 
     Examples:
         # Clear all aliases in countries
-        >>> fields_alias_clear('C:/my.gdb/countries', where='*')
+        >>> fc_fields_alias_clear('C:/my.gdb/countries', where='*')
 
         # Clear aliases in fields total_population and male_population
-        >>> fields_alias_clear('C:/my.gdb/countries', fields=('total_population', 'male_population'))
+        >>> fc_fields_alias_clear('C:/my.gdb/countries', fields=('total_population', 'male_population'))
     """
     out = []
     fname = _path.normpath(fname)
@@ -874,6 +942,51 @@ def fields_get(fname, wild_card='*', field_type='All', no_error_on_multiple: boo
 
 
 fc_fields_get = fields_get  # noqa This is for consistency, fields get operates on an entire feature class/table. Have to leave existing fields_get in for backwards compatility
+
+def fc_aliases_clear(fname: str, cols: (str, list[str], None) = None) -> list[str]:
+    """
+    Reset field aliases for cols. Resets all field aliases if cols is none
+    This is case insensitive.
+
+    Args:
+        fname (str): feature class or table
+        cols (str, list[str], None): List of cols to reset alias for, if None, resets all
+
+    Raises:
+        ValueError: If cols are specified which do not exist
+
+    Returns:
+        list[str]: list of fields reset
+
+    Examples:
+
+        Clear all aliases
+        >>> fc_aliases_clear('C:/my.gdb/countries', None)
+        ['objectid', 'name', 'pop', ...]
+
+        Clear a subset
+        >>> fc_aliases_clear('C:/my.gdb/countries', ['name', 'pop'])
+        ['name', 'pop']
+    """
+    fname = _path.normpath(fname)
+    allcols = list(map(str.lower, fc_fields_get(fname)))
+    if isinstance(cols, str):
+        colscpy = [cols]
+    elif isinstance(cols, (tuple, list)):
+        colscpy = list(map(str.lower, cols))
+    else:
+        colscpy = list(allcols)
+
+    symdiff = _baselib.list_sym_diff(colscpy, allcols)
+    if colscpy and symdiff['a_notin_b']:
+        raise ValueError('cols %s are not in %s' % (symdiff['a_notin_b'], fname))
+
+    for c in colscpy:
+        AlterField(fname, c, clear_field_alias='CLEAR_ALIAS')
+
+    return colscpy
+
+table_aliases_clear = fc_aliases_clear
 
 
 def fields_add_from_table(target, source, add_fields):

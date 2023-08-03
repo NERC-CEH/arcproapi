@@ -46,6 +46,57 @@ with _fuckit:
     import xlwings as _xlwings  # never will be implemented on linux
 
 
+class Funcs:
+    """
+    Defines some commonly used functions to use in the various field_apply/recalculate methods in this module.
+
+    Methods:
+        FidToOneZero: After a spatial operation, e.g. union, we get FID_<table_name> cols. This reduces those scenarios to a 1 or a 0. "0 = 0;  <Null> = 0;  -1 = 0;  > 0 = 1
+    """
+    @staticmethod
+    def LongToOneZero(v: int) -> int:
+        """
+        After a spatial operation, e.g. union, we get FID_<table_name> cols. This reduces those scenarios to a 1 or a 0. "0 = 0;  <Null> = 0;  -1 = 0;  > 0 = 1
+
+        Returns: int: 1 or 0
+        """
+        if not v: return 0
+        if v == -1: return 0
+        if v < -1: return 0
+        return 1
+
+    @staticmethod
+    def TextToOneZero(v: str) -> int:
+        """
+        Reduce text to 1 or 0
+        Returns: int: 1 or 0
+        """
+        if not v: return 0
+        return 1
+
+    @staticmethod
+    def PickLong(*args):
+        """
+        Picks the value which is not -1, <null> or 0. Picks the first one if multiple are not -1/null/0
+        If all args evaluate 0, return 0
+        Returns: int
+
+        Examples:
+
+            Get first
+            >>> Funcs.PickLong(-1, 0, 0, 34, 54)
+            34
+
+            All evaluate to 0 with LongToOneZero
+            >>> Funcs.PickLong(-1, None, 0)
+            0
+        """
+        for n in args:
+            if Funcs.LongToOneZero(n): return n
+        return 0
+
+
+
 class Excel:
     """
     Work with excel workbooks.
@@ -1508,7 +1559,7 @@ def features_delete_orphaned(parent: str, parent_field: str, child: str, child_f
 
 
 def features_copy(source: str, dest: str, workspace: str, where_clause: str = '*', fixed_values=None, copy_shape: bool = True, force_add: bool = True, fail_on_exists: bool = True,
-                  expected_row_cnt: int = None, no_progress: bool = False, enable_transactions:bool = False, **kwargs) -> int:
+                  expected_row_cnt: int = None, no_progress: bool = False, enable_transactions: bool = False, **kwargs) -> int:
     """Copy features from one table or featureclass to another. i.e. The shape and fields as given as kwargs.
 
     If you get an error, double check field names, noting that field names are case sensitive.
@@ -1642,6 +1693,109 @@ def table_summary_as_pandas(fname: str, statistics_fields: (str, list[list[str]]
                                )
     df = table_as_pandas2(out_tmp)
     return df
+
+
+@_decs.environ_persist
+def unionise(sources:list[str], dest: str, is_fields: (str, list[str], None) = 'ALL', rename_from: list[str] = None, rename_to: list[str] = None, keep_cols: (str, list[str], None) = 'ALL', overwrite=True, show_progress: bool = False, **kwargs) -> dict[str:list, str:list]:  # noqa
+    """ Unionise multiple layers, keep fid cols, add is_<xxx> cols
+
+    Args:
+        sources (list[str]): list of sources
+        dest (str): output name
+
+        is_fields (str, list[str], None):
+            Add is_ fields for these tables in the union.
+            'ALL': Add is_ fields for all layers in the union.
+            None: Add no is_ fields
+            list[str]: Add for these only, this would be specified in the list as 'FID_<feature class name>'
+
+        rename_from (list[str]): list of fields to rename, good candidates for renaming are the is_fields, which default to is_<tablename>
+        rename_to (list[str]): new field names, matching rename_from by index
+
+        keep_cols (str, list[str], None):
+            Specify which files to keep in the layer.
+            NB ** DO NOT SPECIFY NON EDITABLE FIELDS - e.g. Shape, OBJECTID, Shape_Area, Shape_Length - An ESRI BUG WILL CAUSE DeleteFields to Fail **
+            'ALL': Keep all fields resulting from the union.
+            None: Only retain readonly fields
+            list[str]: Keep readonly fields and these fields.
+
+        overwrite (bool): Allow overwrite of dest
+        show_progress (bool): Print progress to the console
+        kwargs: Keyword args passed to arcpy.analysis.Union. See https://pro.arcgis.com/en/pro-app/latest/tool-reference/analysis/union.htm
+
+    Returns:
+         dict[str:list]: A dictionary of is_ fields which are added 'good' and not added 'bad'. e.g. {'good':['FID_country', 'FID_region'], 'bad':['FID_area']}
+
+    Notes:
+        Fields are renamed as the first operation after the union - order may matter!
+
+    Examples:
+
+        Unionise 3 layers adding is_ fields for each layer and saving as C:/my.gdb/unionised
+        >>> unionise(['C:/my.gdb/country', 'C:/my.gdb/region', 'C:/my.gdb/area'], 'C:/my.gdb/unionised')
+        {'good':['FID_country', 'FID_region'], 'bad':['FID_area']}
+    """
+
+    def _f(v):
+        if not v: return 0
+        if v < 0: return 0
+        return 1
+
+    srcs = list(map(_path.normpath, sources))
+    dest = _path.normpath(dest)
+    _arcpy.env.overwriteOutput = overwrite
+
+    # Lets do this in memory for speed
+    lyrtmp = 'memory\%s' % _stringslib.get_random_string(from_=string.ascii_lowercase)
+    fid_cols = ['FID_%s' % s for s in [_iolib.get_file_parts2(t)[1] for t in srcs]]
+    if show_progress: print('Performing initial Union ....')
+    _arcpy.analysis.Union(srcs, lyrtmp, **kwargs)  # noqa
+
+    if show_progress: print('Clearing field aliases from in-memory layer ... ')
+    _struct.fc_aliases_clear(lyrtmp)
+
+    if rename_from:
+        if show_progress: print('Renaming fields ...')
+        _struct.fields_rename(lyrtmp, rename_from, rename_to, show_progress=show_progress)
+
+    allflds = _struct.fc_fields_get(lyrtmp)
+
+
+    # Now add the is_ cols
+    out = {}
+    if is_fields is not None:
+        if show_progress:
+            print('Adding is_ cols ...')
+            PP = _iolib.PrintProgress(fid_cols)
+
+        out = _baselib.DictList()
+        for fidcol in fid_cols:
+            if fidcol.lower() in map(str.lower, allflds):
+                isfld = 'is_%s' % fidcol[4:]
+                if is_fields == 'ALL' or isfld.lower() in map(str.lower, is_fields):
+                    _struct.AddField(lyrtmp, isfld, 'SHORT')
+                    field_apply_func(lyrtmp, fidcol, isfld, _f, show_progress=show_progress)
+                    out['good'] = isfld
+            else:
+                out['bad'] = fidcol
+            if show_progress: PP.increment()  # noqa
+        out = dict(out)
+
+    if keep_cols and isinstance(keep_cols, (list, tuple)):
+        if show_progress: print('Deleting fields ...')
+        keep_cols += fid_cols
+        _struct.DeleteField(lyrtmp, keep_cols, method='KEEP_FIELDS')
+    elif keep_cols is None:
+        if show_progress: print('Deleting fields ...')
+        _struct.DeleteField(lyrtmp, _struct.fc_fields_not_required, method='DELETE_FIELDS')
+
+    if show_progress: print('Writing "%s" ...' % dest)
+    _struct.ExportFeatures(lyrtmp, dest)
+    return out
+
+
+
+
 
 
 def vertext_add(fname, vertex_index: (int, str), x_field: str, y_field: str = 'y', field_type='DOUBLE', where_clause: (str, None) = '*', fail_on_exists: bool = True,
