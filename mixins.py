@@ -5,6 +5,12 @@ import numpy as _np
 
 import arcpy as _arcpy
 import bs4 as _bs4
+import pandas as _pd
+import xlwings as _xlwings
+
+from arcproapi import structure as _struct, conversion as conversion
+
+from funclite import pandaslib as pandaslib
 
 from funclite.baselib import classproperty as _classproperty
 
@@ -58,7 +64,6 @@ class MetadataBaseInfo:
                     return '%s\n\n%s' % (M.summary, _strip_html(M.description))
         except:  # lets not fall in a heap if we bug out, this is just a convieniance function
             return return_on_error
-
 
 
 class MixinEnumHelper:
@@ -145,6 +150,140 @@ class MixinEnumHelper:
         except:
             pass
         return None  # noqa
+
+
+class MixinPandasHelper:
+    """Provides several quality of life functions when we have a class instance
+    that exposes its underlying table or feature class as a pandas dataframe.
+
+    The inheriting class must support the following properties which return a pandas dataframe:
+        <instance>.df and <instance>.df_lower
+
+    For an rather complicated example of use, see data.ResultsAsPandas.
+    """
+
+    def aggregate(self, groupflds: (str, list[str]), valueflds: (str, list[str]), *funcs, **kwargs) -> (_pd.DataFrame, None):
+        """
+        Return an aggregated dataframe.
+        This is a call to funclite.pandaslib.GroupBy. See documentation for more help.
+
+        Everything is forced to lower case, so don't worry about the case of underlying fields in the table/fc
+
+        Args:
+            groupflds: List of fields to groupby, or single string
+            valueflds: list of fields to apply the aggregate funcs on. Accepts a string as well
+            funcs: functions, pass as arguments
+            kwargs: keyword arguments, passed to pandaslib.GroupBy
+
+        Returns:
+            None: If self.df_lower evaluates to False
+            pandas.DataFrame: The aggregation of cls.df_lower.
+
+        Examples:
+            >>> import numpy as np
+            >>> ResultsAsPandas(..args..).aggregate('country', ['population', 'age'], np.max, np.mean, pandaslib.GroupBy.fMSE)  # noqa
+            country population_max  population_mean age_max age_mean
+            Wales   3500000        1234567          101     56
+            England ...
+        """
+        if not self.df_lower: return None  # noqa
+        if isinstance(groupflds, str): groupflds = [groupflds]
+        if isinstance(valueflds, str): valueflds = [valueflds]
+        groupflds = list(map(str.lower, groupflds))
+        valueflds = list(map(str.lower, valueflds))
+
+        return pandaslib.GroupBy(self.df_lower, groupflds=groupflds, valueflds=valueflds, *funcs, **kwargs).result  # noqa
+
+    def view(self) -> None:
+        """Open self.df in excel"""
+        _xlwings.view(self.df)  # noqa
+
+    def fields_get(self, as_objs: bool = False) -> (list[str], list[_arcpy.Field]):
+        """
+        Get list of field names, either as arcpy Fields or as strings
+
+        Args:
+            as_objs (bool): As Fields, otherwise strings
+
+        Returns:
+            list[str]: If as_objs is False
+            list[_arcpy.Field]: If as_objs is True
+
+        """
+        return _struct.fc_fields_get(self.fname_output, as_objs=as_objs)  # noqa
+
+    def shape_area(self, where: (str, None) = None, conv_func=conversion.m2_to_km2, **kwargs) -> float:
+        """
+        Sum the area of the shapes matching the where filter, and convert using conv_func
+
+        Args:
+            where (str, None): where to filter records, applied to the class instance of **df_lower** using the pandas.DataFrame.query method and ** not ** the underlying database.
+            conv_func: A conversion function, if None is passed, then no conversion is applied
+            kwargs: Additional kwargs passed to DataFrame.query
+
+        Returns:
+            float: Sum of polygon areas, returns 0 if no records matched.
+
+        Notes:
+            Assumed that layers have BNG spatial reference, hence Shape_Area is square meters. If this is not the case, then use a custom conversion function, otherwise the returned area will be wrong.
+
+        Examples:
+            >>> ResultsAsPandas(..args..).shape_area(where="crn in ('A123', 'A234')")  # noqa
+            0.43245
+        """
+        if not conv_func:
+            conv_func = lambda v: v
+        lst = self.df_lower.query(expr=where, **kwargs)['shape_area'].to_list()  # noqa
+        if lst:
+            return conv_func(sum(lst))
+        return 0
+
+    @property
+    def row_count(self, query: (str, None) = None, **kwargs) -> int:
+        """
+        Get row count
+
+        Args:
+            query (str, None): Expression passed to DataFrame.query to filter records
+            kwargs: keyword arguments passed to DataFrame.query. e.g. engine='python'. See the pandas documentation.
+
+        Returns: int: Row count
+        """
+        if query:
+            return len(self.df_lower.query(expr=query, **kwargs))  # noqa
+        return len(self.df_lower)  # noqa
+
+    def shape_length(self, where: (str, None) = None, conv_func=lambda v: v, **kwargs) -> float:
+        """
+        Sum the length of the shapes matching the where filter, and convert using conv_func
+
+        Args:
+            where (str, None): where to filter records, applied to the class instance of **df_lower** using the pandas.DataFrame.query method and ** not ** the underlying database.
+            conv_func: A conversion function, if None is passed, then no conversion is applied
+            kwargs: Additional kwargs passed to DataFrame.query
+
+        Returns:
+            float: Sum of feature lengths, returns 0 if no records matched.
+
+        Notes:
+            Assumed that layers have BNG spatial reference, hence Shape_Length is meters.
+            Unlike the shape_area method, this defaults to returning lengths uncoverted (i.e. in meters if spatial ref is BNG).
+            Currently the additional tables functionality does not allow providing custom where, as_int or as_float to the additional dataframes
+
+        Examples:
+            Total shape lengths for the specified crns in kilometers
+            >>> ResultsAsPandas(..args..).shape_length(where="crn in ('A123', 'A234'), conv_func=lambda v:v/1000")  # noqa
+            0.3245
+        """
+        if not conv_func:
+            conv_func = lambda v: v
+
+        lst = self.df_lower.query(expr=where, **kwargs)['shape_length'].to_list()  # noqa
+        if lst:
+            return conv_func(sum(lst))
+        return 0
+
+
 
 
 

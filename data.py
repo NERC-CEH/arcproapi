@@ -4,19 +4,30 @@ from warnings import warn as _warn
 import os.path as _path
 import inspect as _inspect
 
+import arcpy.management
 import fuckit as _fuckit
 
 import pandas as _pd
 import numpy as _np
 
 import arcpy as _arcpy
+
+
 from arcpy.conversion import TableToDBASE, TableToExcel, TableToGeodatabase, TableToSAS, TableToTable, ExcelToTable  # noqa
 from arcpy.management import MakeAggregationQueryLayer, MakeQueryLayer, MakeQueryTable, CalculateField, CalculateStatistics  # noqa   Expose here as useful inbult tools
+from arcpy.analysis import CountOverlappingFeatures, SummarizeNearby, SummarizeWithin  # noqa
+
+with _fuckit:
+    from arcproapi.common import release
+    if int(release()[0]) > 2 and _arcpy.GetInstallInfo()['ProductName'] == 'ArcGISPro':
+        from arcpy.conversion import ExportTable, ExportFeatures  # noqa
+    import xlwings as _xlwings  # never will be implemented on linux
 
 
 import funclite.iolib as _iolib
 import funclite.baselib as _baselib
 import funclite.stringslib as _stringslib
+import arcproapi.mixins as _mixins
 from funclite.pandaslib import df_to_dict_as_records_flatten1 as df_to_dict  # noqa Used to convert a standard dataframe into one accepted by field_update_from_dict and field_update_from_dict_addnew
 import funclite.pandaslib as pandaslib  # noqa   no _ as want to expose it to pass agg funcs to ResultsAsPandas instances
 
@@ -29,7 +40,6 @@ import arcproapi.orm as _orm
 import arcproapi.sql as _sql
 import arcproapi.decs as _decs
 import arcproapi.common as _common
-import arcproapi.conversion as conversion
 
 #  More data-like functions, imported for convieniance
 from arcproapi.common import get_row_count2 as get_row_count2
@@ -39,11 +49,7 @@ from arcproapi.export import excel_sheets_to_gdb as excel_import_sheets  # noqa 
 # TODO: All functions that write/delete/update spatial layers need to support transactions using the Editor object - otherwise an error is raised when layers are involved in a topology (and other similiar conditions)
 # See https://pro.arcgis.com/en/pro-app/latest/arcpy/data-access/editor.htm and https://pro.arcgis.com/en/pro-app/latest/tool-reference/tool-errors-and-warnings/160001-170000/tool-errors-and-warnings-160226-160250-160250.htm
 
-with _fuckit:
-    from arcproapi.common import release
-    if int(release()[0]) > 2 and _arcpy.GetInstallInfo()['ProductName'] == 'ArcGISPro':
-        from arcpy.conversion import ExportTable, ExportFeatures  # noqa
-    import xlwings as _xlwings  # never will be implemented on linux
+
 
 
 class Funcs:
@@ -66,6 +72,42 @@ class Funcs:
         return 1
 
     @staticmethod
+    def LongsToOneZeroOr(*args) -> int:
+        """
+        Pict 1 if any int > 0 and not null/none else 0
+
+        Returns:
+            int: 1 or 0
+
+        Examples:
+
+            >>> Funcs.LongsToOneZeroOr(12, 0, None)
+            1
+
+            >>> Funcs.LongsToOneZeroOr(-1, 0, None)
+            0
+        """
+        return 1 if any([Funcs.LongToOneZero(v) for v in args]) else 0
+
+    @staticmethod
+    def LongsToOneZeroAll(*args) -> int:
+        """
+        Pict 1 if all int args > 0 and not null/none else 0
+
+        Returns:
+            int: 1 or 0
+
+        Examples:
+
+            >>> Funcs.LongsToOneZeroAll(12, 1, 2)
+            1
+
+            >>> Funcs.LongsToOneZeroOr(12, 1, 0)
+            0
+        """
+        return 1 if all([Funcs.LongToOneZero(v) for v in args]) else 0
+
+    @staticmethod
     def TextToOneZero(v: str) -> int:
         """
         Reduce text to 1 or 0
@@ -84,10 +126,12 @@ class Funcs:
         Examples:
 
             Get first
+
             >>> Funcs.PickLong(-1, 0, 0, 34, 54)
             34
 
             All evaluate to 0 with LongToOneZero
+
             >>> Funcs.PickLong(-1, None, 0)
             0
         """
@@ -148,132 +192,7 @@ class Excel:
         return out
 
 
-class _MixinResultsAsPandas:
-    def aggregate(self, groupflds: (str, list[str]), valueflds: (str, list[str]), *funcs, **kwargs) -> (_pd.DataFrame, None):
-        """
-        Return an aggregated dataframe.
-        This is a call to funclite.pandaslib.GroupBy. See documentation for more help.
-
-        Everything is forced to lower case, so don't worry about the case of underlying fields in the table/fc
-
-        Args:
-            groupflds: List of fields to groupby, or single string
-            valueflds: list of fields to apply the aggregate funcs on. Accepts a string as well
-            funcs: functions, pass as arguments
-            kwargs: keyword arguments, passed to pandaslib.GroupBy
-
-        Returns:
-            None: If self.df_lower evaluates to False
-            pandas.DataFrame: The aggregation of cls.df_lower.
-
-        Examples:
-            >>> import numpy as np
-            >>> ResultsAsPandas(..args..).aggregate('country', ['population', 'age'], np.max, np.mean, pandaslib.GroupBy.fMSE)  # noqa
-            country population_max  population_mean age_max age_mean
-            Wales   3500000        1234567          101     56
-            England ...
-        """
-        if not self.df_lower: return None  # noqa
-        if isinstance(groupflds, str): groupflds = [groupflds]
-        if isinstance(valueflds, str): valueflds = [valueflds]
-        groupflds = list(map(str.lower, groupflds))
-        valueflds = list(map(str.lower, valueflds))
-
-        return pandaslib.GroupBy(self.df_lower, groupflds=groupflds, valueflds=valueflds, *funcs, **kwargs).result  # noqa
-
-    def view(self) -> None:
-        """Open self.df in excel"""
-        _xlwings.view(self.df)  # noqa
-
-    def fields_get(self, as_objs: bool = False) -> (list[str], list[_arcpy.Field]):
-        """
-        Get list of field names, either as arcpy Fields or as strings
-
-        Args:
-            as_objs (bool): As Fields, otherwise strings
-
-        Returns:
-            list[str]: If as_objs is False
-            list[_arcpy.Field]: If as_objs is True
-
-        """
-        return _struct.fc_fields_get(self.fname_output, as_objs=as_objs)  # noqa
-
-    def shape_area(self, where: (str, None) = None, conv_func=conversion.m2_to_km2, **kwargs) -> float:
-        """
-        Sum the area of the shapes matching the where filter, and convert using conv_func
-
-        Args:
-            where (str, None): where to filter records, applied to the class instance of **df_lower** using the pandas.DataFrame.query method and ** not ** the underlying database.
-            conv_func: A conversion function, if None is passed, then no conversion is applied
-            kwargs: Additional kwargs passed to DataFrame.query
-
-        Returns:
-            float: Sum of polygon areas, returns 0 if no records matched.
-
-        Notes:
-            Assumed that layers have BNG spatial reference, hence Shape_Area is square meters. If this is not the case, then use a custom conversion function, otherwise the returned area will be wrong.
-
-        Examples:
-            >>> ResultsAsPandas(..args..).shape_area(where="crn in ('A123', 'A234')")  # noqa
-            0.43245
-        """
-        if not conv_func:
-            conv_func = lambda v: v
-        lst = self.df_lower.query(expr=where, **kwargs)['shape_area'].to_list()  # noqa
-        if lst:
-            return conv_func(sum(lst))
-        return 0
-
-    @property
-    def row_count(self, query: (str, None) = None, **kwargs) -> int:
-        """
-        Get row count
-
-        Args:
-            query (str, None): Expression passed to DataFrame.query to filter records
-            kwargs: keyword arguments passed to DataFrame.query. e.g. engine='python'. See the pandas documentation.
-
-        Returns: int: Row count
-        """
-        if query:
-            return len(self.df_lower.query(expr=query, **kwargs))  # noqa
-        return len(self.df_lower)  # noqa
-
-    def shape_length(self, where: (str, None) = None, conv_func=lambda v: v, **kwargs) -> float:
-        """
-        Sum the length of the shapes matching the where filter, and convert using conv_func
-
-        Args:
-            where (str, None): where to filter records, applied to the class instance of **df_lower** using the pandas.DataFrame.query method and ** not ** the underlying database.
-            conv_func: A conversion function, if None is passed, then no conversion is applied
-            kwargs: Additional kwargs passed to DataFrame.query
-
-        Returns:
-            float: Sum of feature lengths, returns 0 if no records matched.
-
-        Notes:
-            Assumed that layers have BNG spatial reference, hence Shape_Length is meters.
-            Unlike the shape_area method, this defaults to returning lengths uncoverted (i.e. in meters if spatial ref is BNG).
-            Currently the additional tables functionality does not allow providing custom where, as_int or as_float to the additional dataframes
-
-        Examples:
-            Total shape lengths for the specified crns in kilometers
-            >>> ResultsAsPandas(..args..).shape_length(where="crn in ('A123', 'A234'), conv_func=lambda v:v/1000")  # noqa
-            0.3245
-        """
-        if not conv_func:
-            conv_func = lambda v: v
-
-        lst = self.df_lower.query(expr=where, **kwargs)['shape_length'].to_list()  # noqa
-        if lst:
-            return conv_func(sum(lst))
-        return 0
-
-
-
-
-class ResultAsPandas(_MixinResultsAsPandas):
+class ResultAsPandas(_mixins.MixinPandasHelper):
     """
     Retreieve the results of any arcpy operation which returns and table or layer as a pandas dataframe.
     Also exposes pandas aggregate functions to summarise the data and some other "helper" methods.
@@ -324,8 +243,11 @@ class ResultAsPandas(_MixinResultsAsPandas):
         'a'     5
         'b'     20
 
+        View the result in excel from CountOverlappingFeatures
+        >>> arcdata.ResultAsPandas(arcpy.analysis.CountOverlappingFeatures, ['./my.gdb/england', './my.gdb/uk']).view()  # noqa
+
     """
-    class _LayerDataFrame(_MixinResultsAsPandas):
+    class _LayerDataFrame(_mixins.MixinPandasHelper):
         def __init__(self, arg_name: str, fname_output: str, df: _pd.DataFrame = None):
             self.arg_name = arg_name
             self.fname_output = fname_output
@@ -363,12 +285,15 @@ class ResultAsPandas(_MixinResultsAsPandas):
                 self.Results[s] = ResultAsPandas._LayerDataFrame(s, lyr_tmp)
                 kwargs[s] = lyr_tmp
 
-        if 'in_dataset' in dict(_inspect.signature(tool).parameters).keys():
+        keys = dict(_inspect.signature(tool).parameters).keys()
+        if 'in_dataset' in keys:
             self.execution_result = tool(in_dataset=in_features, out_dataset=self._fname_output, **kwargs)
-        elif 'in_features' in dict(_inspect.signature(tool).parameters).keys():
+        elif 'in_features' in keys:
             self.execution_result = tool(in_features=in_features, out_feature_class=self._fname_output, **kwargs)
+        elif 'in_polygons' in keys and 'in_sum_features' in keys:  # arcpy.analysis.SummarizeWithin & SummarizeNearBy
+            self.execution_result = tool(*in_features, out_feature_class=self._fname_output, **kwargs)
         else:
-            raise _errors.DataUnknownKeywordsForTool('The tool "%s" had unknown keywords. Currently code only accepts tools which support "in_features" and "in_dataset" arguments.\n\nThis will need fixing in code.' % str(tool))
+            raise _errors.DataUnknownKeywordsForTool('The tool "%s" had unknown keywords. Currently code only accepts tools which support arguments "in_features", "in_dataset" and the "in_polygons in_sum_features" pairing.\n\nThis will need fixing in code.' % str(tool))
 
         self.df = table_as_pandas2(self._fname_output, cols=columns, where=where, exclude_cols=exclude_cols, as_int=as_int, as_float=as_float)
         self.df_lower = self.df.copy()
@@ -1403,56 +1328,6 @@ def pandas_join(from_: _pd.DataFrame, to_: _pd.DataFrame, from_key: str, to_key:
     join = join.reset_index()
     return join
 
-def features_overlapping(fname: str, fields: (str, list[str]) = None) -> tuple[bool, (None, list[list[int]])]:
-    """
-    Get overlapping features in a single feature class.
-    and test if there were overlaps.
-
-    Args:
-        fname (str): feature class
-        fields (str, list[str]): fields passed to FindIdentical, see https://pro.arcgis.com/en/pro-app/latest/tool-reference/data-management/find-identical.htm
-
-    Returns:
-        tuple[bool, (None, list[list[int]])]: are there overlaps, and a list of lists, where the inner lists are the overlapping polygon ids from the input layer.
-        The returned dataframe has columns objectid, in_fid, feat_seq. NB: objectid is just the key for these results and has no relation to the source layer.
-
-    Examples:
-
-        No overlaps in layer
-
-        >>> features_overlapping('C:/my.gdb/lyr')
-        False, None
-
-
-        Has overlaps, polygons with ids of 10 and 20 overlap and polygons with ids 25, 26 and 27 overlap.
-
-        >>> features_overlapping('C:/my.gdb/lyr')
-        True, [[10, 20], [25, 26, 27], ...]
-    """
-    fname = _path.normpath(fname)
-    if isinstance(fields, str): fields = [fields]
-    if fields is None: fields = []
-    lyr_union = r"memory\%s" % _stringslib.rndstr(from_=string.ascii_lowercase)
-
-    try:
-        _arcpy.analysis.Union([fname], lyr_union, "ALL", None, "GAPS")  # noqa
-        idcol = 'FID_%s' % _path.basename(fname)
-        # arcpy.management.FindIdentical("address_crn_lpis_sq_Union", r"S:\SPECIAL-ACL\ERAMMP2 Survey Restricted\common\data\GIS\_arcpro_projects\gmep_surveys\gmep_surveys.gdb\address_crn_lp_FindIdentical", "Shape", None, 0, "ONLY_DUPLICATES")
-        Res = ResultAsPandas(_arcpy.management.FindIdentical, lyr_union, as_int=['OBJECTID', 'IN_FID', 'FEAT_SEQ'], output_record_option='ONLY_DUPLICATES', fields=['Shape'] + fields)
-        if not len(Res.df) or len(Res.df) == 0: return False, None  # noqa
-
-        df_lyr_union = table_as_pandas2(lyr_union, ['OBJECTID', idcol])
-        ddf = pandas_join(Res.df_lower, df_lyr_union, 'in_fid', 'OBJECTID')
-        out = []
-        for row in ddf.iterrows():
-            if len(out) < row[1].feat_seq:  # noqa
-                out.append([])
-            out[row[1].feat_seq - 1] += [row[1].FID_address_crn_lpis_sq]  # noqa
-    finally:
-        _struct.fc_delete2(lyr_union)
-    return True, out  # noqa
-
-
 
 def features_copy_to_new(source: str, dest: str, where_clause: (None, str) = None, **kwargs):
     """
@@ -1695,105 +1570,174 @@ def table_summary_as_pandas(fname: str, statistics_fields: (str, list[list[str]]
     return df
 
 
-@_decs.environ_persist
-def unionise(sources:list[str], dest: str, is_fields: (str, list[str], None) = 'ALL', rename_from: list[str] = None, rename_to: list[str] = None, keep_cols: (str, list[str], None) = 'ALL', overwrite=True, show_progress: bool = False, **kwargs) -> dict[str:list, str:list]:  # noqa
-    """ Unionise multiple layers, keep fid cols, add is_<xxx> cols
 
-    Args:
-        sources (list[str]): list of sources
-        dest (str): output name
+class Spatial:
 
-        is_fields (str, list[str], None):
-            Add is_ fields for these tables in the union.
-            'ALL': Add is_ fields for all layers in the union.
-            None: Add no is_ fields
-            list[str]: Add for these only, this would be specified in the list as 'FID_<feature class name>'
+    @staticmethod
+    @_decs.environ_persist
+    def unionise(sources:list[str], dest: str, is_fields: (str, list[str], None) = 'ALL', rename_from: list[str] = None, rename_to: list[str] = None, keep_cols: (str, list[str], None) = 'ALL', overwrite=True, show_progress: bool = False, **kwargs) -> dict[str:list, str:list]:  # noqa
+        """ Unionise multiple layers, keep fid cols, add is_<xxx> cols
 
-        rename_from (list[str]): list of fields to rename, good candidates for renaming are the is_fields, which default to is_<tablename>
-        rename_to (list[str]): new field names, matching rename_from by index
+        Args:
+            sources (list[str]): list of sources
+            dest (str): output name
 
-        keep_cols (str, list[str], None):
-            Specify which files to keep in the layer.
-            NB ** DO NOT SPECIFY NON EDITABLE FIELDS - e.g. Shape, OBJECTID, Shape_Area, Shape_Length - An ESRI BUG WILL CAUSE DeleteFields to Fail **
-            'ALL': Keep all fields resulting from the union.
-            None: Only retain readonly fields
-            list[str]: Keep readonly fields and these fields.
+            is_fields (str, list[str], None):
+                Add is_ fields for these tables in the union.
+                'ALL': Add is_ fields for all layers in the union.
+                'FID': Keeps FID_ cols
+                None: Add no is_ fields
+                list[str]: Add for these only, this would be specified in the list as 'FID_<feature class name>'
 
-        overwrite (bool): Allow overwrite of dest
-        show_progress (bool): Print progress to the console
-        kwargs: Keyword args passed to arcpy.analysis.Union. See https://pro.arcgis.com/en/pro-app/latest/tool-reference/analysis/union.htm
-
-    Returns:
-         dict[str:list]: A dictionary of is_ fields which are added 'good' and not added 'bad'. e.g. {'good':['FID_country', 'FID_region'], 'bad':['FID_area']}
-
-    Notes:
-        Fields are renamed as the first operation after the union - order may matter!
-
-    Examples:
-
-        Unionise 3 layers adding is_ fields for each layer and saving as C:/my.gdb/unionised
-        >>> unionise(['C:/my.gdb/country', 'C:/my.gdb/region', 'C:/my.gdb/area'], 'C:/my.gdb/unionised')
-        {'good':['FID_country', 'FID_region'], 'bad':['FID_area']}
-    """
-
-    def _f(v):
-        if not v: return 0
-        if v < 0: return 0
-        return 1
-
-    srcs = list(map(_path.normpath, sources))
-    dest = _path.normpath(dest)
-    _arcpy.env.overwriteOutput = overwrite
-
-    # Lets do this in memory for speed
-    lyrtmp = 'memory\%s' % _stringslib.get_random_string(from_=string.ascii_lowercase)
-    fid_cols = ['FID_%s' % s for s in [_iolib.get_file_parts2(t)[1] for t in srcs]]
-    if show_progress: print('Performing initial Union ....')
-    _arcpy.analysis.Union(srcs, lyrtmp, **kwargs)  # noqa
-
-    if show_progress: print('Clearing field aliases from in-memory layer ... ')
-    _struct.fc_aliases_clear(lyrtmp)
-
-    if rename_from:
-        if show_progress: print('Renaming fields ...')
-        _struct.fields_rename(lyrtmp, rename_from, rename_to, show_progress=show_progress)
-
-    allflds = _struct.fc_fields_get(lyrtmp)
+            rename_from (list[str]): list of fields to rename, good candidates for renaming are the is_fields, which default to is_<tablename>
+            rename_to (list[str]): new field names, matching rename_from by index
 
 
-    # Now add the is_ cols
-    out = {}
-    if is_fields is not None:
-        if show_progress:
-            print('Adding is_ cols ...')
-            PP = _iolib.PrintProgress(fid_cols)
+            keep_cols (str, list[str], None):
 
-        out = _baselib.DictList()
-        for fidcol in fid_cols:
-            if fidcol.lower() in map(str.lower, allflds):
-                isfld = 'is_%s' % fidcol[4:]
-                if is_fields == 'ALL' or isfld.lower() in map(str.lower, is_fields):
-                    _struct.AddField(lyrtmp, isfld, 'SHORT')
-                    field_apply_func(lyrtmp, fidcol, isfld, _f, show_progress=show_progress)
-                    out['good'] = isfld
+                Specify which fields to keep in the layer.
+
+                NB ** DO NOT SPECIFY NON-EDITABLE FIELDS - e.g. Shape, OBJECTID, Shape_Area, Shape_Length - An ESRI BUG WILL CAUSE DeleteFields to Fail **
+
+                'ALL': Keep all fields resulting from the union.
+                'FID': Keep all FID_ fields and the is_<fields> you specified
+                list[str]: Keep readonly fields, these fields and the is_<fields> you specified.
+                Empty list: Keep readonly fields and the is_<fields> you specified
+                None: Retain read-only fields only.
+
+
+            overwrite (bool): Allow overwrite of dest
+            show_progress (bool): Print progress to the console
+            kwargs: Keyword args passed to arcpy.analysis.Union. See https://pro.arcgis.com/en/pro-app/latest/tool-reference/analysis/union.htm
+
+        Returns:
+             dict[str:list]: A dictionary of is_ fields which are added 'good' and not added 'bad'. e.g. {'good':['FID_country', 'FID_region'], 'bad':['FID_area']}
+
+        Notes:
+            Fields are renamed as the last operation just before exporting the final layer to dest. This is so is_ fields can be renamed.
+
+        Examples:
+
+            Unionise 3 layers adding is_ fields for each layer and saving as C:/my.gdb/unionised
+            >>> Spatial.unionise(['C:/my.gdb/country', 'C:/my.gdb/region', 'C:/my.gdb/area'], 'C:/my.gdb/unionised')  # noqa
+            {'good':['FID_country', 'FID_region'], 'bad':['FID_area']}
+        """
+
+        srcs = list(map(_path.normpath, sources))
+        dest = _path.normpath(dest)
+        _arcpy.env.overwriteOutput = overwrite
+
+        # Lets do this in memory for speed
+        lyrtmp = 'memory\%s' % _stringslib.get_random_string(from_=string.ascii_lowercase)
+        fid_cols = ['FID_%s' % s for s in [_iolib.get_file_parts2(t)[1] for t in srcs]]
+        if show_progress: print('\nPerforming initial Union ....')
+        try:
+            _arcpy.analysis.Union(srcs, lyrtmp, **kwargs)  # noqa
+
+            allflds = _struct.fc_fields_get(lyrtmp)
+
+            # Now add the is_ cols
+            out = _baselib.DictList()
+            if is_fields is not None:
+                if show_progress:
+                    print('Adding is_ cols ...')
+                    PP = _iolib.PrintProgress(fid_cols)
+
+                for fidcol in fid_cols:
+                    if fidcol.lower() in map(str.lower, allflds):
+                        isfld = 'is_%s' % fidcol[4:]
+                        if is_fields == 'ALL' or isfld.lower() in map(str.lower, is_fields):
+                            _struct.AddField(lyrtmp, isfld, 'SHORT')
+                            field_apply_func(lyrtmp, fidcol, isfld, Funcs.LongToOneZero, show_progress=show_progress)
+                            out['good'] = isfld
+                    else:
+                        out['bad'] = fidcol
+                    if show_progress: PP.increment()  # noqa
+            keep_cols_cpy = []
+            if keep_cols and isinstance(keep_cols, (list, tuple)):
+                if show_progress: print('Deleting fields ...')
+                keep_cols_cpy = list[keep_cols]
+                keep_cols_cpy += out['good'] if out['good'] else []
+                _struct.DeleteField(lyrtmp, keep_cols_cpy, method='KEEP_FIELDS')
+            elif keep_cols == 'FID':
+                if show_progress: print('Deleting fields ...')
+                keep_cols_cpy += fid_cols
+                keep_cols_cpy += out['good'] if out['good'] else []
+                _struct.DeleteField(lyrtmp, keep_cols_cpy, method='KEEP_FIELDS')
+            elif keep_cols is None:
+                if show_progress: print('Deleting fields ...')
+                _struct.DeleteField(lyrtmp, _struct.fc_fields_not_required(lyrtmp), method='DELETE_FIELDS')
             else:
-                out['bad'] = fidcol
-            if show_progress: PP.increment()  # noqa
-        out = dict(out)
+                pass  # just to make code easier to read - if we are here, we are keeping all the cols
 
-    if keep_cols and isinstance(keep_cols, (list, tuple)):
-        if show_progress: print('Deleting fields ...')
-        keep_cols += fid_cols
-        _struct.DeleteField(lyrtmp, keep_cols, method='KEEP_FIELDS')
-    elif keep_cols is None:
-        if show_progress: print('Deleting fields ...')
-        _struct.DeleteField(lyrtmp, _struct.fc_fields_not_required, method='DELETE_FIELDS')
+            if rename_from:
+                if show_progress: print('Renaming fields ...')
+                _struct.fields_rename(lyrtmp, rename_from, rename_to, show_progress=show_progress)
 
-    if show_progress: print('Writing "%s" ...' % dest)
-    _struct.ExportFeatures(lyrtmp, dest)
-    return out
+            if show_progress: print('Writing "%s" ...' % dest)
+            _struct.ExportFeatures(lyrtmp, dest)
+
+            ok = _struct.fc_aliases_clear(dest)
+            if show_progress:
+                if ok:
+                    print('Aliases reset on fields %s' % ok)
+                else:
+                    print('Failed to reset aliases. This is not fatal, just annoying')
+        finally:
+            with _fuckit:
+                arcpy.management.Delete(lyrtmp)
+
+        return dict(out)
+
+    @staticmethod
+    def features_overlapping(fname: str, fields: (str, list[str]) = None) -> tuple[bool, (None, list[list[int]])]:
+        """
+        Get overlapping features in a single feature class.
+        and test if there were overlaps.
+
+        Args:
+            fname (str): feature class
+            fields (str, list[str]): fields passed to FindIdentical, see https://pro.arcgis.com/en/pro-app/latest/tool-reference/data-management/find-identical.htm
+
+        Returns:
+            tuple[bool, (None, list[list[int]])]: are there overlaps, and a list of lists, where the inner lists are the overlapping polygon ids from the input layer.
+            The returned dataframe has columns objectid, in_fid, feat_seq. NB: objectid is just the key for these results and has no relation to the source layer.
+
+        Examples:
+
+            No overlaps in layer
+
+            >>> Spatial.features_overlapping('C:/my.gdb/lyr')
+            False, None
 
 
+            Has overlaps, polygons with ids of 10 and 20 overlap and polygons with ids 25, 26 and 27 overlap.
+
+            >>> Spatial.features_overlapping('C:/my.gdb/lyr')
+            True, [[10, 20], [25, 26, 27], ...]
+        """
+        fname = _path.normpath(fname)  # noqa
+        if isinstance(fields, str): fields = [fields]
+        if fields is None: fields = []
+        lyr_union = r"memory\%s" % _stringslib.rndstr(from_=string.ascii_lowercase)
+
+        try:
+            _arcpy.analysis.Union([fname], lyr_union, "ALL", None, "GAPS")  # noqa
+            idcol = 'FID_%s' % _path.basename(fname)
+            # arcpy.management.FindIdentical("address_crn_lpis_sq_Union", r"S:\SPECIAL-ACL\ERAMMP2 Survey Restricted\common\data\GIS\_arcpro_projects\gmep_surveys\gmep_surveys.gdb\address_crn_lp_FindIdentical", "Shape", None, 0, "ONLY_DUPLICATES")
+            Res = ResultAsPandas(_arcpy.management.FindIdentical, lyr_union, as_int=['OBJECTID', 'IN_FID', 'FEAT_SEQ'], output_record_option='ONLY_DUPLICATES', fields=['Shape'] + fields)
+            if not len(Res.df) or len(Res.df) == 0: return False, None  # noqa
+
+            df_lyr_union = table_as_pandas2(lyr_union, ['OBJECTID', idcol])
+            ddf = pandas_join(Res.df_lower, df_lyr_union, 'in_fid', 'OBJECTID')
+            out = []
+            for row in ddf.iterrows():
+                if len(out) < row[1].feat_seq:  # noqa
+                    out.append([])
+                out[row[1].feat_seq - 1] += [row[1].FID_address_crn_lpis_sq]  # noqa
+        finally:
+            _struct.fc_delete2(lyr_union)
+        return True, out  # noqa
 
 
 
@@ -1876,8 +1820,8 @@ if __name__ == '__main__':
 
     # i = vertext_add(r'C:\GIS\erammp_local\submission\curated_raw\freshwater_curated_raw.gdb\stream_sites', 1, x_field='easting_vertex', y_field='northing_vertex', fail_on_exists=False, show_progress=True)
 
-    a, lst_out = features_overlapping(r'\\nerctbctdb\shared\shared\SPECIAL-ACL\ERAMMP2 Survey Restricted\2022\data\GIS\erammp.gdb\address_crn_lpis_sq')
-    # a, lst_out = features_overlapping(r'\\nerctbctdb\shared\shared\SPECIAL-ACL\ERAMMP2 Survey Restricted\current\data\GIS\erammp_current.gdb\address_crn_lpis_sq')
-    # a, lst_out = features_overlapping(r'\\nerctbctdb\shared\shared\SPECIAL-ACL\ERAMMP2 Survey Restricted\2021\data\GIS\erammp_current.gdb\address_crn_lpis_sq')
+    a, lst_out = Spatial.features_overlapping(r'\\nerctbctdb\shared\shared\SPECIAL-ACL\ERAMMP2 Survey Restricted\2022\data\GIS\erammp.gdb\address_crn_lpis_sq')
+    # a, lst_out = Spatial.features_overlapping(r'\\nerctbctdb\shared\shared\SPECIAL-ACL\ERAMMP2 Survey Restricted\current\data\GIS\erammp_current.gdb\address_crn_lpis_sq')
+    # a, lst_out = Spatial.features_overlapping(r'\\nerctbctdb\shared\shared\SPECIAL-ACL\ERAMMP2 Survey Restricted\2021\data\GIS\erammp_current.gdb\address_crn_lpis_sq')
 
     pass

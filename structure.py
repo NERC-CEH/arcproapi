@@ -958,6 +958,9 @@ def fc_aliases_clear(fname: str, cols: (str, list[str], None) = None) -> list[st
     Returns:
         list[str]: list of fields reset
 
+    Notes:
+        The AlterField is wrapped in a try-catch. The method returns only those fields for which the AlterField did not raise an error.
+        In-memory layers dont support aliases, so dont bother calling this on in-memory layers
     Examples:
 
         Clear all aliases
@@ -969,6 +972,9 @@ def fc_aliases_clear(fname: str, cols: (str, list[str], None) = None) -> list[st
         ['name', 'pop']
     """
     fname = _path.normpath(fname)
+    if fname[0:7] == 'memory\\' or fname[0:10] == 'in-memory\\' :
+        print('Info: In-memory feature classes or tables do not support aliases. ... Skipping.')
+        return
     allcols = list(map(str.lower, fc_fields_get(fname)))
     if isinstance(cols, str):
         colscpy = [cols]
@@ -980,11 +986,14 @@ def fc_aliases_clear(fname: str, cols: (str, list[str], None) = None) -> list[st
     symdiff = _baselib.list_sym_diff(colscpy, allcols)
     if colscpy and symdiff['a_notin_b']:
         raise ValueError('cols %s are not in %s' % (symdiff['a_notin_b'], fname))
-
+    ok = []
     for c in colscpy:
-        AlterField(fname, c, clear_field_alias='CLEAR_ALIAS')
-
-    return colscpy
+        try:
+            AlterField(fname, c, clear_field_alias='CLEAR_ALIAS')
+            ok += [c]
+        except:
+            pass
+    return ok
 
 table_aliases_clear = fc_aliases_clear
 
@@ -1962,4 +1971,5 @@ def fc_in_toplogy(fname: str) -> bool:
 
 if __name__ == '__main__':
     #  Quick debugging here
+    out = fc_aliases_clear(r'\\nerctbctdb\shared\shared\SPECIAL-ACL\ERAMMP2 Survey Restricted\current\data\GIS\erammp_current.gdb\land_all_unionised')
     pass
