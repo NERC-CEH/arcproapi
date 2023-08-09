@@ -739,7 +739,7 @@ def is_gdb(fname):
 
 def gdb_from_fname(fname: str) -> str:
     """
-    Get gdb path from a full qualified feature class or table path.
+    Get gdb path from a full qualified feature class or table path. Returns memory or in_memory if these are the workspace of fname
 
     Args:
         fname (str): the full qualified path
@@ -756,6 +756,8 @@ def gdb_from_fname(fname: str) -> str:
         >>> gdb_from_fname('C:/my.gdb/my/layer')
         'C:/my.gdb'
     """
+    if fname[0:6] == 'memory': return 'memory'
+    if fname[0:9] == 'in_memory': return 'in_memory'
     if '.gdb' in fname:
         return fname[0:fname.index('.gdb\\') + 4]
     return ''
@@ -767,6 +769,8 @@ def workspace_from_fname(fname: str, simple_gdb_test: bool = True) -> (str, None
     Also see gdb_from_fname - which this superceeds, but performs quicker for file geodatabases.
 
     Currently supports Enterprise geodatabases and file geodatabases'
+
+    Returns memory or in_memory if these are the workspace of fname
 
     Args:
         fname (str): The layer or feature class path
@@ -789,7 +793,8 @@ def workspace_from_fname(fname: str, simple_gdb_test: bool = True) -> (str, None
     """
     fname = _path.normpath(fname)
     parts = _Path(fname).parts
-
+    if fname[0:6] == 'memory': return 'memory'
+    if fname[0:9] == 'in_memory': return 'in_memory'
     if simple_gdb_test:
         # if we have a gdb, lets just use that and get out of here for performance reasons, but stick in try catch so don't have to think.
         ws = None

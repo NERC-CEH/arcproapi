@@ -1153,6 +1153,7 @@ def field_recalculate(fc: str, arg_cols: (str, list, tuple), col_to_update: str,
 
     TODO: Test/Debug field_recalculate
     """
+    isedit = False
     fc = _path.normpath(fc)
     if show_progress:
         max_ = _struct.get_row_count2(fc, where=where_clause)
@@ -1170,6 +1171,7 @@ def field_recalculate(fc: str, arg_cols: (str, list, tuple), col_to_update: str,
             edit = _arcpy.da.Editor(_arcpy.env.workspace)
             edit.startEditing(False, False)
             edit.startOperation()
+            isedit = True
 
         with _arcpy.da.UpdateCursor(fc, arg_cols + [col_to_update], where_clause=where_clause) as cursor:
             for i, row in enumerate(cursor):
@@ -1184,13 +1186,14 @@ def field_recalculate(fc: str, arg_cols: (str, list, tuple), col_to_update: str,
             if edit.isEditing:
                 edit.stopEditing(save_changes=True)  # noqa
             del edit
+            isedit = False
         return j
     except Exception as e:
         with _fuckit:
             edit.stopOperation()
             edit.stopEditing(save_changes=False)  # noqa
             del edit
-        raise Exception('An exception occured and changes applied by field_recalculate were rolled back.\n\nException: %s' % str(e)) from e
+        raise Exception('An exception occured. %s.\n\nException: %s' % ('Changes applied by field_recalculate were rolled back' if isedit else 'No edit session was active. Changes could not be rolled back', str(e))) from e
 
 
 field_apply_func = field_recalculate  # noqa For convieniance. Original func left in to not break code
@@ -1575,7 +1578,7 @@ class Spatial:
 
     @staticmethod
     @_decs.environ_persist
-    def unionise(sources:list[str], dest: str, is_fields: (str, list[str], None) = 'ALL', rename_from: list[str] = None, rename_to: list[str] = None, keep_cols: (str, list[str], None) = 'ALL', overwrite=True, show_progress: bool = False, **kwargs) -> dict[str:list, str:list]:  # noqa
+    def unionise(sources:list[str], dest: str, is_fields: (str, list[str], None) = 'ALL', rename_from: list[str] = None, rename_to: list[str] = None, keep_cols: (str, list[str], None) = 'ALL', del_cols: (str, list[str], None) = None, overwrite=True, show_progress: bool = False, **kwargs) -> dict[str:list, str:list]:  # noqa
         """ Unionise multiple layers, keep fid cols, add is_<xxx> cols
 
         Args:
@@ -1585,7 +1588,6 @@ class Spatial:
             is_fields (str, list[str], None):
                 Add is_ fields for these tables in the union.
                 'ALL': Add is_ fields for all layers in the union.
-                'FID': Keeps FID_ cols
                 None: Add no is_ fields
                 list[str]: Add for these only, this would be specified in the list as 'FID_<feature class name>'
 
@@ -1605,6 +1607,7 @@ class Spatial:
                 Empty list: Keep readonly fields and the is_<fields> you specified
                 None: Retain read-only fields only.
 
+            del_cols (str, list[str], None): Delete these cols. Invalid col names will be skipped and not raise an error.
 
             overwrite (bool): Allow overwrite of dest
             show_progress (bool): Print progress to the console
@@ -1626,9 +1629,9 @@ class Spatial:
         srcs = list(map(_path.normpath, sources))
         dest = _path.normpath(dest)
         _arcpy.env.overwriteOutput = overwrite
-
+        if isinstance(keep_cols, str): keep_cols = list[keep_cols]
         # Lets do this in memory for speed
-        lyrtmp = 'memory\%s' % _stringslib.get_random_string(from_=string.ascii_lowercase)
+        lyrtmp = 'in_memory\%s' % _stringslib.get_random_string(from_=string.ascii_lowercase)  # need to use this as supports alterfield and several other features that memory workspace doesnt support
         fid_cols = ['FID_%s' % s for s in [_iolib.get_file_parts2(t)[1] for t in srcs]]
         if show_progress: print('\nPerforming initial Union ....')
         try:
@@ -1638,6 +1641,7 @@ class Spatial:
 
             # Now add the is_ cols
             out = _baselib.DictList()
+
             if is_fields is not None:
                 if show_progress:
                     print('Adding is_ cols ...')
@@ -1656,7 +1660,7 @@ class Spatial:
             keep_cols_cpy = []
             if keep_cols and isinstance(keep_cols, (list, tuple)):
                 if show_progress: print('Deleting fields ...')
-                keep_cols_cpy = list[keep_cols]
+                keep_cols_cpy = list(keep_cols)
                 keep_cols_cpy += out['good'] if out['good'] else []
                 _struct.DeleteField(lyrtmp, keep_cols_cpy, method='KEEP_FIELDS')
             elif keep_cols == 'FID':
@@ -1670,9 +1674,15 @@ class Spatial:
             else:
                 pass  # just to make code easier to read - if we are here, we are keeping all the cols
 
+            if del_cols:  # this is in a loop so we continue if a single deletion fails
+                if isinstance(del_cols, str): del_cols = [del_cols]
+                for c in del_cols:
+                    with _fuckit:
+                        _struct.DeleteField(lyrtmp, c)
+
             if rename_from:
                 if show_progress: print('Renaming fields ...')
-                _struct.fields_rename(lyrtmp, rename_from, rename_to, show_progress=show_progress)
+                _struct.fields_rename(lyrtmp, rename_from, rename_to, skip_name_validation=False, show_progress=show_progress)
 
             if show_progress: print('Writing "%s" ...' % dest)
             _struct.ExportFeatures(lyrtmp, dest)

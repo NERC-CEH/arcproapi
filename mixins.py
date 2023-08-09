@@ -1,7 +1,9 @@
 """Mixins for all uses"""
 import os.path as _path
+import string
 
 import numpy as _np
+import fuckit as _fuckit
 
 import arcpy as _arcpy
 import bs4 as _bs4
@@ -11,8 +13,9 @@ import xlwings as _xlwings
 from arcproapi import structure as _struct, conversion as conversion
 
 from funclite import pandaslib as pandaslib
-
+import funclite.baselib as _baselib
 from funclite.baselib import classproperty as _classproperty
+import funclite.stringslib as _stringslib
 
 import arcproapi.conversion as conversion  # noqa
 
@@ -98,11 +101,17 @@ class MixinEnumHelper:
 
         geodb = _path.normpath(geodb)
         code_desc = [(v, v) for v in cls.text_values]
-        array = _np.array(code_desc, dtype=[('code', 'S3'), ('value', 'S50')])
-        table = 'in_memory/table'
-        _arcpy.da.NumPyArrayToTable(array, table)
-        # NB: You have to close and reopon any active client sessions before this appears as at ArcGISPro 3.0.1. Refreshing the geodb doesnt even work.
-        _arcpy.management.TableToDomain(table, 'code', 'value', geodb, cls.domain_name, cls.domain_name, update_option=update_option)  # noqa
+        sdef = 'S%s' % max([len(v) for v in _baselib.list_flatten(code_desc)])
+        array = _np.array(code_desc, dtype=[('code', sdef), ('value', sdef)])
+
+        table = 'memory/%s' % _stringslib.rndstr(from_=string.ascii_lowercase)
+        try:
+            _arcpy.da.NumPyArrayToTable(array, table)
+            # NB: You have to close and reopon any active client sessions before this appears as at ArcGISPro 3.0.1. Refreshing the geodb doesnt even work.
+            _arcpy.management.TableToDomain(table, 'code', 'value', geodb, cls.domain_name, cls.domain_name, update_option=update_option)  # noqa
+        finally:
+            with _fuckit:
+                _arcpy.management.Delete(table)
 
     @_classproperty
     def text_values(cls) -> list[str]:  # noqa

@@ -33,7 +33,7 @@ class MetaBuilderBasic:
         >>> Build.write_basic('C:/my.gdb/fc')
     """
     # No license as this is exposed through arcpy metadata class
-    def __init__(self, title: str, what: str = '', purpose: str = '', where: str = '', when: str = '', how: str = '', missing_data: str = '', caveats_and_limitations: str = '',
+    def __init__(self, title: str, what: str = '', purpose: str = '', where: str = '', when: str = '', how: str = '', lineage: str = '', missing_data: str = '', caveats_and_limitations: str = '',
                  quality_control: str = '', credit: str = '', license: str = '', inputs: (tuple[str], list[str]) = (), scripts: (tuple[str], list[str]) = ()):
         self.title = title
         self.purpose = purpose
@@ -48,6 +48,7 @@ class MetaBuilderBasic:
         self.scripts = scripts
         self.credit = credit
         self.license = license
+        self.lineage = lineage
 
     def summary(self) -> str:
         return self.description(filt=('what', 'purpose'))

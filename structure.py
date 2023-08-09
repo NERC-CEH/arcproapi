@@ -7,7 +7,7 @@ import os.path as _path
 from copy import deepcopy as _deepcopy
 from warnings import warn as _warn
 
-from arcpy.management import CreateFeatureclass, AddJoin, AddRelate, AddFields, AddField, DeleteField, AlterField  # noqa Add other stuff as find it useful ...
+from arcpy.management import CreateFeatureclass, AddJoin, AddRelate, AddFields, AddField, DeleteField, AlterField, Delete, DomainToTable, TableToDomain  # noqa Add other stuff as find it useful ...
 from arcpy import Exists  # noqa
 
 # See https://pro.arcgis.com/en/pro-app/latest/tool-reference/data-management/create-domain.htm
@@ -160,6 +160,7 @@ def fields_delete(fname, fields: (str, list[str], None) = None, where: (str, Non
 
     return good, bad
 
+
 def fc_fields_not_required(fname: str, full_name: bool = True) -> list[str]:
     """
     Get list of fields that are not required.
@@ -171,11 +172,13 @@ def fc_fields_not_required(fname: str, full_name: bool = True) -> list[str]:
     Returns:
         list[str]: list of fields that are not required, i.e. field.required is false
     """
+
     def _f(s):
         return _iolib.fixp(fname, s) if full_name else s
 
     fname = _path.normpath(fname)
     return [_f(fld.name) for fld in _arcpy.da.Describe(fname)['fields'] if not fld.required]
+
 
 def fc_fields_required(fname: str, full_name: bool = True) -> list[str]:
     """
@@ -188,11 +191,13 @@ def fc_fields_required(fname: str, full_name: bool = True) -> list[str]:
     Returns:
         list[str]: list of fields that are  required, i.e. field.required is True
     """
+
     def _f(s):
         return _iolib.fixp(fname, s) if full_name else s
 
     fname = _path.normpath(fname)
     return [_f(fld.name) for fld in _arcpy.da.Describe(fname)['fields'] if fld.required]
+
 
 def fc_fields_not_editable(fname: str, full_name: bool = True) -> list[str]:
     """
@@ -205,11 +210,13 @@ def fc_fields_not_editable(fname: str, full_name: bool = True) -> list[str]:
     Returns:
         list[str]: list of fields that are not required, i.e. field.required is false
     """
+
     def _f(s):
         return _iolib.fixp(fname, s) if full_name else s
 
     fname = _path.normpath(fname)
     return [_f(fld.name) for fld in _arcpy.da.Describe(fname)['fields'] if not fld.editable]
+
 
 def fc_fields_editable(fname: str, full_name: bool = True) -> list[str]:
     """
@@ -222,6 +229,7 @@ def fc_fields_editable(fname: str, full_name: bool = True) -> list[str]:
     Returns:
         list[str]: list of fields that are  required, i.e. field.required is True
     """
+
     def _f(s):
         return _iolib.fixp(fname, s) if full_name else s
 
@@ -436,6 +444,45 @@ def domains_assign(fname: str, domain_field_dict: dict[str: list[list, str]], sh
         if show_progress:
             PP.increment()  # noqa
     return {'success': success, 'fail': failed}
+
+
+def gdb_domains_as_dict(gdb: str) -> dict[str:dict[str:str]]:
+    """
+    Get a dictionary of all domains in a geodatabase
+
+    Args:
+        gdb (str): gdb
+
+    Returns:
+        dict[str:dict[str:str]]: dictionary of form {domain_name:{coded value: description}, domain_name:{coded value: description}, ... NB: coded value is min and max for range domains. See example.
+        If no domains and empty dict is returned
+
+    Examples:
+
+        One coded value domain in the gdb
+
+        >>> gdb_domains_as_dict('C:/my.gdb')
+        {'ColoursDomain': {'blue': 'The colour blue', 'red': 'the colour red', ...}
+
+        One range value domain in gdb.
+        >>> gdb_domains_as_dict('C:/my.gdb')
+        {'RangeDomain': {'min': 0, 'max': 10)}
+
+    """
+    out = {}
+
+    for domain in _arcpy.da.ListDomains(_path.normpath(gdb)):
+        out[domain.name] = {}
+        if domain.domainType == 'CodedValue':
+            for v, desc in domain.codedValues():
+                out[domain.name][v] = desc
+        elif domain.domainType == 'Range':
+            out[domain.name]['min'] = domain.range[0]
+            out[domain.name]['max'] = domain.range[1]
+    return out
+
+
+domains_as_dict = gdb_domains_as_dict
 
 
 def cleanup(fname_list, verbose=False, **args):
@@ -943,7 +990,8 @@ def fields_get(fname, wild_card='*', field_type='All', no_error_on_multiple: boo
 
 fc_fields_get = fields_get  # noqa This is for consistency, fields get operates on an entire feature class/table. Have to leave existing fields_get in for backwards compatility
 
-def fc_aliases_clear(fname: str, cols: (str, list[str], None) = None) -> list[str]:
+
+def fc_aliases_clear(fname: str, cols: (str, list[str], None) = None) -> (list[str], None):
     """
     Reset field aliases for cols. Resets all field aliases if cols is none
     This is case insensitive.
@@ -957,24 +1005,28 @@ def fc_aliases_clear(fname: str, cols: (str, list[str], None) = None) -> list[st
 
     Returns:
         list[str]: list of fields reset
+        None: If the layer was in-memory
 
     Notes:
         The AlterField is wrapped in a try-catch. The method returns only those fields for which the AlterField did not raise an error.
         In-memory layers dont support aliases, so dont bother calling this on in-memory layers
+
     Examples:
 
         Clear all aliases
-        >>> fc_aliases_clear('C:/my.gdb/countries', None)
+
+        >>> fc_aliases_clear('C:/my.gdb/countries')  # noqa
         ['objectid', 'name', 'pop', ...]
 
-        Clear a subset
+        Clear aliases on a subset of fields
+
         >>> fc_aliases_clear('C:/my.gdb/countries', ['name', 'pop'])
         ['name', 'pop']
     """
     fname = _path.normpath(fname)
-    if fname[0:7] == 'memory\\' or fname[0:10] == 'in-memory\\' :
+    if fname[0:7] == 'memory\\' or fname[0:10] == 'in-memory\\':
         print('Info: In-memory feature classes or tables do not support aliases. ... Skipping.')
-        return
+        return  # noqa
     allcols = list(map(str.lower, fc_fields_get(fname)))
     if isinstance(cols, str):
         colscpy = [cols]
@@ -995,7 +1047,8 @@ def fc_aliases_clear(fname: str, cols: (str, list[str], None) = None) -> list[st
             pass
     return ok
 
-table_aliases_clear = fc_aliases_clear
+
+table_aliases_clear = fc_aliases_clear  # expose with diff name for convieniance
 
 
 def fields_add_from_table(target, source, add_fields):
@@ -1483,7 +1536,7 @@ def fields_rename(fname: str, from_: list, to: list, aliases: (list, str, None) 
         try:
             _arcpy.management.AlterField(fname, targ, rename_to,
                                          None if alias is None or alias.upper() == 'CLEAR_ALIAS' else alias,
-                                         clear_field_alias='CLEAR_ALIAS' if alias.upper() == 'CLEAR_ALIAS' else None)
+                                         clear_field_alias= None if alias is None else 'CLEAR_ALIAS')
             success += [rename_to]
             errors += [None]
             failure += [None]
@@ -1971,5 +2024,5 @@ def fc_in_toplogy(fname: str) -> bool:
 
 if __name__ == '__main__':
     #  Quick debugging here
-    out = fc_aliases_clear(r'\\nerctbctdb\shared\shared\SPECIAL-ACL\ERAMMP2 Survey Restricted\current\data\GIS\erammp_current.gdb\land_all_unionised')
+    example = fc_aliases_clear(r'\\nerctbctdb\shared\shared\SPECIAL-ACL\ERAMMP2 Survey Restricted\current\data\GIS\erammp_current.gdb\land_all_unionised')
     pass
