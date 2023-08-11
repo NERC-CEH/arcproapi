@@ -279,9 +279,15 @@ def fc_fields_alias_clear(fname: str, where: str = '', fields: iter = None, show
 
 
 def fc_delete(fname: str) -> bool:
-    """Deletes a table or feature class
+    """Deletes a table or feature class.
 
-    Returns: bool: False if fname does not exist, True if fname exists and was deleted.
+    This is now superflous - use arcpy.management.Delete. See note.
+
+    Returns:
+        bool: False if fname does not exist, True if fname exists and was deleted.
+
+    Notes:
+        arcpy 3.0.1 - arcpy.management.Delete appears to have changed and no longer raises an error if the layer does not exist.
     """
     deletted = False
     fname = _path.normpath(fname)
@@ -292,7 +298,9 @@ def fc_delete(fname: str) -> bool:
 
 
 def fc_delete2(fname: str, err_on_not_exists: bool = False, data_type: str = None) -> None:
-    """Deletes a table or feature class
+    """Deletes a table or feature class.
+
+    arcpy 3.0.1 - arcpy.management.Delete appears to have changed and no longer raises an error if the layer does not exist.
 
     Args:
         fname (str): feature class or table path

@@ -4,13 +4,14 @@ import string
 
 import numpy as _np
 import fuckit as _fuckit
+import dateutil as _dateutil
 
 import arcpy as _arcpy
 import bs4 as _bs4
 import pandas as _pd
 import xlwings as _xlwings
 
-from arcproapi import structure as _struct, conversion as conversion
+from arcproapi import structure as _struct, conversion as conversion  # noqa
 
 from funclite import pandaslib as pandaslib
 import funclite.baselib as _baselib
@@ -18,6 +19,7 @@ from funclite.baselib import classproperty as _classproperty
 import funclite.stringslib as _stringslib
 
 import arcproapi.conversion as conversion  # noqa
+
 
 class MetadataBaseInfo:
     """ Get metadata given a layer name, returning it as a string
@@ -81,18 +83,22 @@ class MixinEnumHelper:
         text_values list[str]: List of all text values, as retrieved from as_text()
         names list[str]: List of all member names, as retrieved from member.name
     """
+    domain_name = ''  # stop pycharm moaning
 
     @classmethod
     def domain_create(cls, geodb: str, update_option='REPLACE'):
         """
-        Import as a domain into a geodatabase
+        Import as a domain into a geodatabase. Also see domain_create2.
 
         Args:
             geodb (str): The geodatabase
             update_option (str): Either 'APPEND' or 'REPLACE'. See https://pro.arcgis.com/en/pro-app/latest/tool-reference/data-management/table-to-domain.htm
 
         Returns:
+            None
 
+        Notes:
+            Only supports text field types. Use domain_create2 to autodetect text, integer, float and date values and create the domain accordingly.
         """
         try:
             x = cls.domain_name  # noqa
@@ -100,9 +106,19 @@ class MixinEnumHelper:
             raise NotImplementedError('Cannot create domain.\nClass does not define domain_name. Define this in the enumeration in enums.py.')
 
         geodb = _path.normpath(geodb)
-        code_desc = [(v, v) for v in cls.text_values]
-        sdef = 'S%s' % max([len(v) for v in _baselib.list_flatten(code_desc)])
-        array = _np.array(code_desc, dtype=[('code', sdef), ('value', sdef)])
+        code_desc = [(v, v) for v in cls.text_values if v]
+
+        isint = all([_baselib.is_int(x) for x in cls.text_values])
+        isfloat = all([_baselib.is_float(x) for x in cls.text_values])
+
+        sdef = 'S%s' % max([len(v) for v in map(str, _baselib.list_flatten(code_desc))])
+
+        if isint:
+            array = _np.array(code_desc, dtype=[('code', sdef), ('value', 'int32')])
+        elif isfloat:
+            array = _np.array(code_desc, dtype=[('code', sdef), ('value', 'float32')])
+        else:
+            array = _np.array(code_desc, dtype=[('code', sdef), ('value', sdef)])
 
         table = 'memory/%s' % _stringslib.rndstr(from_=string.ascii_lowercase)
         try:
@@ -113,6 +129,58 @@ class MixinEnumHelper:
             with _fuckit:
                 _arcpy.management.Delete(table)
 
+    @classmethod
+    def domain_create2(cls, geodb: str, **kwargs) -> None:
+        """
+        Create the enum as a coded domain in the geodatabase gdb
+        Range domains not yet supported.
+
+        This is an enhancemoent over domain_create as it autodetects the field type. domain_create add as 'TEXT' field type.
+
+        Args:
+            geodb (str): The geodatabase
+            kwargs: Passed to arcpy.management.CreateDomain. See https://pro.arcgis.com/en/pro-app/latest/tool-reference/data-management/create-domain.htm#
+        Returns:
+            None
+
+        Notes:
+            Will undoubtedly error if the domain is assigned to a field.
+            Integer types have field type arcpy LONG, float types are set to arcpy FLOAT. Code will need revising if these types are of insufficient size. See https://pro.arcgis.com/en/pro-app/latest/tool-reference/data-management/create-domain.htm
+        """
+        try:
+            x = cls.domain_name  # noqa
+        except:
+            raise NotImplementedError('Cannot create domain.\nClass does not define domain_name. Define this in the enumeration in enums.py.')
+
+        geodb = _path.normpath(geodb)
+        isint = all([_baselib.is_int(x) for x in cls.text_values_for_domain])
+        isfloat = all([_baselib.is_float(x) for x in cls.text_values_for_domain])
+        isdate = all([_baselib.is_date(x) for x in cls.text_values_for_domain])
+
+        if isint:
+            vals = map(int, [x for x in cls.text_values_for_domain])
+            ft = 'LONG'
+        elif isfloat:
+            vals = map(float, [x for x in cls.text_values_for_domain])
+            ft = 'FLOAT'
+        elif isdate:
+            vals = map(_dateutil.parser.parse, [x for x in cls.text_values_for_domain])  # noqa
+            ft = 'DATE'
+        else:
+            vals = map(str, [x for x in cls.text_values_for_domain])
+            ft = 'TEXT'
+
+        if not vals: return
+
+        with _fuckit:
+            _arcpy.management.DeleteDomain(geodb, cls.domain_name)
+
+        _arcpy.management.CreateDomain(geodb, domain_name=cls.domain_name,
+                                       domain_description=kwargs['domain_description'] if kwargs.get('domain_description', None) else cls.domain_name,
+                                       field_type=ft, domain_type='CODED')
+        for v in vals:
+            _arcpy.management.AddCodedValueToDomain(geodb, cls.domain_name, v, str(v))
+
     @_classproperty
     def text_values(cls) -> list[str]:  # noqa
         """
@@ -122,9 +190,27 @@ class MixinEnumHelper:
         Returns:
             list[str]: List of all text values, as retrieved from as_text()
         """
-        lst = [cls.as_text(e) for e in cls]  # noqa
+        lst = [cls.as_text(e) for e in cls if cls.as_text(e) is not None]  # noqa
         lst.sort()
         return lst  # noqa
+
+
+    @_classproperty
+    def text_values_for_domain(cls) -> list[str]:  # noqa
+        """
+        Get a list of all the as_text values, excluding Nones as empty strings.
+        The list is ordered before being returned.
+
+        Returns:
+            list[str]: List of all text values, as retrieved from as_text()
+
+        Notes:
+            Domain values cannot be created from Nones and empty strings, hence this property is provided.
+        """
+        lst = [cls.as_text(e) for e in cls if  cls.as_text(e) not in (None, '')]  # noqa
+        lst.sort()
+        return lst  # noqa
+
 
     @_classproperty
     def names(cls) -> list[str]:  # noqa
@@ -291,9 +377,6 @@ class MixinPandasHelper:
         if lst:
             return conv_func(sum(lst))
         return 0
-
-
-
 
 
 # region local helper funcs

@@ -1484,7 +1484,7 @@ def features_copy(source: str, dest: str, workspace: str, where_clause: str = '*
         changes will be rolled back
 
     Examples:
-        >>> features_copy('c@/my.gdb/world_counties', 'c:/my.gdb/euro_countries', 'c:/my.gdb', where_clause='country="EU"',
+        >>> features_copy('c:/my.gdb/world_counties', 'c:/my.gdb/euro_countries', 'c:/my.gdb', where_clause='country="EU"',
         >>>    copy_shape=True, fail_on_exists=True,
         >>>    eu_country='world_country', population='population')
     """
