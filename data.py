@@ -1578,7 +1578,8 @@ def table_summary_as_pandas(fname: str, statistics_fields: (str, list[list[str]]
 class Spatial(_MixinNameSpace):  # noqa
 
     @staticmethod
-    def unionise_self_overlapping_clean(source: str, dest: str, rank_cols: list = None, rank_func=None, reverse: bool = False, dissolve_cols: list[str] = None, show_progress: bool = False):
+    @_decs.environ_persist
+    def unionise_self_overlapping_clean(source: str, dest: str, rank_cols: list = None, rank_func=None, reverse: bool = False, dissolve_cols: list[str] = None, overwrite: bool = False, show_progress: bool = False) -> bool:
         """
         Clean up a single layer which has overlapping polygons based on a rank function. The top ranked polygon is retained, while other polygons are all removed.
         When running a union on a single layer, duplicate polygons are created for each overlapping area in the original layer. See the union documentation.
@@ -1591,10 +1592,11 @@ class Spatial(_MixinNameSpace):  # noqa
             rank_func: a function that accepts the values passed in rank_cols applied to the original layer. The function should accept a single argument and return an orderable key (e.g. simple numeric rank). The lowest value is retained.
             reverse: Reverse the rank order (highest "rank" will be retained)
             dissolve_cols (list(str), None): If provided, the unionised layer will be dissolved on these cols. Otherwise no dissolve will occur.
-            show_progress: show progress
+            overwrite (bool): Allow overwrite
+            show_progress (bool): show progress
 
         Returns:
-            None
+            bool: True if there were overlaps, else False
 
         Examples:
 
@@ -1606,60 +1608,68 @@ class Spatial(_MixinNameSpace):  # noqa
         """
         source = _path.normpath(source)
         dest = _path.normpath(dest)
+        out = False
+        try:
+            lyr_union = r"in_memory/%s" % _stringslib.rndstr(from_=string.ascii_lowercase)
+            _arcpy.analysis.Union([source], lyr_union, "ALL", None, "GAPS")  # noqa
+            oidfld = _struct.field_oid(lyr_union)
+            df_union = table_as_pandas2(lyr_union)
 
-        lyr_union = r"in_memory/%s" % _stringslib.rndstr(from_=string.ascii_lowercase)
-        _arcpy.analysis.Union([source], lyr_union, "ALL", None, "GAPS")  # noqa
+            # IN_FID is the df_union objectid
+            Res = ResultAsPandas(arcpy.management.FindIdentical, lyr_union, as_int=['OBJECTID', 'IN_FID', 'FEAT_SEQ'], output_record_option='ONLY_DUPLICATES', fields=['Shape'])
 
-        oidfld = _struct.field_oid(lyr_union)
-        df_union = table_as_pandas2(lyr_union, [oidfld] + rank_cols if rank_cols else [oidfld])
+            last_feat_seq = None
+            dup_dict = {}
+            if not rank_cols: rank_cols = [oidfld]
+            if show_progress and len(Res.df_lower) > 0: PP = _iolib.PrintProgress(maximum=len(Res.df_lower), init_msg='Deleting duplicate rows in in-memory union layer...')
+            row = None
+            for row in Res.df_lower.itertuples(index=False):
+                # dup dict will look like for example (3 rank cols)...
+                # {1:[10, 23, 'uraquay'], 2:[2, 5, 'chile'], ...}
+                if not last_feat_seq:
+                    last_feat_seq = row.feat_seq  # noqa
+                    dup_dict[row.in_fid] = list(df_union.query('%s==%s' % (oidfld, row.in_fid))[rank_cols].iloc[0])  # noqa  Get first (and only) row of the dataframe as a list and put in dictionary with key row.in_fid
+                elif row.feat_seq == last_feat_seq:  # noqa
+                    dup_dict[row.in_fid] = list(df_union.query('%s==%s' % (oidfld, row.in_fid))[rank_cols].iloc[0])  # noqa
+                else:
+                    last_feat_seq, dup_dict = Spatial._del_dups(lyr_union, df_union, dup_dict, row, rank_func, reverse, rank_cols, oidfld)  # noqa
+                    out = True
+                if show_progress: PP.increment()  # noqa
 
-        # IN_FID is the df_union objectid
-        Res = ResultAsPandas(arcpy.management.FindIdentical, lyr_union, as_int=['OBJECTID', 'IN_FID', 'FEAT_SEQ'], output_record_option='ONLY_DUPLICATES', fields=['Shape'])
+            # Delete last duplicate set
+            if dup_dict and row:  # noqa
+                Spatial._del_dups(lyr_union, df_union, dup_dict, row, rank_func, reverse, rank_cols, oidfld)  # noqa
+                out = True
 
-        last_feat_seq = None
-        dup_dict = {}
-
-        if show_progress: PP = _iolib.PrintProgress(maximum=len(Res.df_lower), init_msg='Deleting duplicate rows in in-memory union layer...')
-
-        for row in Res.df_lower.itertuples(index=False):
-            # dup dict will look like for example (3 rank cols)...
-            # {1:[10, 23, 'uraquay'], 2:[2, 5, 'chile'], ...}
-            if not last_feat_seq:
-                last_feat_seq = row.feat_seq  # noqa
-                dup_dict[row.in_fid] = list(df_union.query('%s==%s' % (oidfld, row.in_fid)[rank_cols].iloc[0]))  # noqa  Get first (and only) row of the dataframe as a list and put in dictionary with key row.in_fid
-            elif row.feat_seq == last_feat_seq:  # noqa
-                dup_dict[row.in_fid] = list(df_union.query('%s==%s' % (oidfld, row.in_fid)[rank_cols].iloc[0]))  # noqa
+            # sanity check - did we get rid of all dups
+            # RChk = arcdata.ResultAsPandas(arcpy.management.FindIdentical, lyr_union, as_int=['OBJECTID', 'IN_FID', 'FEAT_SEQ'], output_record_option='ONLY_DUPLICATES', fields=['Shape'])
+            # assert len(RChk.df) == 0, 'Looks like there are still overlapping polygons in the unionised layer ...'
+            _arcpy.env.workspace = _common.workspace_from_fname(dest)
+            _arcpy.env.overwriteOutput = overwrite
+            if dissolve_cols:
+                lyr_diss = r'in_memory/%s' % _stringslib.rndstr(from_=string.ascii_lowercase)
+                arcpy.management.Dissolve(lyr_union, lyr_diss, dissolve_cols, multi_part='SINGLE_PART')
+                _struct.ExportFeatures(lyr_diss, dest)
             else:
-                last_feat_seq, dup_dict = Spatial._del_dups(lyr_union, df_union, dup_dict, row, rank_func, reverse)  # noqa
-
-            if show_progress: PP.increment()  # noqa
-
-        # Delete last duplicate set
-        Spatial._del_dups(lyr_union, df_union, dup_dict, row, rank_func, reverse)  # noqa
-
-        # sanity check - did we get rid of all dups
-        # RChk = arcdata.ResultAsPandas(arcpy.management.FindIdentical, lyr_union, as_int=['OBJECTID', 'IN_FID', 'FEAT_SEQ'], output_record_option='ONLY_DUPLICATES', fields=['Shape'])
-        # assert len(RChk.df) == 0, 'Looks like there are still overlapping polygons in the unionised layer ...'
-
-        if dissolve_cols:
-            lyr_diss = r'memory\diss'
-            arcpy.management.Dissolve(lyr_union, lyr_diss, dissolve_cols, multi_part='SINGLE_PART')
-            _struct.ExportFeatures(lyr_diss, dest)
-        else:
-            _struct.ExportFeatures(lyr_union, dest)
+                _struct.ExportFeatures(lyr_union, dest)
+        finally:
+            with _fuckit:
+                _struct.Delete(lyr_union)  # noqa
+                _struct.Delete(lyr_diss)  # noqa
+        return out
 
     @staticmethod
-    def _del_dups(lyr_union, df_union, dup_dict: dict, row, rank_func, reverse) -> (int, dict):
+    def _del_dups(lyr_union, df_union, dup_dict: dict, row, rank_func, reverse, rank_cols, oidfld) -> (int, dict):
         del_ids = []
         for i, itm in enumerate(dict(sorted(dup_dict.items(), key=rank_func, reverse=reverse)).items()):
-            if i != 0: del_ids += [itm[0]]
+            if i != 0: del_ids += [itm[0]]  # only add to delids after 1st sorted dict item
 
         if del_ids:
             n = 1
             while n > 0:  # weird behaviour when calling deletew against in-memory layer (see above) - want to make sure
                 n = _crud.CRUD(lyr_union, enable_transactions=False).deletew(_sql.query_where_in(_struct.field_oid(lyr_union), del_ids))
 
-        return row.feat_seq, {row.in_fid: df_union.query('%s==%s' % (_struct.field_oid(df_union), row.in_fid))['permission'].to_list()[0]}
+        return row.feat_seq, {row.in_fid: list(df_union.query('%s==%s' % (oidfld, row.in_fid))[rank_cols].iloc[0])}
 
     @staticmethod
     @_decs.environ_persist
