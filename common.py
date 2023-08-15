@@ -96,6 +96,57 @@ class eFieldTypeTextForListFields(_Enum):
     SmallInteger = 12
     String = 13
 
+    @staticmethod
+    def as_field_type_text(enum_) -> str:
+        """
+        Get as text used in ESRI AlterField and AddField (i.e. EnumFieldTypeText member name
+
+        Args:
+            enum_: eFieldTypeTextForListFields member or the .name of the eFieldTypeTextForListFields member
+
+        Raises:
+            NotImplemented: If the translation is not supported, e.g. BLOB has no equivalent in EnumFieldTypeText at this time.
+
+        Returns:
+            str: Text to use in ESRI AddField and AlterField
+        """
+        if isinstance(enum_, str):
+            enum_ = eFieldTypeTextForListFields[enum_]
+
+        if enum_ == eFieldTypeTextForListFields.Date:
+            return EnumFieldTypeText.DATE.name
+
+        if enum_ == eFieldTypeTextForListFields.Double:
+            return EnumFieldTypeText.DOUBLE.name
+
+        if enum_ == eFieldTypeTextForListFields.GUID:
+            return EnumFieldTypeText.GUID.name
+
+        if enum_ == eFieldTypeTextForListFields.Integer:
+            return EnumFieldTypeText.LONG.name
+
+        if enum_ == eFieldTypeTextForListFields.SmallInteger:
+            return EnumFieldTypeText.SHORT.name
+
+        if enum_ == eFieldTypeTextForListFields.Single:
+            return EnumFieldTypeText.FLOAT.name
+
+        if enum_ == eFieldTypeTextForListFields.String:
+            return EnumFieldTypeText.TEXT.name
+
+        if enum_ == eFieldTypeTextForListFields.Raster:
+            return EnumFieldTypeText.RASTER.name
+
+        raise NotImplemented('Translation from %s to EnumFieldTypeText not supported' % enum_)
+
+    @staticmethod
+    def as_text(enum_):
+        """
+        Enum name
+        Returns: str
+        """
+        return enum_.name
+
 
 def tstamp(p="", tf="%Y%m%d%H%M%S", d="_", m=False, s=()):
     """Returns time stamped string.

@@ -1,5 +1,6 @@
 """Operations on data"""
 import string
+from abc import ABCMeta
 from warnings import warn as _warn
 import os.path as _path
 import inspect as _inspect
@@ -12,28 +13,28 @@ import numpy as _np
 
 import arcpy as _arcpy
 
-
 from arcpy.conversion import TableToDBASE, TableToExcel, TableToGeodatabase, TableToSAS, TableToTable, ExcelToTable  # noqa
 from arcpy.management import MakeAggregationQueryLayer, MakeQueryLayer, MakeQueryTable, CalculateField, CalculateStatistics  # noqa   Expose here as useful inbult tools
 from arcpy.analysis import CountOverlappingFeatures, SummarizeNearby, SummarizeWithin  # noqa
 
 with _fuckit:
     from arcproapi.common import release
+
     if int(release()[0]) > 2 and _arcpy.GetInstallInfo()['ProductName'] == 'ArcGISPro':
         from arcpy.conversion import ExportTable, ExportFeatures  # noqa
     import xlwings as _xlwings  # never will be implemented on linux
 
-
 import funclite.iolib as _iolib
 import funclite.baselib as _baselib
 import funclite.stringslib as _stringslib
-import arcproapi.mixins as _mixins
+from funclite.mixins import MixinNameSpace as _MixinNameSpace
 from funclite.pandaslib import df_to_dict_as_records_flatten1 as df_to_dict  # noqa Used to convert a standard dataframe into one accepted by field_update_from_dict and field_update_from_dict_addnew
 import funclite.pandaslib as pandaslib  # noqa   no _ as want to expose it to pass agg funcs to ResultsAsPandas instances
 
 import arcproapi.structure as _struct
 from arcproapi.structure import gdb_csv_import as csv_to_table  # noqa  data-like operations defined in structure. They are imported here for convieniance
 
+import arcproapi.mixins as _mixins
 import arcproapi.errors as _errors
 import arcproapi.crud as _crud
 import arcproapi.orm as _orm
@@ -46,19 +47,19 @@ from arcproapi.common import get_row_count2 as get_row_count2
 from arcproapi.common import get_row_count as get_row_count  # noqa
 from arcproapi.export import excel_sheets_to_gdb as excel_import_sheets  # noqa Rearranged, import here so as not to break scripts/compatibility
 
+
 # TODO: All functions that write/delete/update spatial layers need to support transactions using the Editor object - otherwise an error is raised when layers are involved in a topology (and other similiar conditions)
 # See https://pro.arcgis.com/en/pro-app/latest/arcpy/data-access/editor.htm and https://pro.arcgis.com/en/pro-app/latest/tool-reference/tool-errors-and-warnings/160001-170000/tool-errors-and-warnings-160226-160250-160250.htm
 
 
-
-
-class Funcs:
+class Funcs(_MixinNameSpace, metaclass=ABCMeta):
     """
     Defines some commonly used functions to use in the various field_apply/recalculate methods in this module.
 
     Methods:
         FidToOneZero: After a spatial operation, e.g. union, we get FID_<table_name> cols. This reduces those scenarios to a 1 or a 0. "0 = 0;  <Null> = 0;  -1 = 0;  > 0 = 1
     """
+
     @staticmethod
     def LongToOneZero(v: int) -> int:
         """
@@ -140,8 +141,7 @@ class Funcs:
         return 0
 
 
-
-class Excel:
+class Excel(_MixinNameSpace):  # noqa
     """
     Work with excel workbooks.
     """
@@ -167,7 +167,6 @@ class Excel:
             _ = App.books.open(workbook)
             out = [sht.name for sht in App.books[fname].sheets]
         return out
-
 
     @staticmethod
     def excel_listobjects_get(workbook: str) -> list[str]:
@@ -247,6 +246,7 @@ class ResultAsPandas(_mixins.MixinPandasHelper):
         >>> arcdata.ResultAsPandas(arcpy.analysis.CountOverlappingFeatures, ['./my.gdb/england', './my.gdb/uk']).view()  # noqa
 
     """
+
     class _LayerDataFrame(_mixins.MixinPandasHelper):
         def __init__(self, arg_name: str, fname_output: str, df: _pd.DataFrame = None):
             self.arg_name = arg_name
@@ -268,7 +268,6 @@ class ResultAsPandas(_mixins.MixinPandasHelper):
             self.df_lower = df.copy()
             self.df_lower.columns = self.df_lower.columns.str.lower()
 
-
     def __init__(self, tool, in_features: (list[str], str), columns: list[str] = None, additional_layer_args: (tuple[str], str) = (), where: str = None, exclude_cols: tuple[str] = ('Shape',),
                  as_int: (tuple[str], list[str]) = (), as_float: (tuple[str], list[str]) = (), **kwargs):
         self._kwargs = kwargs
@@ -279,7 +278,7 @@ class ResultAsPandas(_mixins.MixinPandasHelper):
         self.Results = {}
 
         if additional_layer_args:
-            if isinstance(additional_layer_args, str): additional_layer_args = (additional_layer_args, )
+            if isinstance(additional_layer_args, str): additional_layer_args = (additional_layer_args,)
             for s in additional_layer_args:
                 lyr_tmp = r'%s\%s' % ('memory', _stringslib.rndstr(from_=string.ascii_lowercase))
                 self.Results[s] = ResultAsPandas._LayerDataFrame(s, lyr_tmp)
@@ -293,7 +292,9 @@ class ResultAsPandas(_mixins.MixinPandasHelper):
         elif 'in_polygons' in keys and 'in_sum_features' in keys:  # arcpy.analysis.SummarizeWithin & SummarizeNearBy
             self.execution_result = tool(*in_features, out_feature_class=self._fname_output, **kwargs)
         else:
-            raise _errors.DataUnknownKeywordsForTool('The tool "%s" had unknown keywords. Currently code only accepts tools which support arguments "in_features", "in_dataset" and the "in_polygons in_sum_features" pairing.\n\nThis will need fixing in code.' % str(tool))
+            raise _errors.DataUnknownKeywordsForTool(
+                'The tool "%s" had unknown keywords. Currently code only accepts tools which support arguments "in_features", "in_dataset" and the "in_polygons in_sum_features" pairing.\n\nThis will need fixing in code.' % str(
+                    tool))
 
         self.df = table_as_pandas2(self._fname_output, cols=columns, where=where, exclude_cols=exclude_cols, as_int=as_int, as_float=as_float)
         self.df_lower = self.df.copy()
@@ -582,6 +583,7 @@ def pandas_to_table(df: _pd.DataFrame, fname: str, overwrite=False, max_str_len=
     recarray = df_copy.to_records(index=False)
     _arcpy.da.NumPyArrayToTable(recarray, fname)
 
+
 @_decs.environ_persist
 def pandas_to_table2(df: _pd.DataFrame, workspace: str, tablename: str, overwrite=False, del_cols=(), **kwargs):
     """
@@ -749,7 +751,6 @@ def table_dump_from_sde_to_excel(sde_file: str, lyr, xlsx_root_folder: str, **kw
     df = table_as_pandas2(sde_file, **kwargs)
     df.to_excel(dest_xlsx)
     return dest_xlsx
-
 
 
 def field_update_from_dict_addnew(fname: str, dict_: dict, col_to_update: str, key_col: str,
@@ -1193,7 +1194,8 @@ def field_recalculate(fc: str, arg_cols: (str, list, tuple), col_to_update: str,
             edit.stopOperation()
             edit.stopEditing(save_changes=False)  # noqa
             del edit
-        raise Exception('An exception occured. %s.\n\nException: %s' % ('Changes applied by field_recalculate were rolled back' if isedit else 'No edit session was active. Changes could not be rolled back', str(e))) from e
+        raise Exception('An exception occured. %s.\n\nException: %s' % (
+            'Changes applied by field_recalculate were rolled back' if isedit else 'No edit session was active. Changes could not be rolled back', str(e))) from e
 
 
 field_apply_func = field_recalculate  # noqa For convieniance. Original func left in to not break code
@@ -1573,12 +1575,96 @@ def table_summary_as_pandas(fname: str, statistics_fields: (str, list[list[str]]
     return df
 
 
+class Spatial(_MixinNameSpace):  # noqa
 
-class Spatial:
+    @staticmethod
+    def unionise_self_overlapping_clean(source: str, dest: str, rank_cols: list = None, rank_func=None, reverse: bool = False, dissolve_cols: list[str] = None, show_progress: bool = False):
+        """
+        Clean up a single layer which has overlapping polygons based on a rank function. The top ranked polygon is retained, while other polygons are all removed.
+        When running a union on a single layer, duplicate polygons are created for each overlapping area in the original layer. See the union documentation.
+        By passing a custom rank function and the columns it applies to, all duplicate polys can be selectively removed because the top ranked is retained.
+
+        Args:
+            source: input feature class
+            dest: save cleaned unionised layer here
+            rank_cols: Cols passed to rank function, if none is passed, the first by oid order in the unionised layer will be retained. NB rank_cols are in the unionised layer.
+            rank_func: a function that accepts the values passed in rank_cols applied to the original layer. The function should accept a single argument and return an orderable key (e.g. simple numeric rank). The lowest value is retained.
+            reverse: Reverse the rank order (highest "rank" will be retained)
+            dissolve_cols (list(str), None): If provided, the unionised layer will be dissolved on these cols. Otherwise no dissolve will occur.
+            show_progress: show progress
+
+        Returns:
+            None
+
+        Examples:
+
+            Clean country layer of overlaps, where there is an overlap, the country with the lowest population * gdp is kept.
+            Finally the unionised layer is dissolved by country name.
+
+            >>> func = lambda x: x[0] * x[1]
+            >>> Spatial.unionise_self_overlapping_clean('C:/my.gdb/coutry', 'C:/my.gdb/country_clean', ['population', 'gdp'], func, dissolve_cols=['country_name'])
+        """
+        source = _path.normpath(source)
+        dest = _path.normpath(dest)
+
+        lyr_union = r"in_memory/%s" % _stringslib.rndstr(from_=string.ascii_lowercase)
+        _arcpy.analysis.Union([source], lyr_union, "ALL", None, "GAPS")  # noqa
+
+        oidfld = _struct.field_oid(lyr_union)
+        df_union = table_as_pandas2(lyr_union, [oidfld] + rank_cols if rank_cols else [oidfld])
+
+        # IN_FID is the df_union objectid
+        Res = ResultAsPandas(arcpy.management.FindIdentical, lyr_union, as_int=['OBJECTID', 'IN_FID', 'FEAT_SEQ'], output_record_option='ONLY_DUPLICATES', fields=['Shape'])
+
+        last_feat_seq = None
+        dup_dict = {}
+
+        if show_progress: PP = _iolib.PrintProgress(maximum=len(Res.df_lower), init_msg='Deleting duplicate rows in in-memory union layer...')
+
+        for row in Res.df_lower.itertuples(index=False):
+            # dup dict will look like for example (3 rank cols)...
+            # {1:[10, 23, 'uraquay'], 2:[2, 5, 'chile'], ...}
+            if not last_feat_seq:
+                last_feat_seq = row.feat_seq  # noqa
+                dup_dict[row.in_fid] = list(df_union.query('%s==%s' % (oidfld, row.in_fid)[rank_cols].iloc[0]))  # noqa  Get first (and only) row of the dataframe as a list and put in dictionary with key row.in_fid
+            elif row.feat_seq == last_feat_seq:  # noqa
+                dup_dict[row.in_fid] = list(df_union.query('%s==%s' % (oidfld, row.in_fid)[rank_cols].iloc[0]))  # noqa
+            else:
+                last_feat_seq, dup_dict = Spatial._del_dups(lyr_union, df_union, dup_dict, row, rank_func, reverse)  # noqa
+
+            if show_progress: PP.increment()  # noqa
+
+        # Delete last duplicate set
+        Spatial._del_dups(lyr_union, df_union, dup_dict, row, rank_func, reverse)  # noqa
+
+        # sanity check - did we get rid of all dups
+        # RChk = arcdata.ResultAsPandas(arcpy.management.FindIdentical, lyr_union, as_int=['OBJECTID', 'IN_FID', 'FEAT_SEQ'], output_record_option='ONLY_DUPLICATES', fields=['Shape'])
+        # assert len(RChk.df) == 0, 'Looks like there are still overlapping polygons in the unionised layer ...'
+
+        if dissolve_cols:
+            lyr_diss = r'memory\diss'
+            arcpy.management.Dissolve(lyr_union, lyr_diss, dissolve_cols, multi_part='SINGLE_PART')
+            _struct.ExportFeatures(lyr_diss, dest)
+        else:
+            _struct.ExportFeatures(lyr_union, dest)
+
+    @staticmethod
+    def _del_dups(lyr_union, df_union, dup_dict: dict, row, rank_func, reverse) -> (int, dict):
+        del_ids = []
+        for i, itm in enumerate(dict(sorted(dup_dict.items(), key=rank_func, reverse=reverse)).items()):
+            if i != 0: del_ids += [itm[0]]
+
+        if del_ids:
+            n = 1
+            while n > 0:  # weird behaviour when calling deletew against in-memory layer (see above) - want to make sure
+                n = _crud.CRUD(lyr_union, enable_transactions=False).deletew(_sql.query_where_in(_struct.field_oid(lyr_union), del_ids))
+
+        return row.feat_seq, {row.in_fid: df_union.query('%s==%s' % (_struct.field_oid(df_union), row.in_fid))['permission'].to_list()[0]}
 
     @staticmethod
     @_decs.environ_persist
-    def unionise(sources:list[str], dest: str, is_fields: (str, list[str], None) = 'ALL', rename_from: list[str] = None, rename_to: list[str] = None, keep_cols: (str, list[str], None) = 'ALL', del_cols: (str, list[str], None) = None, overwrite=True, show_progress: bool = False, **kwargs) -> dict[str:list, str:list]:  # noqa
+    def unionise(sources: list[str], dest: str, is_fields: (str, list[str], None) = 'ALL', rename_from: list[str] = None, rename_to: list[str] = None, keep_cols: (str, list[str], None) = 'ALL',
+                 del_cols: (str, list[str], None) = None, overwrite=True, show_progress: bool = False, **kwargs) -> dict[str:list, str:list]:  # noqa
         """ Unionise multiple layers, keep fid cols, add is_<xxx> cols
 
         Args:
@@ -1692,7 +1778,7 @@ class Spatial:
                 if ok:
                     print('Aliases reset on fields %s' % ok)
                 else:
-                    print('Failed to reset aliases. This is not fatal, just annoying')
+                    print('Failed to reset aliases. This is not fatal. You will get this message if dest is in-memory.')
         finally:
             with _fuckit:
                 arcpy.management.Delete(lyrtmp)
@@ -1738,18 +1824,17 @@ class Spatial:
             Res = ResultAsPandas(_arcpy.management.FindIdentical, lyr_union, as_int=['OBJECTID', 'IN_FID', 'FEAT_SEQ'], output_record_option='ONLY_DUPLICATES', fields=['Shape'] + fields)
             if not len(Res.df) or len(Res.df) == 0: return False, None  # noqa
 
-            df_lyr_union = table_as_pandas2(lyr_union, ['OBJECTID', idcol])
-            ddf = pandas_join(Res.df_lower, df_lyr_union, 'in_fid', 'OBJECTID')
+            df_lyr_union = table_as_pandas2(lyr_union, [_struct.field_oid(lyr_union), idcol])
+            ddf = pandas_join(Res.df_lower, df_lyr_union, 'in_fid', _struct.field_oid(lyr_union))
             out = []
             for row in ddf.iterrows():
                 if len(out) < row[1].feat_seq:  # noqa
                     out.append([])
-                out[row[1].feat_seq - 1] += [row[1].FID_address_crn_lpis_sq]  # noqa
+                ind = int(row[1].feat_seq - 1)
+                out[ind] += [row[1][idcol]]  # noqa
         finally:
             _struct.fc_delete2(lyr_union)
         return True, out  # noqa
-
-
 
 
 def vertext_add(fname, vertex_index: (int, str), x_field: str, y_field: str = 'y', field_type='DOUBLE', where_clause: (str, None) = '*', fail_on_exists: bool = True,

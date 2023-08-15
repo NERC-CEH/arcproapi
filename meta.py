@@ -9,6 +9,7 @@ import arcproapi.common as _common
 
 
 class LicenseText:
+    # NB: As arcproapi is a general package, don't put localised non-standard licenses here (e.g. the one your small company made up)
     OGL_v3 = 'Open Government License v3. See https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/ for conditions'
 
 

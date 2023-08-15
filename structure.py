@@ -851,10 +851,10 @@ def fields_exist(fname: str, *args) -> bool:
     return args and (len(d['a_and_b']) == len(args))
 
 
-def field_retype(fname: str, field_name: str, change_to: (str, type), default_on_none=None, show_progress=False, **kwargs_override):
+def field_retype(fname: str, field_name: str, change_to: (str, type), default_on_none=None, show_progress=False, **kwargs_override) -> None:
     """
-    Retype a field. Currently experimental. Should work with between ints, floats and text. Probably dates
-    but other types are likely to fail.
+    Retype a field. Currently experimental. Should work with between ints, floats and text. Probably works with dates(but untested).
+    Other type coercions are likely to fail.
 
     Args:
         fname (str): fname
@@ -866,14 +866,14 @@ def field_retype(fname: str, field_name: str, change_to: (str, type), default_on
             Note that these strings are used in the enum, _common.EnumFieldTypeText
 
         show_progress (bool): Print out progress to the console
-        **kwargs_override: kwargs passed to the addfield.
+        kwargs_override: kwargs passed to the addfield.
         default_on_none: default value to set if a source value evaluates to False. This may be an empty string, 0, or <null>
-
-    Returns:
-        None
 
     Raises:
         BlockingIOError: If we detect that the layer is locked.
+
+    Returns:
+        None
 
     Notes:
         Use with care, this alters the source.
@@ -882,9 +882,13 @@ def field_retype(fname: str, field_name: str, change_to: (str, type), default_on
         For converting to TEXT, field_length defaults to 50, override by specifying the field_length keyword arg
 
     Examples:
+
         Retype a field from text to int (using python type int), set alias to country_nr_int and set nulls to 0
+
         >>> field_retype('C:/my.gdb/country', 'country_nr', change_to=int, default_on_none=0, field_alias='country_nr_int')  # noqa
-        \nint to string, setting field length to 50 chars
+
+        int to string, setting field length to 50 chars
+
         >>> field_retype('C:/my.gdb/country', 'country_population', change_to='TEXT', default_on_none='', field_length=50)  # noqa
     """
     # TODO Test with DATE, BLOB, RASTER, GUID. Expect to fail in current state.
@@ -908,6 +912,11 @@ def field_retype(fname: str, field_name: str, change_to: (str, type), default_on
         field_type = change_to.upper()
 
     fld: _arcpy.Field = fields_get(fname, field_name, no_error_on_multiple=False, as_objs=True)[0]  # noqa
+
+    # Check if we need to change the field type - if we dont, dont bother
+    if field_type == _common.eFieldTypeTextForListFields.as_field_type_text(fld.name):
+        return
+
     temp_name = _stringslib.get_random_string(from_=_stringslib.string.ascii_lowercase)
 
     fn = lambda v: None if v == 0 else v
@@ -1544,7 +1553,7 @@ def fields_rename(fname: str, from_: list, to: list, aliases: (list, str, None) 
         try:
             _arcpy.management.AlterField(fname, targ, rename_to,
                                          None if alias is None or alias.upper() == 'CLEAR_ALIAS' else alias,
-                                         clear_field_alias= None if alias is None else 'CLEAR_ALIAS')
+                                         clear_field_alias=None if alias is None else 'CLEAR_ALIAS')
             success += [rename_to]
             errors += [None]
             failure += [None]
@@ -1693,6 +1702,40 @@ def excel_import_worksheet(xls: str, fname: str, worksheet: str, header_row=1, o
     ExcelToTable(xls, fname, Sheet=worksheet, field_names_row=header_row, **kwargs)
 
 
+def gdb_field_retype(gdb: str, fld: str, to_: str, default_on_none=None, show_progress: bool = False, **kwargs) -> list[str]:
+    """
+    Retype all fields named fld in gdb to to_
+
+    Args:
+        gdb (str): gdb
+        fld (str): fld (Case insensitive)
+        to_: ESRI type string. See common.EnumFieldTypeText for valid strings. Not all conversions are supported.
+        default_on_none: If value evaluates to False, set it to this.
+        show_progress (bool): show progress
+        kwargs: Passed to the underlying arcpy.management.AddField, which creates the new field prior to any additional processing
+
+    Returns:
+        list[str]: List of tables/fcs with retyped fields e.g. ['c:/my.gdb/table1', 'c:/my.gdb/table2', ...]
+
+    Examples:
+
+        Basic example
+        >>> gdb_field_retype('C:/my.gdb', 'population', 'LONG')
+        ['C:/my.gdb/country', 'C:/my.gdb/continent']
+    """
+
+    gcs, tbls = gdb_tables_and_fcs_list(gdb, full_path=True)
+    lyrs = gcs + tbls
+    out = []
+    if show_progress: PP = _iolib.PrintProgress(iter_=lyrs, init_msg='Checking layers ...')
+    for lyr in lyrs:
+        if fld.lower in map(str.lower, fc_fields_get(lyr)):
+            if show_progress: print('Retyping %s' % lyr)
+            field_retype(lyr, fld, change_to=to_, default_on_none=default_on_none, show_progress=show_progress, **kwargs)
+            out += [lyr]
+    return out
+
+
 def gdb_table_or_fc_exists(gdb: str, fname_basename: str) -> bool:
     """
     Case insensitive check if the table of feature class "fname_basename" exists in geodatabase "gdb"
@@ -1744,10 +1787,16 @@ def gdb_tables_and_fcs_list(gdb: str, full_path: bool = False, include_dataset: 
     Notes:
         Temporaily changes the workspace. Returns it to original on error or completion using dec.environ_persist
 
+
     Examples:
+
+        Get list of tables and features
+
         >>> gdb_tables_and_fcs_list('C:/my.gdb')
-        [[coutries, roads], [population, junctions]]
-        \nUsing full_path=True
+        [['coutries', 'roads'], ['population', 'junctions']]
+
+        Using full_path=True
+
         >>> gdb_tables_and_fcs_list('C:/my.gdb', full_path=True)
         [['C:/my.gdb/coutries', 'C:/my.gdb/roads'], ['C:/my.gdb/population', 'C:/my.gdb/junctions']]
     """
@@ -2032,5 +2081,6 @@ def fc_in_toplogy(fname: str) -> bool:
 
 if __name__ == '__main__':
     #  Quick debugging here
-    example = fc_aliases_clear(r'\\nerctbctdb\shared\shared\SPECIAL-ACL\ERAMMP2 Survey Restricted\current\data\GIS\erammp_current.gdb\land_all_unionised')
+    #  example = fc_aliases_clear(r'\\nerctbctdb\shared\shared\SPECIAL-ACL\ERAMMP2 Survey Restricted\current\data\GIS\erammp_current.gdb\land_all_unionised')
+    gdb_field_retype('\\nerctbctdb\shared\shared\PROJECTS\WG ERAMMP2 (06810)\2 Field Survey\Data Management\exchange\out\ERAMMP-76_BIOSS_botany\ERAMMP-76_BIOSS_botany.gdb')
     pass
