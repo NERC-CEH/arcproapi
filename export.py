@@ -161,6 +161,7 @@ def fgdb_to_fgdb(source_gdb: str, dest_gdb: str, recreate: bool = True, show_pro
 def excel_sheets_to_gdb(xlsx: str, gdb: str, match_sheet: (list, tuple, str) = (), exclude_sheet: (list, tuple, str) = (), allow_overwrite: bool = False, show_progress: bool = False) -> list:
     """
     Import worksheets from excel file fname into file geodatabase gdb.
+    If match_sheet or exlude sheet are unspecified then will try and import all sheets.
 
     Args:
         xlsx (str): Excel workbook
@@ -175,7 +176,7 @@ def excel_sheets_to_gdb(xlsx: str, gdb: str, match_sheet: (list, tuple, str) = (
 
     Notes:
         Forces all names to lowercase.
-        Does not currently support listobjects
+        Does not currently support listobjects.
 
     Examples:
         >>> excel_sheets_to_gdb('C:/temp/my.xlsx', 'C:/temp/my.gdb', ('countries', 'regions'), 'principalities')
@@ -193,18 +194,20 @@ def excel_sheets_to_gdb(xlsx: str, gdb: str, match_sheet: (list, tuple, str) = (
 
     sheets = []
     with _xlwings.App(visible=False) as xl:
-        workbook: _xlwings.Book = xl.books.open(_xlwings.Book(xlsx), read_only=True)
+        workbook = xl.books.open(xlsx, read_only=True)
+        sheet: _xlwings.Sheet
         for sheet in workbook.sheets:
-            if not _baselib.list_member_in_str(sheet, match_sheet, ignore_case=True):  # always true of match is empty/None
-                continue
+            if exclude_sheet or match_sheet:
+                if not _baselib.list_member_in_str(sheet.name, match_sheet, ignore_case=True):  # always true of match is empty/None
+                    continue
 
-            if _baselib.list_member_in_str(sheet, exclude_sheet, ignore_case=True):
-                continue
+                if _baselib.list_member_in_str(sheet.name, exclude_sheet, ignore_case=True):
+                    continue
 
-            sheets += [sheet.lower()]
+            sheets += [sheet.name]
 
     if show_progress:
-        PP = _iolib.PrintProgress(iter_=sheets)
+        PP = _iolib.PrintProgress(iter_=sheets, init_msg='Importing worksheets ...')
 
     added = []
     for sheet in sheets:
@@ -226,3 +229,5 @@ if __name__ == '__main__':
     pass
     # simple debugging
     # gdb_to_csv('C:/GIS/erammp_local/submission/curated_raw/botany_curated_raw_local.gdb', 'C:/GIS/erammp_local/submission/curated_raw/csv', overwrite=True, show_progress=True)
+    excel_sheets_to_gdb(r'\\nerctbctdb\shared\shared\SPECIAL-ACL\ERAMMP2 Survey Restricted\common\data\2 CEH\land\land_cover_map\code_to_class_all_years.xlsx',
+                        r'S:\SPECIAL-ACL\ERAMMP2 Survey Restricted\common\data\GIS\ceh.gdb', show_progress=True)
