@@ -32,7 +32,6 @@ from funclite.pandaslib import df_to_dict_as_records_flatten1 as df_to_dict  # n
 import funclite.pandaslib as pandaslib  # noqa   no _ as want to expose it to pass agg funcs to ResultsAsPandas instances
 
 import arcproapi.structure as _struct
-from arcproapi.structure import gdb_csv_import as csv_to_table  # noqa  data-like operations defined in structure. They are imported here for convieniance
 
 import arcproapi.mixins as _mixins
 import arcproapi.errors as _errors
@@ -45,7 +44,7 @@ import arcproapi.common as _common
 #  More data-like functions, imported for convieniance
 from arcproapi.common import get_row_count2 as get_row_count2
 from arcproapi.common import get_row_count as get_row_count  # noqa
-from arcproapi.export import excel_sheets_to_gdb as excel_import_sheets  # noqa Rearranged, import here so as not to break scripts/compatibility
+from arcproapi.export import excel_sheets_to_gdb as excel_import_sheets, csv_to_gdb as csv_to_table  # noqa Rearranged, import here so as not to break scripts/compatibility
 
 
 # TODO: All functions that write/delete/update spatial layers need to support transactions using the Editor object - otherwise an error is raised when layers are involved in a topology (and other similiar conditions)
@@ -1264,7 +1263,7 @@ def del_rows(fname: str, cols: any, vals: any, where: str = None, show_progress:
                 if show_progress:
                     PP.increment()  # noqa
         else:
-            # TODO Needs debugging and is probably dodgy
+
             if vals is None:
                 criteria = [[None]]
             else:
@@ -1579,7 +1578,7 @@ class Spatial(_MixinNameSpace):  # noqa
 
     @staticmethod
     @_decs.environ_persist
-    def unionise_self_overlapping_clean(source: str, dest: str, rank_cols: list = None, rank_func=None, reverse: bool = False, dissolve_cols: list[str] = None, overwrite: bool = False, show_progress: bool = False) -> bool:
+    def unionise_self_overlapping_clean(source: str, dest: str, rank_cols: list = None, rank_func=None, reverse: bool = False, dissolve_cols: list[str] = None, multi_part='MULTI_PART', overwrite: bool = False, show_progress: bool = False) -> bool:
         """
         Clean up a single layer which has overlapping polygons based on a rank function. The top ranked polygon is retained, while other polygons are all removed.
         When running a union on a single layer, duplicate polygons are created for each overlapping area in the original layer. See the union documentation.
@@ -1592,6 +1591,7 @@ class Spatial(_MixinNameSpace):  # noqa
             rank_func: a function that accepts the values passed in rank_cols applied to the original layer. The function should accept a single argument and return an orderable key (e.g. simple numeric rank). The lowest value is retained.
             reverse: Reverse the rank order (highest "rank" will be retained)
             dissolve_cols (list(str), None): If provided, the unionised layer will be dissolved on these cols. Otherwise no dissolve will occur.
+            multi_part (str, None): Passed to mutli_part argument of dissolve. Supports MULTI_PART or SINGLE_PART specifying if multipart features are created. If None, defaults to MULTI_PART. See https://pro.arcgis.com/en/pro-app/latest/tool-reference/data-management/dissolve.htm.
             overwrite (bool): Allow overwrite
             show_progress (bool): show progress
 
@@ -1648,9 +1648,11 @@ class Spatial(_MixinNameSpace):  # noqa
             _arcpy.env.overwriteOutput = overwrite
             if dissolve_cols:
                 lyr_diss = r'in_memory/%s' % _stringslib.rndstr(from_=string.ascii_lowercase)
-                arcpy.management.Dissolve(lyr_union, lyr_diss, dissolve_cols, multi_part='SINGLE_PART')
+                if show_progress: print('Dissolving to in-memory layer ...')
+                arcpy.management.Dissolve(lyr_union, lyr_diss, dissolve_cols, multi_part=multi_part)
                 _struct.ExportFeatures(lyr_diss, dest)
             else:
+                if show_progress: print('Writing to %s ...' % dest)
                 _struct.ExportFeatures(lyr_union, dest)
         finally:
             with _fuckit:

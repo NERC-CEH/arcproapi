@@ -1603,31 +1603,6 @@ def field_get_property(fld: _arcpy.Field, property_: str) -> any:  # noqa
     return None
 
 
-def gdb_csv_import(csv_source: str, gdb_dest: str, **kwargs) -> None:
-    """
-    Import a csv into a geodatabase. Gets a safename from csv filename using arcpy.ValidateTableName
-    Normpaths everything.
-
-    Args:
-        csv_source (str): CSV name
-        gdb_dest (str): gdb name. Is normpathed
-        **kwargs (any): keyword args passed to arcpy.conversion.ExportTable. Supports where_clause, field_info and use_field_alias_as_name.
-        See https://pro.arcgis.com/en/pro-app/latest/tool-reference/conversion/export-table.htm
-
-    Returns:
-        arcpy Result object, passed from arcpy.conversion.ExportTable.
-
-    Examples:
-        >>> gdb_csv_import('C:/my.csv', 'C:/my.gdb')
-        <Result '\\ ....>
-    """
-    csv_source = _path.normpath(csv_source)
-    gdb_dest = _path.normpath(gdb_dest)
-    fname = _iolib.get_file_parts(csv_source)[1]
-    res = _arcpy.conversion.ExportTable(csv_source, _iolib.fixp(gdb_dest, _arcpy.ValidateTableName(fname)), **kwargs)
-    return res
-
-
 def gdb_find_cols(gdb: str, col_name: str, partial_match: bool = False):
     """
     List cols in a geodb that match col_name, useful for "soft" relationships
@@ -1957,7 +1932,7 @@ def gdb_field_rename(gdb: str, to: str, from_: (list, tuple), retype: _common.En
     return didnt_rename
 
 
-def rel_one_to_many_create(fname1: str, col1: str, fname_many: str, col_many: str, workspace: (str, None) = None, **kwargs) -> None:
+def gdb_rel_one_to_many_create(fname1: str, col1: str, fname_many: str, col_many: str, workspace: (str, None) = None, **kwargs) -> None:
     """
     Quickly create a one to many relationship. Conveniance function to standardise naming.
 
@@ -1983,7 +1958,7 @@ def rel_one_to_many_create(fname1: str, col1: str, fname_many: str, col_many: st
         If workspace is passed, then the workspace is reset to the original one before the function exits.
 
     Examples:
-        >>> rel_one_to_many_create('C:/my.gdb/parent', 'C:/my.gdb/parent', 'parentid', 'fkparentid')
+        >>> gdb_rel_one_to_many_create('C:/my.gdb/parent', 'C:/my.gdb/parent', 'parentid', 'fkparentid')
     """
     np = _path.normpath
     fname1 = np(fname1)

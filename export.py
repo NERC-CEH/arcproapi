@@ -1,6 +1,7 @@
 """Export operations"""
 
 import os.path as _path
+from os import path as _path
 from warnings import warn as _warn
 
 import fuckit as _fuckit
@@ -9,8 +10,9 @@ import xlwings as _xlwings
 
 import arcproapi.structure as _struct
 
-import funclite.iolib as _iolib
 import funclite.baselib as _baselib
+from funclite import iolib as _iolib
+
 
 def gdb_to_csv(gdb: str, export_root: str, match: (str, list[str], tuple[str]) = '*', overwrite: bool = False, clean_extras: (list, None) = ('.xml', '.ini'), show_progress=False, **kwargs) -> list:
     """
@@ -223,6 +225,35 @@ def excel_sheets_to_gdb(xlsx: str, gdb: str, match_sheet: (list, tuple, str) = (
         if show_progress:
             PP.increment()  # noqa
     return added
+
+
+def csv_to_gdb(csv_source: str, gdb_dest: str, **kwargs) -> None:
+    """
+    Import a csv into a geodatabase. Gets a safename from csv filename using arcpy.ValidateTableName
+    Normpaths everything.
+
+    Args:
+        csv_source (str): CSV name
+        gdb_dest (str): gdb name. Is normpathed
+        **kwargs (any): keyword args passed to arcpy.conversion.ExportTable. Supports where_clause, field_info and use_field_alias_as_name.
+        See https://pro.arcgis.com/en/pro-app/latest/tool-reference/conversion/export-table.htm
+
+    Returns:
+        arcpy Result object, passed from arcpy.conversion.ExportTable.
+
+    Examples:
+        >>> csv_to_gdb('C:/my.csv', 'C:/my.gdb')
+        <Result '\\ ....>
+    """
+    csv_source = _path.normpath(csv_source)
+    gdb_dest = _path.normpath(gdb_dest)
+    fname = _iolib.get_file_parts(csv_source)[1]
+    res = _arcpy.conversion.ExportTable(csv_source, _iolib.fixp(gdb_dest, _arcpy.ValidateTableName(fname)), **kwargs)
+    return res
+
+
+
+
 
 
 if __name__ == '__main__':
