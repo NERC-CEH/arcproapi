@@ -417,11 +417,14 @@ def domains_assign(fname: str, domain_field_dict: dict[str: list[list, str]], sh
         Further work on supporting linking domains with python enums is anticipated. Hence the enum support for field keys.
 
     Examples:
+
         domain1, valid fields, domain2 - invalid
+
         >>> domains_assign({'domain1': ['field11','field12'], 'domain2': 'field2_DOESNOTEXIST'})  # noqa
         {'success': ['domain1:field1', 'domain1:field12'], 'fail': ['domain2:field2:DOESNOTEXIST']}
 
         Now passing an enum
+
         >>> class E(enum.Enum): a = 1  # noqa
         >>> domains_assign({E: 'field1'})
         {'success':'domain1:field1'], 'fail': [])

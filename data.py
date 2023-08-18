@@ -934,18 +934,26 @@ def fields_copy_by_join(fc_dest: str, fc_dest_key_col: str, fc_src: str, fc_src_
         ignore_types_on_lookup. If True then null fields in the primary key will be treated the same as the text 'None'
 
     Examples:
-        \nSimple copy of country_name to wards, assuming wards share a countryid foreign key
+
+        Simple copy of country_name to wards, assuming wards share a countryid foreign key
+
         >>> fields_copy_by_join(r'C:\my.gdb\countries', 'countryid', 'C:\my.gdb\wards', 'countryid', 'country_name')
         123
-        \n\nSimple copy as above, but rename the country_name field to country
+
+        Simple copy as above, but rename the country_name field to country
+
         >>> fields_copy_by_join(r'C:\my.gdb\countries', 'countryid', 'C:\my.gdb\wards', 'countryid', 'country_name', rename_to='country')
         123
-        \n\nCopy multiple fields and rename them to country and area_km2
+
+        Copy multiple fields and rename them to country and area_km2
+
         >>> fields_copy_by_join(r'C:\my.gdb\countries', 'countryid', 'C:\my.gdb\wards', 'countryid', ['country_name', 'area'], rename_to=['country', 'area_km2'])
         123
-        \n\nField SQ_ID already exists in destination, but setting error_if_dest_cols_exists=False copies
+
+        Field SQ_ID already exists in destination, but setting error_if_dest_cols_exists=False copies
         \ndata from SRC.CEH_ID to DEST.SQ_ID with relationship SRC.SQ_ID --< DEST.WEB_ID, overwriting what is
         \nalready there. Data type mismatches may also cause an error.
+
         >>> fields_copy_by_join(DEST, 'WEB_ID', SRC, 'SQ_ID', 'CEH_ID', 'SQ_ID', error_if_dest_cols_exists=False)  # noqa
         300
     """

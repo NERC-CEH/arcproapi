@@ -92,7 +92,7 @@ def query_where_and(datasource: str = '', **kwargs) -> str:
     sql = list()
     if kwargs:
         sql.append(" 1=1 " + " AND ".join("%s = '%s'" % (columns_delim(k, datasource), v)
-                                            for k, v in kwargs.items()))
+                                          for k, v in kwargs.items()))
     sql.append(";")
     return "".join(sql)
 
@@ -129,6 +129,20 @@ def is_null(fld: str) -> str:
         'CRN IS NULL'
     """
     return '%s IS NULL' % fld
+
+
+def str_starts_with(fld: str, starts_with: str) -> str:
+    """
+    fld  starts with
+
+    Args:
+        fld (str): field
+        starts_with (str): what it starts with, e.g. 'A'
+
+    Returns:
+        str: the query
+    """
+    return "%s LIKE '%s'" % (fld, starts_with)
 
 
 def str_not_start_with_digit(fld) -> str:

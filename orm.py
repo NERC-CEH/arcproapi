@@ -206,6 +206,12 @@ def class_def2(fname: str, composite_key_cols: (list, tuple), workspace: (str, N
 
     members.append(super_)
 
+    # now add some regions - this are for pycharm
+    members.append('\n\t# region class methods\n\t# endregion class methods')
+    members.append('\n\t# region class properties\n\t# endregion class properties')
+    members.append('\n\t# region self\n\t# endregion self')
+    members.append('\n\t# region statics\n\t# endregion statics')
+
     #  loop init line over multiple rows...
     for v in [init_args[x] for x in range(3, len(init_args), 3)]:
         with _fuckit:
