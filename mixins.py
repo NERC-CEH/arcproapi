@@ -1,6 +1,6 @@
 """Mixins for all uses"""
 import os.path as _path
-import string
+import string as _string
 
 import numpy as _np
 import fuckit as _fuckit
@@ -11,14 +11,14 @@ import bs4 as _bs4
 import pandas as _pd
 import xlwings as _xlwings
 
+import arcproapi.conversion as conversion  # noqa
 from arcproapi import structure as _struct, conversion as conversion  # noqa
 
 from funclite import pandaslib as pandaslib
 import funclite.baselib as _baselib
 from funclite.baselib import classproperty as _classproperty
 import funclite.stringslib as _stringslib
-
-import arcproapi.conversion as conversion  # noqa
+import funclite.iolib as _iolib
 
 
 class MetadataBaseInfo:
@@ -120,7 +120,7 @@ class MixinEnumHelper:
         else:
             array = _np.array(code_desc, dtype=[('code', sdef), ('value', sdef)])
 
-        table = 'memory/%s' % _stringslib.rndstr(from_=string.ascii_lowercase)
+        table = 'memory/%s' % _stringslib.rndstr(from_=_string.ascii_lowercase)
         try:
             _arcpy.da.NumPyArrayToTable(array, table)
             # NB: You have to close and reopon any active client sessions before this appears as at ArcGISPro 3.0.1. Refreshing the geodb doesnt even work.
@@ -140,6 +140,7 @@ class MixinEnumHelper:
         Args:
             geodb (str): The geodatabase
             kwargs: Passed to arcpy.management.CreateDomain. See https://pro.arcgis.com/en/pro-app/latest/tool-reference/data-management/create-domain.htm#
+
         Returns:
             None
 
@@ -178,8 +179,9 @@ class MixinEnumHelper:
         _arcpy.management.CreateDomain(geodb, domain_name=cls.domain_name,
                                        domain_description=kwargs['domain_description'] if kwargs.get('domain_description', None) else cls.domain_name,
                                        field_type=ft, domain_type='CODED')
+
         for v in vals:
-            _arcpy.management.AddCodedValueToDomain(geodb, cls.domain_name, v, str(v))
+            _arcpy.management.AddCodedValueToDomain(geodb, cls.domain_name, v, cls.code_description_dict.get(v, v))
 
     @_classproperty
     def text_values(cls) -> list[str]:  # noqa
@@ -210,6 +212,39 @@ class MixinEnumHelper:
         lst = [cls.as_text(e) for e in cls if  cls.as_text(e) not in (None, '')]  # noqa
         lst.sort()
         return lst  # noqa
+
+
+    @_classproperty
+    def code_description_dict(cls) -> dict[str:str]:  # noqa
+        """
+        Get default code descriptions. Where more verbose code descriptions are required for self-documentation
+        overwrite this method in the inheriting class.
+
+        The should return a dictionary where the key is the domain code and the dict value for the key is the description.
+
+
+        Returns:
+            dict[str:str]:
+                The text values with the description of the value, this default method simply returns all values with the values also as descriptions,
+                 with the intent of overriding this method in inheriting classes to allow for a mechanis to provide implicit lookup metadata descriptions.
+
+        Notes:
+            It constructs the dictionary purely from the cls.text_values_for_domain class property
+
+        Examples:
+
+            overridden code_description_dict providing custom descriptions, then write as a domain to a geodatabase.
+            Note that the chainging of classmethod and class property will be depreciated in Python 3.11.
+            You can use the alternative decorator .... >>> from funclite.baselib import classproperty
+
+            >>> class MyDomain(MixinEnumHelper):
+            >>>    blue = 0: red = 1
+            >>>    @classmethod
+            >>>    @property
+            >>>    def code_description_dict(cls): return {'blue':'the colour blue', 'red': 'the color red'}  # noqa
+            >>> MyDomain.domain_create2('c:/my.gdb')
+        """
+        return {v: v for v in cls.text_values_for_domain}
 
 
     @_classproperty
@@ -256,6 +291,9 @@ class MixinPandasHelper:
 
     For an rather complicated example of use, see data.ResultsAsPandas.
     """
+    def __init__(self, *args, **kwargs):
+        self.df = None
+        self.df_lower = None
 
     def aggregate(self, groupflds: (str, list[str]), valueflds: (str, list[str]), *funcs, **kwargs) -> (_pd.DataFrame, None):
         """
@@ -288,6 +326,68 @@ class MixinPandasHelper:
         valueflds = list(map(str.lower, valueflds))
 
         return pandaslib.GroupBy(self.df_lower, groupflds=groupflds, valueflds=valueflds, *funcs, **kwargs).result  # noqa
+
+
+    def export(self, fname_xlsx: str, silent: bool = False, **kwargs) -> str:
+        """
+        Handles exporting <instance>.df to an excel file. This should be sufficient in
+        most instances, but you can ofcourse override if needed.
+
+        Importantly, it also handles creating a backup if the file already exists in subfolder "_archive" which is created if it does not exist
+
+        Args:
+            fname_xlsx (str): Excel file name, include the extension!
+            silent (bool): Suppress console status messages
+            kwargs: keyword args to pass to pandas.DataFrame.to_excel
+
+        Raises:
+            NotImplementedError: If df is not an instance of pandas.DataFrame
+            ValueError: If extension to fname is not .xlsx
+
+        Returns:
+            str: The backup file name
+
+        Notes:
+            Works with a copy of the dataframe, whether or not it is passed as an argument, or a property of cls.df
+
+        Examples:
+
+            ResultsAsPandas inherits this mixin, this is an example of using this mixins export method
+
+            >>> from arcproapi.data import ResultsAsPandas; import arcpy
+            >>> ResultsAsPandas(arcpy.analysis.Clip, 'C:/my.shp', 'C:/clip.shp').export('c:/my_results.xlsx')  # noqa
+            'C:/temp/archive/my/2023-03-21 1233_my.xlsx'
+        """
+        df_target = None  # noqa
+        if isinstance(self.df, _pd.DataFrame):  # noqa
+            df_target = self.df.copy()  # noqa
+        else:
+            raise NotImplementedError('The inheriting class does not appear to support "df" as a pandas DataFrame.\nPerhaps the instance has not been fully initialised?')
+        df_target: _pd.DataFrame  # noqa autocomplete please
+
+        fname_xlsx = _path.normpath(fname_xlsx)
+        root, bn, ext = _iolib.get_file_parts2(fname_xlsx)
+        bn_noext = _iolib.get_file_parts(fname_xlsx)[1]
+        if ext.lower() != '.xlsx':
+            raise ValueError('arg "fname" should have file extension .xlsx')
+
+        archive = _iolib.fix(root, '_archive/%s' % bn_noext, mkdir=True)
+        out = ''
+        if _iolib.file_exists(fname_xlsx):
+            out = _iolib.fixp(archive, '%s_%s' % (_iolib.pretty_date(_iolib.file_modification_date(fname_xlsx), with_time=True, time_sep=''), bn))
+            _iolib.file_copy(fname_xlsx,
+                             out,
+                             dest_is_folder=False
+                             )
+            if not silent: print('Backed up file %s to %s before exporting current dataframe.' % (fname_xlsx, out))
+
+        _iolib.file_delete(fname_xlsx)
+
+        df_target.to_excel(fname_xlsx, **kwargs)
+        if not silent: print('Exported dataframe to %s' % fname_xlsx)
+
+        return out
+
 
     def view(self) -> None:
         """Open self.df in excel"""

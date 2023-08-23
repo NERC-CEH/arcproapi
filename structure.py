@@ -13,7 +13,7 @@ from arcpy import Exists  # noqa
 # See https://pro.arcgis.com/en/pro-app/latest/tool-reference/data-management/create-domain.htm
 from arcpy.management import CreateDomain, AlterDomain, AssignDomainToField, AddCodedValueToDomain, SortCodedValueDomain, CreateFeatureclass  # noqa
 from arcpy.da import Describe  # this is the dict version of Describe
-from arcpy.conversion import ExcelToTable, TableToExcel, TableToGeodatabase, TableToDBASE, TableToSAS, ExportTable, ExportFeatures  # noqa
+from arcpy.conversion import ExcelToTable, ExportTable, ExportFeatures, TableToExcel, TableToGeodatabase, TableToDBASE, TableToSAS  # noqa
 
 import numpy as _np
 import pandas as _pd
@@ -34,6 +34,21 @@ from arcproapi.common import get_row_count as get_row_count  # noqa
 import arcproapi.environ as _environ
 import arcproapi.errors as _errors
 import arcproapi.decs as _decs
+
+
+
+
+def memory_lyr_get(workspace='in_memory') -> str:
+    """ Just get an 8 char string to use as name for temp layer.
+
+    Returns:
+        str: tmp layer pointer
+
+    Examples:
+        >>> get_tmp_lyr()
+        'in_memory/arehrwfs
+    """
+    return '%s/%s' % (workspace, _stringslib.rndstr(from_=string.ascii_lowercase))
 
 
 def field_alter(fname: str, field_name: str, **kwargs) -> bool:

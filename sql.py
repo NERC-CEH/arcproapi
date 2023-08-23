@@ -142,7 +142,7 @@ def str_starts_with(fld: str, starts_with: str) -> str:
     Returns:
         str: the query
     """
-    return "%s LIKE '%s'" % (fld, starts_with)
+    return "%s LIKE '%s%%'" % (fld, starts_with)
 
 
 def str_not_start_with_digit(fld) -> str:

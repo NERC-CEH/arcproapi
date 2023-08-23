@@ -205,12 +205,18 @@ class ResultAsPandas(_mixins.MixinPandasHelper):
         as_int (tuple[str], list[str]): List of cols forced to an int in the resulting dataframe
         as_float (tuple[str], list[str]): List of cols forced to a float in the resulting dataframe
 
+        memory_workspace (str):
+            Results are created in an memory workspace.
+            Arcgispro supports two memory workspace directives - in_memory and memory.
+            in_memory supports more functionality than memory, but it is likely that ESRI will extend "memory" functionality but depreciate "in_memory".
+
     Members:
         df (_pd.DataFrame): Dataframe of the output layer
         df_lower (_pd.DataFrame): Dataframe of the output layer, all col names forced to lower case
         _fname_output (str): Name of the in-memory layer/table output created by execution of "tool"
         tool_execution_result (_arcpy.Result): The result object returned from execution of "tool"
         Results: A dictionary of all Results, the main result is keyed as "main", with any additional results keyed with the values in the additional_layer_args member.
+
 
     Raises:
         errors.DataUnknownKeywordsForTool: If the arcpy tool does not support in_features or in_dataset keyword arguments
@@ -220,12 +226,16 @@ class ResultAsPandas(_mixins.MixinPandasHelper):
         The arguments "columns", "where", "as_int", "as_float" and "exclude_cols" are all passed to data.table_as_pandas2
 
     Examples:
+
         Get shape area sum from main results from an arcpy tool (assumpes Shape is returned)
+
         >>> RaP = ResultAsPandas(_arcpy.analysis.CountOverlappingFeatures, ['./my.gdb/england', './my.gdb/uk'])  # noqa
         >>> RaP.shape_area()
         334523.1332
 
+
         Get the additional results table from CountOverlappingFeatures
+
         >>> RaP = ResultAsPandas(_arcpy.analysis.CountOverlappingFeatures, ['./my.gdb/england', './my.gdb/uk'], additional_layer_args=('out_overlap_table',))  # noqa
         >>> RaP.Results['out_overlap_table'].df
         id  cola    colb    colc
@@ -234,18 +244,27 @@ class ResultAsPandas(_mixins.MixinPandasHelper):
         2   'b'     'dd'    10
         ...
 
+
         Now aggregate on the main result
+
         >>> import numpy as np
         >>> RaP.aggregate(['cola'], ['colc'], np.sum)  # noqa
         cola    sum_colc
         'a'     5
         'b'     20
 
+
+        Export the results to a feature class in a geodatabase, single line call.
+
+        >>> from arcpy.conversion import ExportFeatures
+        >>> ExportFeatures(ResultAsPandas(arcpy.analysis.Clip, 'C:/my.shp', 'C:/clip.shp').result_memory_layer, 'C:/the.gdb/clip_result')  # noqa
+
+
         View the result in excel from CountOverlappingFeatures
+
         >>> arcdata.ResultAsPandas(arcpy.analysis.CountOverlappingFeatures, ['./my.gdb/england', './my.gdb/uk']).view()  # noqa
 
     """
-
     class _LayerDataFrame(_mixins.MixinPandasHelper):
         def __init__(self, arg_name: str, fname_output: str, df: _pd.DataFrame = None):
             self.arg_name = arg_name
@@ -267,35 +286,45 @@ class ResultAsPandas(_mixins.MixinPandasHelper):
             self.df_lower = df.copy()
             self.df_lower.columns = self.df_lower.columns.str.lower()
 
-    def __init__(self, tool, in_features: (list[str], str), columns: list[str] = None, additional_layer_args: (tuple[str], str) = (), where: str = None, exclude_cols: tuple[str] = ('Shape',),
-                 as_int: (tuple[str], list[str]) = (), as_float: (tuple[str], list[str]) = (), **kwargs):
+    def __init__(self,  # noqa
+                 tool,
+                 in_features: (list[str], str),
+                 columns: list[str] = None,
+                 additional_layer_args: (tuple[str], str) = (),
+                 where: str = None,
+                 exclude_cols: tuple[str] = ('Shape',),
+                 as_int: (tuple[str], list[str]) = (),
+                 as_float: (tuple[str], list[str]) = (),
+                 memory_workspace: str = 'in_memory',
+                 **kwargs):
+
         self._kwargs = kwargs
         self._tool = tool
         self._in_features = in_features
-        self._fname_output = r'%s\%s' % ('memory', _stringslib.rndstr(from_=string.ascii_lowercase))
-
+        self.result_memory_layer = r'%s\%s' % (memory_workspace, _stringslib.rndstr(from_=string.ascii_lowercase))
+        self._memory_workspace = memory_workspace
         self.Results = {}
 
         if additional_layer_args:
             if isinstance(additional_layer_args, str): additional_layer_args = (additional_layer_args,)
             for s in additional_layer_args:
-                lyr_tmp = r'%s\%s' % ('memory', _stringslib.rndstr(from_=string.ascii_lowercase))
+                lyr_tmp = r'%s\%s' % ('in_memory', _stringslib.rndstr(from_=string.ascii_lowercase))
                 self.Results[s] = ResultAsPandas._LayerDataFrame(s, lyr_tmp)
                 kwargs[s] = lyr_tmp
 
         keys = dict(_inspect.signature(tool).parameters).keys()
         if 'in_dataset' in keys:
-            self.execution_result = tool(in_dataset=in_features, out_dataset=self._fname_output, **kwargs)
+            self.execution_result = tool(in_dataset=in_features, out_dataset=self.result_memory_layer, **kwargs)
         elif 'in_features' in keys:
-            self.execution_result = tool(in_features=in_features, out_feature_class=self._fname_output, **kwargs)
+            self.execution_result = tool(in_features=in_features, out_feature_class=self.result_memory_layer, **kwargs)
         elif 'in_polygons' in keys and 'in_sum_features' in keys:  # arcpy.analysis.SummarizeWithin & SummarizeNearBy
-            self.execution_result = tool(*in_features, out_feature_class=self._fname_output, **kwargs)
+            self.execution_result = tool(*in_features, out_feature_class=self.result_memory_layer, **kwargs)
         else:
             raise _errors.DataUnknownKeywordsForTool(
                 'The tool "%s" had unknown keywords. Currently code only accepts tools which support arguments "in_features", "in_dataset" and the "in_polygons in_sum_features" pairing.\n\nThis will need fixing in code.' % str(
                     tool))
 
-        self.df = table_as_pandas2(self._fname_output, cols=columns, where=where, exclude_cols=exclude_cols, as_int=as_int, as_float=as_float)
+        self.df = table_as_pandas2(self.result_memory_layer, cols=columns, where=where, exclude_cols=exclude_cols, as_int=as_int, as_float=as_float)
         self.df_lower = self.df.copy()
         self.df_lower.columns = self.df_lower.columns.str.lower()
 
@@ -303,7 +332,7 @@ class ResultAsPandas(_mixins.MixinPandasHelper):
         for LDF in self.Results.values():
             LDF.df = table_as_pandas2(LDF.fname_output, exclude_cols=('Shape',))
 
-        self.Results['main'] = ResultAsPandas._LayerDataFrame('main', self._fname_output, self.df)
+        self.Results['main'] = ResultAsPandas._LayerDataFrame('main', self.result_memory_layer, self.df)
 
 
 def tuple_list_to_table(x, out_tbl, cols, null_number=None, null_text=None):
@@ -1207,6 +1236,17 @@ def field_recalculate(fc: str, arg_cols: (str, list, tuple), col_to_update: str,
 
 field_apply_func = field_recalculate  # noqa For convieniance. Original func left in to not break code
 
+def memory_lyr_get(workspace='in_memory') -> str:
+    """ Just get an 8 char string to use as name for temp layer.
+
+    Returns:
+        str: tmp layer pointer
+
+    Examples:
+        >>> memory_lyr_get()
+        'in_memory/arehrwfs
+    """
+    return '%s/%s' % (workspace, _stringslib.rndstr(from_=string.ascii_lowercase))
 
 def del_rows(fname: str, cols: any, vals: any, where: str = None, show_progress: bool = True, no_warn=False) -> int:
     """

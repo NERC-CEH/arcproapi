@@ -9,6 +9,9 @@ import arcpy as _arcpy
 import xlwings as _xlwings
 
 import arcproapi.structure as _struct
+import arcproapi.decs as _arcdecs
+import arcproapi.common as _common
+from arcproapi.connections import OracleSDE
 
 import funclite.baselib as _baselib
 from funclite import iolib as _iolib
@@ -158,6 +161,70 @@ def fgdb_to_fgdb(source_gdb: str, dest_gdb: str, recreate: bool = True, show_pro
 
     return j
 
+
+@_arcdecs.environ_persist
+def fgdb_to_sde_oracle(source_gdb: str, OracleSDE: OracleSDE, match_layers: (None, list) = None, exclude_layers: (None, list) = None, show_progress: bool = True) -> dict[str:list, str:list]:
+    """
+    Export a fGDB to another an oracle enterprise geodb
+
+    Args:
+        source_gdb (str): Source
+        OracleSDE (OracleSDE): An instance of connections.OracleSDE
+        match_layers (None, list): list of partial names to match
+        exclude_layers (None, list): list of partial names to match
+        show_progress (bool): Show progress
+
+    Returns:
+        dict[str:list, str:list]: List of successful and failed exports, {'good':['lyr1', 'lyr2', ...], 'bad':['lyrA', 'lyrB', ...]}
+
+    TODO:
+        Test this
+    """
+    raise NotImplementedError
+    source_gdb = _path.normpath(source_gdb)
+    _arcpy.env.workspace = _common.workspace_from_fname(source_gdb)
+    out = _baselib.DictKwarg()
+
+    src_fld, src_fname, src_ext = _iolib.get_file_parts2(source_gdb)  # noqa Not used at mo - but leave for now
+    dest_fld, dest_fname, dest_ext = _iolib.get_file_parts2(OracleSDE.feature_path)
+    # TODO: test here for valid sde
+
+
+    if not _iolib.folder_exists(OracleSDE.feature_path):
+        if show_progress:
+            print('Creating a destination fGDB "%s" ...' % OracleSDE.feature_path)
+        _arcpy.CreateFileGDB_management(dest_fld, dest_fname)
+
+    # FCs
+    if show_progress:
+        PP = _iolib.PrintProgress(iter_=_arcpy.ListFeatureClasses(), init_msg='Exporting feature classes...')
+
+    for fc in _arcpy.ListFeatureClasses():
+        try:
+            _arcpy.management.Copy(fc, _iolib.fixp(OracleSDE.feature_path, fc))
+            out['good'] = fc
+        except Exception as e:
+            _warn('Import of %s failed.\nThe error was:%s' % (fc, e))
+            out['bad'] = fc
+        if show_progress:
+            PP.increment()  # noqa
+
+    # Tables
+    if show_progress:
+        PP = _iolib.PrintProgress(iter_=_arcpy.ListTables(), init_msg='Exporting tables...')
+
+    for tbl in _arcpy.ListTables():
+        try:
+            _arcpy.management.Copy(tbl, _iolib.fixp(OracleSDE.feature_path, tbl))
+            out['good'] = tbl
+        except Exception as e:
+            _warn('Import of %s failed.\nThe error was:%s' % (tbl, e))
+            out['bad'] = tbl
+
+        if show_progress:
+            PP.increment()  # noqa
+
+    return dict(out)
 
 
 def excel_sheets_to_gdb(xlsx: str, gdb: str, match_sheet: (list, tuple, str) = (), exclude_sheet: (list, tuple, str) = (), allow_overwrite: bool = False, show_progress: bool = False) -> list:

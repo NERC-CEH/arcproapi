@@ -41,9 +41,11 @@ class EnumDataSourceType(_Enum):
     OracleSpatialTable = 7
 
 
-class OracleSDELayer:
+class OracleSDE:
     """ Define connections using an SDE file.
     Assumes that password and username have been persisted to the file (at least for the moment!).
+
+    Generates a path to the feature/table that can be used like a fGDB path to a layer/table.
 
     Args:
         sde_file (str): The sde file
@@ -57,13 +59,13 @@ class OracleSDELayer:
 
     Examples:
         No schema
-        >>> SDELyr = OracleSDELayer('C:/my.sde', 'MYSCHEMA.mydataset/MYSCHEMA.my_layer', schema='')
-        >>> SDELyr.file
+        >>> SDELyr = OracleSDE('C:/my.sde', 'MYSCHEMA.mydataset/MYSCHEMA.my_layer', schema='')
+        >>> SDELyr.feature_path
         'C:\\my.sde\\MYSCHEMA.mydataset/MYSCHEMA.my_layer'
 
         We cant be arsed writing out the full path with the schama
-        >>> SDELyr = OracleSDELayer('C:/my.sde', 'my_layer', schema='MYSCHEMA')
-        >>> SDELyr.file
+        >>> SDELyr = OracleSDE('C:/my.sde', 'my_layer', schema='MYSCHEMA')
+        >>> SDELyr.feature_path
         'C:\\my.sde\\MYSCHEMA.mydataset/MYSCHEMA.my_layer'
 
     TODO: Integrate into ESRISDE connections
@@ -75,9 +77,9 @@ class OracleSDELayer:
 
         if schema:
             bits = ['%s.%s' % (schema, s) for s in _pathlib.Path(self._layer_name).parts]
-            self.file = _fixp(self._sde_file, *bits)
+            self.feature_path = _fixp(self._sde_file, *bits)
         else:
-            self.file = _fixp(self._sde_file, self._layer_name)
+            self.feature_path = _fixp(self._sde_file, self._layer_name)
 
 
 class _BaseFileSource:
@@ -111,13 +113,6 @@ class ConfigESRIGeoDBTableOrFeatureClass(_BaseFileSource):
 
     def __init__(self, fname):
         super(ConfigESRIGeoDBTableOrFeatureClass, self).__init__(fname)
-
-
-class ConfigESRISDE(_BaseFileSource):
-    """SDE connection"""
-
-    def __init__(self, fname):
-        super(ConfigESRISDE, self).__init__(fname)
 
 
 class ConfigESRIShp(_BaseFileSource):
@@ -456,8 +451,7 @@ class ESRISDE(_ESRIFile):  # noqa
 class Oracle:
     """Oracle tables.
 
-    Notes:
-        ESRI spatial features under SDE should be accessed using class ESRISDE.
+    An oracle connection, independent of ESRI enterprise geodb
     """
 
     def __init__(self):
