@@ -11,7 +11,7 @@ import xlwings as _xlwings
 import arcproapi.structure as _struct
 import arcproapi.decs as _arcdecs
 import arcproapi.common as _common
-from arcproapi.connections import OracleSDE
+
 
 import funclite.baselib as _baselib
 from funclite import iolib as _iolib
@@ -163,7 +163,7 @@ def fgdb_to_fgdb(source_gdb: str, dest_gdb: str, recreate: bool = True, show_pro
 
 
 @_arcdecs.environ_persist
-def fgdb_to_sde_oracle(source_gdb: str, OracleSDE: OracleSDE, match_layers: (None, list) = None, exclude_layers: (None, list) = None, show_progress: bool = True) -> dict[str:list, str:list]:
+def fgdb_to_sde_oracle(source_gdb: str, OracleSDE, match_layers: (None, list) = None, exclude_layers: (None, list) = None, show_progress: bool = True) -> dict[str:list, str:list]:
     """
     Export a fGDB to another an oracle enterprise geodb
 

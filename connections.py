@@ -327,9 +327,9 @@ class _ESRIFile(_BaseFileSource):
 
     def __init__(self, Config, cursor_type=ESRICursorType.SearchCursor, cols=(), exclude_cols=('Shape',), where_clause='', col_rename_func=str.lower, **kwargs):
 
-        self.Config = Config  # type: [ConfigESRIShp, ConfigESRIGeoDBTableOrFeatureClass, ConfigESRISDE]
+        self.Config = Config  # type: [ConfigESRIShp, ConfigESRIGeoDBTableOrFeatureClass]
 
-        if isinstance(Config, (ConfigESRIGeoDBTableOrFeatureClass, ConfigESRISDE, ConfigESRIShp)):
+        if isinstance(Config, (ConfigESRIGeoDBTableOrFeatureClass, ConfigESRIShp)):
             self._fqn = Config.fname
         elif isinstance(Config, str):
             self._fqn = _path.normpath(Config)
@@ -409,7 +409,7 @@ class ESRIShp(_ESRIFile):  # noqa
     https://github.com/kayak/pypika
 
     Args:
-        cols: tuple/list of columns to include in the conncetion  # noqa
+        cols: tuple/list of columns to include in the conncetion  # noqa  # noqa
         cursor_type: type of datasource to open. See the connections.ESRICursorType enumeration  # noqa
         args: passed to the relevant connection call, e.g. arcpy.da.SearchCursor  # noqa
     """
@@ -431,21 +431,6 @@ class ESRIGeoDBFeatureClassOrTable(_ESRIFile):  # noqa
         args: passed to the relevant connection call, e.g. arcpy.da.SearchCursor  # noqa
     """
 
-
-class ESRISDE(_ESRIFile):  # noqa
-    """Open feature class or table. Instantiate with instance of connections.ConfigESRISDE
-
-    Args:
-        Config: ConfigESRISDE instance
-        cols: tuple/list of columns to include in the connetion  # noqa
-        cursor_type: type of datasource to open. See the connections.ESRICursorType enumeration  # noqa
-        args: passed to the relevant connection call, e.g. arcpy.da.SearchCursor  # noqa
-
-    Examples:
-        >>> Cfg = ConfigESRISDE('c:/my.sde/my_feature_class')
-        >>> with ESRISDE(Cfg) as SDE:
-        >>>     df: pandas.DataFrame = SDE.df  # noqa
-    """
 
 
 class Oracle:

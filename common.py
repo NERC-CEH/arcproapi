@@ -148,6 +148,19 @@ class eFieldTypeTextForListFields(_Enum):
         return enum_.name
 
 
+def memory_lyr_get(workspace='in_memory') -> str:
+    """ Just get an 8 char string to use as name for temp layer.
+
+    Returns:
+        str: tmp layer pointer
+
+    Examples:
+        >>> memory_lyr_get()
+        'in_memory/arehrwfs
+    """
+    return '%s/%s' % (workspace, _stringslib.rndstr(from_=string.ascii_lowercase))
+
+
 def tstamp(p="", tf="%Y%m%d%H%M%S", d="_", m=False, s=()):
     """Returns time stamped string.
 
