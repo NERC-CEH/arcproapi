@@ -79,6 +79,24 @@ class EnumFieldTypeText(_Enum):
     All = 99
 
 
+class EnumGeometryType(_Enum):
+    """ Field type that is used in creating featureclasses etc.
+    For example:
+    https://pro.arcgis.com/en/pro-app/latest/tool-reference/data-management/create-feature-class.htm
+
+    Examples:
+
+        Get text to use in CreateFeatureClass
+
+        >>> arcpy.mananagement.CreateFeatureClass('C:/my.gdb', 'countries', EnumGeometryType.POLYGON.name)
+
+    """
+    POINT = 1
+    MULTIPOINT = 2
+    POLYGON = 3
+    POLYLINE = 4
+    MULTIPATCH = 5
+
 class eFieldTypeTextForListFields(_Enum):
     """ These are the field type texts that are passed to arcpy.ListFields
     """

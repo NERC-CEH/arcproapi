@@ -1582,6 +1582,81 @@ def features_copy(source: str, dest: str, workspace: str, where_clause: str = '*
     return i
 
 
+def features_copy2(source: str, dest: str, workspace: str, where_clause: str = '*', fixed_values=None, copy_shape: bool = True,
+                  no_progress: bool = False, **kwargs) -> int:
+    """Copy features from one table or featureclass to another. But, this cannot be transactionalised
+    and has reduced checked, but much much faster performance.
+
+    If you get an error, double check field names, noting that field names are case sensitive.
+
+    Args:
+        source (str): path to source feature class/table
+        dest (str): path to destination feature class/table
+        workspace (str): path to workspace
+        where_clause (str): used to filter the target table
+
+        fixed_values (dict):
+            pass a dictionary kwargs (field:value) of fields in the destination to assign fixed values to.
+            For example: {'sq_id':1234} would write all destination sq_ids as 1234 which matched the where_clause
+            Note that **kwargs will override fixed_values if these fields (keys) are duplicated between
+            the two.
+
+        copy_shape (bool): set to false if working with a table, otherwise set this to true to transfer geometry
+        no_progress (bool): Suppress printing progress bar to the console
+        kwargs (any): Keyword arguments, where key is field in dest, and value is field in src. E.g. dest_field='src_field'
+
+    Returns:
+        int: Number of records added to dest
+
+    Raises:
+        DataNoRowsMatched: If no records matched the where clause in source
+
+    Examples:
+        >>> features_copy2('c:/my.gdb/world_counties', 'c:/my.gdb/euro_countries', 'c:/my.gdb', where_clause='country="EU"',
+        >>>    copy_shape=True,
+        >>>    eu_country='world_country', population='population')
+    """
+    if 'where' in map(str.lower, kwargs.keys()):
+        _warn('keyword "where" in kwargs.keys(), did you mean to set a where clause? If so, use where_clause=<MY QUERY>')
+
+    source = _path.normpath(source)
+    dest = _path.normpath(dest)
+    workspace = _path.normpath(workspace)
+
+    n = get_row_count2(source, where=where_clause)  # this is also a check that the where clause is valid
+    if n == 0:
+        raise _errors.DataNoRowsMatched('No records matched the where clause %s' % where_clause)
+
+    if not no_progress:
+        PP = _iolib.PrintProgress(maximum=n)
+
+    kws = {k: None for k in kwargs.keys()}
+    if copy_shape:
+        kws['SHAPE@'] = None
+    i = 0
+
+
+    with _crud.SearchCursor(source, field_names=list(kwargs.values()), load_shape=copy_shape, where_clause=where_clause) as Cur:
+        for row in Cur:
+            # write fixed_values kwargs first
+            if fixed_values:
+                for dest_key, v in fixed_values.items():
+                    Dest[dest_key] = v
+
+            # write passed **kwargs, overriding any duplication with fixed_values
+            if kwargs:
+                for dest_key, src_key in kwargs.items():
+                    Dest[dest_key] = row[src_key]
+
+            if copy_shape:
+                Dest['SHAPE@'] = row['SHAPE@']
+            Dest.add(tran_commit=False, force_add=force_add, fail_on_exists=fail_on_exists)
+            i += 1
+            if not no_progress:
+                PP.increment()  # noqa
+    return i
+
+
 def table_summary_as_pandas(fname: str, statistics_fields: (str, list[list[str]]), case_field: (str, list[str], None) = None, concatenation_separator='') -> _pd.DataFrame:
     """
     Execute a table summary against a feature class or table
