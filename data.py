@@ -265,6 +265,7 @@ class ResultAsPandas(_mixins.MixinPandasHelper):
         >>> arcdata.ResultAsPandas(arcpy.analysis.CountOverlappingFeatures, ['./my.gdb/england', './my.gdb/uk']).view()  # noqa
 
     """
+
     class _LayerDataFrame(_mixins.MixinPandasHelper):
         def __init__(self, arg_name: str, fname_output: str, df: _pd.DataFrame = None):
             self.arg_name = arg_name
@@ -1236,6 +1237,7 @@ def field_recalculate(fc: str, arg_cols: (str, list, tuple), col_to_update: str,
 
 field_apply_func = field_recalculate  # noqa For convieniance. Original func left in to not break code
 
+
 def memory_lyr_get(workspace='in_memory') -> str:
     """ Just get an 8 char string to use as name for temp layer.
 
@@ -1247,6 +1249,7 @@ def memory_lyr_get(workspace='in_memory') -> str:
         'in_memory/arehrwfs
     """
     return '%s/%s' % (workspace, _stringslib.rndstr(from_=string.ascii_lowercase))
+
 
 def del_rows(fname: str, cols: any, vals: any, where: str = None, show_progress: bool = True, no_warn=False) -> int:
     """
@@ -1384,7 +1387,7 @@ def pandas_join(from_: _pd.DataFrame, to_: _pd.DataFrame, from_key: str, to_key:
 def features_copy_to_new(source: str, dest: str, where_clause: (None, str) = None, **kwargs):
     """
     Copy features to a new source based on a where clause.
-    Calls arcpy.analysis.Select, which recieves kwargs
+    Calls arcpy.analysis.Select, which recieves the kwargs
 
     Args:
         source (str): Source layer, normpathed
@@ -1485,11 +1488,14 @@ def features_delete_orphaned(parent: str, parent_field: str, child: str, child_f
             crud.deletew(_sql.query_where_in('OID@', oids))
 
 
+# Devnote - it is better to use copy_shape here, Python does not support "Shape@ =" as a kwarg (@ is invalid) and so using this design decision means the caller does not have to know the name of the shape field in "fname".
 def features_copy(source: str, dest: str, workspace: str, where_clause: str = '*', fixed_values=None, copy_shape: bool = True, force_add: bool = True, fail_on_exists: bool = True,
                   expected_row_cnt: int = None, no_progress: bool = False, enable_transactions: bool = False, **kwargs) -> int:
     """Copy features from one table or featureclass to another. i.e. The shape and fields as given as kwargs.
 
     If you get an error, double check field names, noting that field names are case sensitive.
+
+    Also see features_copy2, for a simplified but much quicker alternative.
 
     Args:
         source (str): path to source feature class/table
@@ -1578,22 +1584,24 @@ def features_copy(source: str, dest: str, workspace: str, where_clause: str = '*
                 i += 1
                 if not no_progress:
                     PP.increment()  # noqa
-        Dest.tran_commit()
+        if enable_transactions: Dest.tran_commit()
     return i
 
 
-def features_copy2(source: str, dest: str, workspace: str, where_clause: str = '*', fixed_values=None, copy_shape: bool = True,
-                  no_progress: bool = False, **kwargs) -> int:
-    """Copy features from one table or featureclass to another. But, this cannot be transactionalised
-    and has reduced checked, but much much faster performance.
+# Devnote - it is better to use copy_shape here, Python does not support "Shape@ =" as a kwarg (@ is invalid) and so using this design decision means the caller does not have to know the name of the shape field in "fname".
+def features_copy2(source: str, dest: str, where_clause: str = '*', fixed_values=None, copy_shape: bool = True,
+                   no_progress: bool = False, **kwargs) -> int:
+    """Copy features from one table or featureclass to another. Has much faster performance than
+     features copy, but fewer validation options and cannot be transactionalised
 
-    If you get an error, double check field names, noting that field names are case sensitive.
+    Fixed_values only are supported, the rows written to dest will match the number of rows matching the where_clause in source.
+
+    If you get an error, double check field names and field types between the source and dest.
 
     Args:
         source (str): path to source feature class/table
         dest (str): path to destination feature class/table
-        workspace (str): path to workspace
-        where_clause (str): used to filter the target table
+        where_clause (str): used to filter the target table, i.e. a geodatabase compatible "where" SQL query for "source".
 
         fixed_values (dict):
             pass a dictionary kwargs (field:value) of fields in the destination to assign fixed values to.
@@ -1608,52 +1616,73 @@ def features_copy2(source: str, dest: str, workspace: str, where_clause: str = '
     Returns:
         int: Number of records added to dest
 
-    Raises:
-        DataNoRowsMatched: If no records matched the where clause in source
+    Notes:
+        As this does not support transactions, it will fail if dest is in a topology and in other circustances.
+        See https://pro.arcgis.com/en/pro-app/latest/arcpy/data-access/insertcursor-class.htm
+        If kwargs and fixed_values are not passed, then a warning is raised and no rows are writtend, this method returns 0. But no error is raised.
 
     Examples:
+
         >>> features_copy2('c:/my.gdb/world_counties', 'c:/my.gdb/euro_countries', 'c:/my.gdb', where_clause='country="EU"',
         >>>    copy_shape=True,
         >>>    eu_country='world_country', population='population')
+        33
     """
+
     if 'where' in map(str.lower, kwargs.keys()):
         _warn('keyword "where" in kwargs.keys(), did you mean to set a where clause? If so, use where_clause=<MY QUERY>')
 
     source = _path.normpath(source)
     dest = _path.normpath(dest)
-    workspace = _path.normpath(workspace)
+
+    if not kwargs and not fixed_values:
+        _warn('Source columns (kwargs) and fixed values (fixed_values) not provided. No rows written to %s.\nIs this what you intended?' % dest)
+        return 0
 
     n = get_row_count2(source, where=where_clause)  # this is also a check that the where clause is valid
     if n == 0:
-        raise _errors.DataNoRowsMatched('No records matched the where clause %s' % where_clause)
+        _warn('No records matched the where clause %s.\nIs this expected?' % where_clause)
+        return 0
 
     if not no_progress:
-        PP = _iolib.PrintProgress(maximum=n)
+        PP = _iolib.PrintProgress(maximum=n*2, init_msg='\nImporting rows to %s' % source)
 
-    kws = {k: None for k in kwargs.keys()}
+    # Important thing here is that we are building the src and dest cols with matching indexes in the list
+    # Excepting that dest_cols has the fixed_value columns that will be set appended to the end of the dest col list
+    src_cols = []
+    dest_cols = []
+    if kwargs:
+        src_cols += list(kwargs.values())
+        dest_cols += list(kwargs.keys())
     if copy_shape:
-        kws['SHAPE@'] = None
+        src_cols += ['SHAPE@']
+        dest_cols += ['SHAPE@']
+    if fixed_values:
+        dest_cols += list(fixed_values.keys())
+
+    insert_rows = []
+
+    # for efficiency, build all the rows before running the insert
+    if src_cols:
+        with _arcpy.da.SearchCursor(source, src_cols, where_clause=where_clause) as SCur:
+            for row in SCur:
+                row = list(row)
+                if fixed_values:
+                    row += list(fixed_values.values())
+                insert_rows += [row]
+                if not no_progress: PP.increment()  # noqa
+    else:  # we only get here if no kwargs AND we havent asked to copy the geometry (copy_shape is False)
+        for x in range(n):
+            insert_rows += [list(fixed_values.values())]
+            if not no_progress: PP.increment()  # noqa
+
     i = 0
-
-
-    with _crud.SearchCursor(source, field_names=list(kwargs.values()), load_shape=copy_shape, where_clause=where_clause) as Cur:
-        for row in Cur:
-            # write fixed_values kwargs first
-            if fixed_values:
-                for dest_key, v in fixed_values.items():
-                    Dest[dest_key] = v
-
-            # write passed **kwargs, overriding any duplication with fixed_values
-            if kwargs:
-                for dest_key, src_key in kwargs.items():
-                    Dest[dest_key] = row[src_key]
-
-            if copy_shape:
-                Dest['SHAPE@'] = row['SHAPE@']
-            Dest.add(tran_commit=False, force_add=force_add, fail_on_exists=fail_on_exists)
+    with _arcpy.da.InsertCursor(dest, dest_cols) as InsCur:
+        for row in insert_rows:
+            InsCur.insertRow(row)
             i += 1
-            if not no_progress:
-                PP.increment()  # noqa
+            if not no_progress: PP.increment()
+
     return i
 
 
@@ -1701,7 +1730,8 @@ class Spatial(_MixinNameSpace):  # noqa
 
     @staticmethod
     @_decs.environ_persist
-    def unionise_self_overlapping_clean(source: str, dest: str, rank_cols: list = None, rank_func=None, reverse: bool = False, dissolve_cols: list[str] = None, multi_part='MULTI_PART', overwrite: bool = False, show_progress: bool = False) -> bool:
+    def unionise_self_overlapping_clean(source: str, dest: str, rank_cols: list = None, rank_func=None, reverse: bool = False, dissolve_cols: list[str] = None, multi_part='MULTI_PART',
+                                        overwrite: bool = False, show_progress: bool = False) -> bool:
         """
         Clean up a single layer which has overlapping polygons based on a rank function. The top ranked polygon is retained, while other polygons are all removed.
         When running a union on a single layer, duplicate polygons are created for each overlapping area in the original layer. See the union documentation.
@@ -1751,7 +1781,8 @@ class Spatial(_MixinNameSpace):  # noqa
                 # {1:[10, 23, 'uraquay'], 2:[2, 5, 'chile'], ...}
                 if not last_feat_seq:
                     last_feat_seq = row.feat_seq  # noqa
-                    dup_dict[row.in_fid] = list(df_union.query('%s==%s' % (oidfld, row.in_fid))[rank_cols].iloc[0])  # noqa  Get first (and only) row of the dataframe as a list and put in dictionary with key row.in_fid
+                    dup_dict[row.in_fid] = list(  # noqa
+                        df_union.query('%s==%s' % (oidfld, row.in_fid))[rank_cols].iloc[0])  # noqa  Get first (and only) row of the dataframe as a list and put in dictionary with key row.in_fid
                 elif row.feat_seq == last_feat_seq:  # noqa
                     dup_dict[row.in_fid] = list(df_union.query('%s==%s' % (oidfld, row.in_fid))[rank_cols].iloc[0])  # noqa
                 else:
