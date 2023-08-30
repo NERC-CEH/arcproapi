@@ -6,13 +6,15 @@ import enum as _enum
 import os.path as _path
 from copy import deepcopy as _deepcopy
 from warnings import warn as _warn
+import string
 
 from arcpy.management import CreateFeatureclass, AddJoin, AddRelate, AddFields, AddField, DeleteField, AlterField, Delete, DomainToTable, TableToDomain  # noqa Add other stuff as find it useful ...
 from arcpy import Exists  # noqa
 
 # See https://pro.arcgis.com/en/pro-app/latest/tool-reference/data-management/create-domain.htm
-from arcpy.management import CreateDomain, AlterDomain, AssignDomainToField, AddCodedValueToDomain, SortCodedValueDomain, CreateFeatureclass  # noqa
-from arcpy.da import Describe  # this is the dict version of Describe
+from arcpy.management import CreateDomain, AlterDomain, AssignDomainToField, AddCodedValueToDomain, SortCodedValueDomain  # noqa
+from arcpy.management import CreateFeatureclass, CreateTable, AssignDefaultToField  # noqa
+from arcpy.da import Describe  # noqa this is the dict version of Describe
 from arcpy.conversion import ExcelToTable, ExportTable, ExportFeatures, TableToExcel, TableToGeodatabase, TableToDBASE, TableToSAS  # noqa
 
 import numpy as _np
@@ -45,7 +47,7 @@ def memory_lyr_get(workspace='in_memory') -> str:
         str: tmp layer pointer
 
     Examples:
-        >>> get_tmp_lyr()
+        >>> memory_lyr_get()
         'in_memory/arehrwfs
     """
     return '%s/%s' % (workspace, _stringslib.rndstr(from_=string.ascii_lowercase))
@@ -509,6 +511,21 @@ def gdb_domains_as_dict(gdb: str) -> dict[str:dict[str:str]]:
 
 
 domains_as_dict = gdb_domains_as_dict
+
+
+def gdb_domain_exists(gdb: str, domain: str) -> bool:
+    """Check if a domain exists in gdb by name
+
+    Case insensitive
+
+    Args:
+        gdb: the geodatabase (normpathed)
+        domain: the domain name
+
+    Returns:
+        bool: True if exists.
+    """
+    return domain.lower() in map(str.lower, [d.name for d in _arcpy.da.ListDomains(_path.normpath(gdb))])
 
 
 def cleanup(fname_list, verbose=False, **args):
@@ -1723,9 +1740,9 @@ def gdb_field_retype(gdb: str, fld: str, to_: str, default_on_none=None, show_pr
     if show_progress: PP = _iolib.PrintProgress(iter_=lyrs, init_msg='Checking layers ...')
     for lyr in lyrs:
         if fld.lower in map(str.lower, fc_fields_get(lyr)):
-            if show_progress: print('Retyping %s' % lyr)
             field_retype(lyr, fld, change_to=to_, default_on_none=default_on_none, show_progress=show_progress, **kwargs)
             out += [lyr]
+        if show_progress: PP.increment()  # noqa
     return out
 
 
@@ -2075,5 +2092,4 @@ def fc_in_toplogy(fname: str) -> bool:
 if __name__ == '__main__':
     #  Quick debugging here
     #  example = fc_aliases_clear(r'\\nerctbctdb\shared\shared\SPECIAL-ACL\ERAMMP2 Survey Restricted\current\data\GIS\erammp_current.gdb\land_all_unionised')
-    gdb_field_retype('\\nerctbctdb\shared\shared\PROJECTS\WG ERAMMP2 (06810)\2 Field Survey\Data Management\exchange\out\ERAMMP-76_BIOSS_botany\ERAMMP-76_BIOSS_botany.gdb')
     pass

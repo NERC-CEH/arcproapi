@@ -175,7 +175,7 @@ class MixinEnumHelper:
 
         with _fuckit:
             _arcpy.management.DeleteDomain(geodb, cls.domain_name)
-
+        # domain description is at the domain level and NOT the values for the domain - they are set in the for v in vals loop below
         _arcpy.management.CreateDomain(geodb, domain_name=cls.domain_name,
                                        domain_description=kwargs['domain_description'] if kwargs.get('domain_description', None) else cls.domain_name,
                                        field_type=ft, domain_type='CODED')
