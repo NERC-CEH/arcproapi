@@ -139,6 +139,26 @@ class Funcs(_MixinNameSpace, metaclass=ABCMeta):
             if Funcs.LongToOneZero(n): return n
         return 0
 
+    @staticmethod
+    def Area_m2_to_km2(v: float):
+        """
+        Conversion from m2 to km2. If v evaluates to false, returns 0
+
+        Args:
+            v: value
+
+        Returns:
+            float: area as km2.
+
+        Examples:
+
+            Behaviour on none/null
+
+            >>> Funcs.Area_m2_to_km2(None)
+            0
+        """
+        return v/1000000 if v else 0
+
 
 class Excel(_MixinNameSpace):  # noqa
     """
@@ -1617,9 +1637,9 @@ def features_copy2(source: str, dest: str, where_clause: str = '*', fixed_values
         int: Number of records added to dest
 
     Notes:
-        As this does not support transactions, it will fail if dest is in a topology and in other circustances.
+        As this does not support transactions, it will fail if dest is in a topology and in other circumstances.
         See https://pro.arcgis.com/en/pro-app/latest/arcpy/data-access/insertcursor-class.htm
-        If kwargs and fixed_values are not passed, then a warning is raised and no rows are writtend, this method returns 0. But no error is raised.
+        If kwargs and fixed_values are not passed, then a warning is raised and no rows are written and 0 is returned
 
     Examples:
 
@@ -1939,12 +1959,12 @@ class Spatial(_MixinNameSpace):  # noqa
             if show_progress: print('Writing "%s" ...' % dest)
             _struct.ExportFeatures(lyrtmp, dest)
 
-            ok = _struct.fc_aliases_clear(dest)
+            ok = _struct.fc_aliases_clear(dest)  # suspect this isnt necessary as they are probably cleared when using in_memory layer, but leaving in until I get round to verifying
             if show_progress:
                 if ok:
                     print('Aliases reset on fields %s' % ok)
                 else:
-                    print('Failed to reset aliases. This is not fatal. You will get this message if dest is in-memory.')
+                    print('Failed to reset aliases. This is not fatal. You will get this message if "dest" is in-memory.')
         finally:
             with _fuckit:
                 arcpy.management.Delete(lyrtmp)

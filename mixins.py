@@ -183,6 +183,41 @@ class MixinEnumHelper:
         for v in vals:
             _arcpy.management.AddCodedValueToDomain(geodb, cls.domain_name, v, cls.code_description_dict.get(v, v))
 
+
+    @classmethod
+    def domain_assign(cls, fname: str, flds: (str, list[str])) -> dict[str:list[str]]:
+        """
+        Assign a domain.
+        Now creates the domain in the workspace if it does not already exist.
+
+        This call can be a little slow because it first checks if the domain exists in the gdb
+
+        Returns:
+               dict[str:list[str]]: A dictionary of successes and failues {'success':[...], 'fail':[...]}
+               Dont let the colon in the return lists confuse you - it isnt a dict of dicts but a dict of lists.
+
+        Examples:
+
+            Assign domain to a single field in layer
+
+            >>> MixinEnumHelper.domain_assign('C:/my.gdb/lyr', 'country')
+            {'success': ['EnumMyDomainEnum:country'], 'fail':[]}
+
+            Couple of fields (yes a bit odd, but not impossible)
+
+            >>> MixinEnumHelper.domain_assign('C:/my.gdb/lyr', ['country_asia', 'country_europe'])
+            {'success': 'EnumMyDomainEnum:country_asia', 'EnumMyDomainEnum:country_europe', 'fail': []}
+        """
+
+        # first try and create the domain if it does not exist
+        from arcproapi.common import gdb_from_fname as _get_gdb  # dont risk circular import
+        if isinstance(flds, str): flds = [flds]
+        gdb = _get_gdb(fname)
+        if not _arcstruct.gdb_domain_exists(gdb, cls.domain_name): # noqa
+            cls.domain_create2(gdb)  # noqa
+        return _struct.domains_assign(cls.fname, {cls.domain_name: [flds]})
+
+
     @_classproperty
     def text_values(cls) -> list[str]:  # noqa
         """

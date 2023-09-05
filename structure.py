@@ -428,7 +428,7 @@ def domains_assign(fname: str, domain_field_dict: dict[str: list[list, str]], sh
         show_progress (bool): show progress
 
     Returns:
-       dict[str:list[str]]: A diction of successes and failues {'success':[...], 'fail':[...]}
+       dict[str:list[str]]: A dictionary of successes and failues {'success':[...], 'fail':[...]}
 
     Notes:
         Further work on supporting linking domains with python enums is anticipated. Hence the enum support for field keys.
@@ -464,10 +464,11 @@ def domains_assign(fname: str, domain_field_dict: dict[str: list[list, str]], sh
                 success += ['%s:%s' % (dname, col)]
             except Exception as e:
                 if 'schema lock' in str(e):
-                    _warn('Domain assignment failed. *** Schema Lock ***')
+                    _warn('\nAssignment of domain enum "%s" to table/fc "%s" failed for field "%s". *** Schema Lock ***' % (dname, fname, col))
                     serr = '**schema lock**'
                 else:
                     serr = str(e)
+                    if show_progress: print('\nError assigning domain "%s:%s".\n%s' % (dname, col, serr))
                 failed += ['%s:%s  %s' % (dname, col, serr)]
         if show_progress:
             PP.increment()  # noqa
