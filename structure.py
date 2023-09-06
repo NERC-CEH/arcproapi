@@ -1603,6 +1603,30 @@ def fields_rename(fname: str, from_: list, to: list, aliases: (list, str, None) 
 
     return success, failure, errors
 
+def fields_name_replace(fname: str, find: str, replace_with: str) -> list[str]:
+    """
+    Do a case insensitive search/replace on all fields in fname.
+    Aliases are reset to new name.
+    Args:
+        fname: lyr/fc
+        find: text to find (and replace)
+        replace_with: replace find with this text
+
+    Returns:
+        list[str]: list of new field names
+
+    Examples:
+
+        >>> fields_name_replace('C:/my.gdb/countries', 'replace_this', 'with_this')
+        ['population_with_this', ...]
+    """
+    fname = _path.normpath(fname)
+    out = []
+    for s in [t for t in map(str.lower, fields_get(fname)) if replace_with.lower() in t]:
+        rename_to = s.replace(find.lower(), replace_with)
+        AlterField(fname, s, rename_to, clear_field_alias=True)
+        out += [rename_to]
+    return out
 
 def field_get_property(fld: _arcpy.Field, property_: str) -> any:  # noqa
     """

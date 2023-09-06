@@ -1893,9 +1893,9 @@ class Spatial(_MixinNameSpace):  # noqa
 
         Examples:
 
-            Unionise 3 layers adding is_ fields for each layer and saving as C:/my.gdb/unionised
-            >>> Spatial.unionise(['C:/my.gdb/country', 'C:/my.gdb/region', 'C:/my.gdb/area'], 'C:/my.gdb/unionised')  # noqa
-            {'good':['FID_country', 'FID_region'], 'bad':['FID_area']}
+            Unionise 3 layers, requesting is_ fields for two input layers (1 success, 1 failed) and saving as C:/my.gdb/unionised
+            >>> Spatial.unionise(['C:/my.gdb/country', 'C:/my.gdb/region', 'C:/my.gdb/area'], 'C:/my.gdb/unionised', is_fields=['FID_country', 'FID_area'])  # noqa
+            {'good':['FID_country',], 'bad':['FID_area']}
         """
 
         srcs = list(map(_path.normpath, sources))
@@ -1908,7 +1908,7 @@ class Spatial(_MixinNameSpace):  # noqa
         if show_progress: print('\nPerforming initial Union ....')
         try:
             _arcpy.analysis.Union(srcs, lyrtmp, **kwargs)  # noqa
-
+            # \\nerctbctdb\shared\shared\SPECIAL-ACL\ERAMMP2 Survey Restricted\common\data\GIS\nfs_land_analysis.gdb\permissionable_unionised_temp
             allflds = _struct.fc_fields_get(lyrtmp)
 
             # Now add the is_ cols
@@ -1922,24 +1922,24 @@ class Spatial(_MixinNameSpace):  # noqa
                 for fidcol in fid_cols:
                     if fidcol.lower() in map(str.lower, allflds):
                         isfld = 'is_%s' % fidcol[4:]
-                        if is_fields == 'ALL' or isfld.lower() in map(str.lower, is_fields):
+                        if is_fields == 'ALL' or fidcol.lower() in map(str.lower, is_fields):
                             _struct.AddField(lyrtmp, isfld, 'SHORT')
                             field_apply_func(lyrtmp, fidcol, isfld, Funcs.LongToOneZero, show_progress=show_progress)
-                            out['good'] = isfld
+                            out['good'] = isfld  # this is a DictList, we dont need +=
                     else:
-                        out['bad'] = fidcol
+                        out['bad'] = fidcol  # this is a DictList, we dont need +=
                     if show_progress: PP.increment()  # noqa
-            keep_cols_cpy = []
+            keep_cols_cpy = ['Shape']
             if keep_cols and isinstance(keep_cols, (list, tuple)):
                 if show_progress: print('Deleting fields ...')
-                keep_cols_cpy = list(keep_cols)
-                keep_cols_cpy += out['good'] if out['good'] else []
-                _struct.DeleteField(lyrtmp, keep_cols_cpy, method='KEEP_FIELDS')
+                keep_cols_cpy += list(keep_cols)
+                keep_cols_cpy += out['good'] if out.get('good') else []
+                _struct.DeleteField(lyrtmp, keep_cols_cpy, method='KEEP_FIELDS')   # Debug, this may fail and may have to restructure this Delete
             elif keep_cols == 'FID':
                 if show_progress: print('Deleting fields ...')
                 keep_cols_cpy += fid_cols
-                keep_cols_cpy += out['good'] if out['good'] else []
-                _struct.DeleteField(lyrtmp, keep_cols_cpy, method='KEEP_FIELDS')
+                keep_cols_cpy += out['good'] if out.get('good') else []
+                _struct.DeleteField(lyrtmp, keep_cols_cpy, method='KEEP_FIELDS')   # Debug, this may fail and may have to restructure this Delete
             elif keep_cols is None:
                 if show_progress: print('Deleting fields ...')
                 _struct.DeleteField(lyrtmp, _struct.fc_fields_not_required(lyrtmp), method='DELETE_FIELDS')
