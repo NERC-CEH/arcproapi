@@ -1,4 +1,5 @@
 """Operations on data"""
+import math
 import string
 from abc import ABCMeta
 from warnings import warn as _warn
@@ -158,6 +159,42 @@ class Funcs(_MixinNameSpace, metaclass=ABCMeta):
             0
         """
         return v/1000000 if v else 0
+
+    @staticmethod
+    def ThinnessRationFromShapePlanar(poly: _arcpy.Polygon) -> float:
+        """
+        Thinness ratio.
+        See https://tereshenkov.wordpress.com/2014/04/08/fighting-sliver-polygons-in-arcgis-thinness-ratio/
+
+        Args:
+            poly: instance of arcpy.Polygon
+
+        Returns:
+            float: the ratio
+
+        Notes:
+            Only supports projected coordinate systems
+        """
+        numerator = 4*math.pi*(poly.getArea('PLANAR'))
+        denom = poly.length / (math.pi * math.pi)
+        return numerator/denom
+
+    @staticmethod
+    def ThinnessRationValues(area: float, perimeter:float) -> float:
+        """
+        Thinness ratio.
+        See https://tereshenkov.wordpress.com/2014/04/08/fighting-sliver-polygons-in-arcgis-thinness-ratio/
+
+        Args:
+            area: area
+            perimeter: permiter
+
+        Returns:
+            float: the ratio
+        """
+        numerator = 4*math.pi*(area)
+        denom = perimeter / (math.pi * math.pi)
+        return numerator/denom
 
 
 class Excel(_MixinNameSpace):  # noqa
@@ -1252,7 +1289,7 @@ def field_recalculate(fc: str, arg_cols: (str, list, tuple), col_to_update: str,
             edit.stopEditing(save_changes=False)  # noqa
             del edit
         raise Exception('An exception occured. %s.\n\nException: %s' % (
-            'Changes applied by field_recalculate were rolled back' if isedit else 'No edit session was active. Changes could not be rolled back', str(e))) from e
+            'Changes applied by field_recalculate were rolled back' if isedit else 'No edit session was active. Changes could not be rolled back', _baselib.exception_to_str(e))) from e
 
 
 field_apply_func = field_recalculate  # noqa For convieniance. Original func left in to not break code

@@ -1,7 +1,9 @@
 """Export operations"""
 
 import os.path as _path
-from os import path as _path
+import os as _os
+import shutil as _shutil
+
 from warnings import warn as _warn
 
 import fuckit as _fuckit
@@ -11,7 +13,6 @@ import xlwings as _xlwings
 import arcproapi.structure as _struct
 import arcproapi.decs as _arcdecs
 import arcproapi.common as _common
-
 
 import funclite.baselib as _baselib
 from funclite import iolib as _iolib
@@ -55,7 +56,6 @@ def gdb_to_csv(gdb: str, export_root: str, match: (str, list[str], tuple[str]) =
     all_in = []
     all_out = []
     success = []
-
 
     if show_progress:
         PP = _iolib.PrintProgress(iter_=fcs + ts, init_msg='Collating file names....')  # noqa
@@ -189,7 +189,6 @@ def fgdb_to_sde_oracle(source_gdb: str, OracleSDE, match_layers: (None, list) = 
     dest_fld, dest_fname, dest_ext = _iolib.get_file_parts2(OracleSDE.feature_path)
     # TODO: test here for valid sde
 
-
     if not _iolib.folder_exists(OracleSDE.feature_path):
         if show_progress:
             print('Creating a destination fGDB "%s" ...' % OracleSDE.feature_path)
@@ -319,8 +318,43 @@ def csv_to_gdb(csv_source: str, gdb_dest: str, **kwargs) -> None:
     return res
 
 
+def fgdb_file_copy_by_os(src: str, dst: str):
+    """Copy a gdb to another gdb, changed files only
+
+    This copies only changed files as detected by the operating system, using shutil.
+    Changes are detecting using the modifield date (os.stat.st_mtime)
+
+    Raises:
+        BlockingIOError: If the src or dst databases looked locked (have lock files present in dir)
+
+    Notes:
+        If database locks are detected, this will fail. It is possible that ghost lock files will cause this function to fail.
+        This can happen if an app unexpectedly disconnected from the gdb.
+        In this case, it is recommended that the fGDB is reopened in an ESRI app and the app then closed properly (do not just delete the lock files).
+    """
+
+    src = _path.normpath(src)
+    dst = _path.normpath(dst)
+
+    files = _os.listdir(src)
+    if any(['lock' in s.lower() for s in files]):
+        raise BlockingIOError('The source geodatabase %s is locked. Cannot copy. If this is unexpected, then ghost lock files may be present.')
+
+    _iolib.create_folder(dst)
+    if any(['lock' in s.lower() for s in _os.listdir(dst)]):
+        raise BlockingIOError('The destination geodatabase %s is locked. Cannot copy. If this is unexpected, then ghost lock files may be present.')
 
 
+    PP = _iolib.PrintProgress(iter_=files, init_msg='Copying geodatabase ...')
+
+    for item in files:
+        s = _os.path.join(src, item)
+        d = _os.path.join(dst, item)
+        if _os.path.isdir(s):
+            continue
+        if not _os.path.exists(d) or _os.stat(s).st_mtime - _os.stat(d).st_mtime > 1:
+            _shutil.copy2(s, d)
+        PP.increment()
 
 
 if __name__ == '__main__':

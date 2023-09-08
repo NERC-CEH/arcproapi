@@ -211,9 +211,10 @@ class MixinEnumHelper:
 
         # first try and create the domain if it does not exist
         from arcproapi.common import gdb_from_fname as _get_gdb  # dont risk circular import
+        from arcproapi.structure import gdb_domain_exists as _chkdom
         if isinstance(flds, str): flds = [flds]
         gdb = _get_gdb(fname)
-        if not _arcstruct.gdb_domain_exists(gdb, cls.domain_name): # noqa
+        if not _chkdom(gdb, cls.domain_name): # noqa
             cls.domain_create2(gdb)  # noqa
         return _struct.domains_assign(cls.fname, {cls.domain_name: [flds]})
 
