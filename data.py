@@ -5,6 +5,7 @@ from abc import ABCMeta
 from warnings import warn as _warn
 import os.path as _path
 import inspect as _inspect
+import more_itertools as _more_itertools
 
 import arcpy.management
 import fuckit as _fuckit
@@ -141,7 +142,7 @@ class Funcs(_MixinNameSpace, metaclass=ABCMeta):
         return 0
 
     @staticmethod
-    def Area_m2_to_km2(v: float):
+    def Area_m2_to_km2(v: (float, None)):
         """
         Conversion from m2 to km2. If v evaluates to false, returns 0
 
@@ -155,10 +156,10 @@ class Funcs(_MixinNameSpace, metaclass=ABCMeta):
 
             Behaviour on none/null
 
-            >>> Funcs.Area_m2_to_km2(None)
+            >>> Funcs.Area_m2_to_km2(None)  # noqa
             0
         """
-        return v/1000000 if v else 0
+        return v / 1000000 if v else 0
 
     @staticmethod
     def ThinnessRationFromShapePlanar(poly: _arcpy.Polygon) -> float:
@@ -175,12 +176,12 @@ class Funcs(_MixinNameSpace, metaclass=ABCMeta):
         Notes:
             Only supports projected coordinate systems
         """
-        numerator = 4*math.pi*(poly.getArea('PLANAR'))
+        numerator = 4 * math.pi * (poly.getArea('PLANAR'))
         denom = poly.length / (math.pi * math.pi)
-        return numerator/denom
+        return numerator / denom
 
     @staticmethod
-    def ThinnessRationValues(area: float, perimeter:float) -> float:
+    def ThinnessRatioValues(area: float, perimeter: float, ret_on_none=0) -> float:
         """
         Thinness ratio.
         See https://tereshenkov.wordpress.com/2014/04/08/fighting-sliver-polygons-in-arcgis-thinness-ratio/
@@ -189,12 +190,17 @@ class Funcs(_MixinNameSpace, metaclass=ABCMeta):
             area: area
             perimeter: permiter
 
+            ret_on_none:
+                Value to return if area or perimeter are None.
+                I've seen tools (e.g. Eliminate) return null shapes with corresponding null lengths and areas, this gets over the issue
+
         Returns:
             float: the ratio
         """
-        numerator = 4*math.pi*(area)
-        denom = perimeter / (math.pi * math.pi)
-        return numerator/denom
+        if area is None or perimeter is None: return ret_on_none
+        numerator = 4 * math.pi * area
+        denom = perimeter * perimeter
+        return numerator / denom
 
 
 class Excel(_MixinNameSpace):  # noqa
@@ -719,7 +725,7 @@ def pandas_to_table2(df: _pd.DataFrame, workspace: str, tablename: str, overwrit
     _iolib.file_delete(tmp_file)
 
 
-def table_as_pandas2(fname: str, cols: (str, list) = None, where: str = None, exclude_cols: (str, list) = ('Shape', 'Shape_Length', 'Shape_Area'), as_int: (list, tuple) = (),
+def table_as_pandas2(fname: str, cols: (str, list) = None, where: str = None, exclude_cols: (str, list) = ('Shape',), as_int: (list, tuple) = (),
                      as_float: (list, tuple) = (), **kwargs):
     """Export data in feature class/table fname to a pandas DataFrame
 
@@ -727,10 +733,10 @@ def table_as_pandas2(fname: str, cols: (str, list) = None, where: str = None, ex
         fname (str): Path to feature class or table.
         cols (str, list, tuple): column list to retrieve.
         where (str): where clause, passed as-is to SearchCursor
-        exclude_cols (str, list, tuple): list of cols to exclude
+        exclude_cols (str, list, tuple): list of cols to exclude. Exludes Shape by default for performance reasons
         as_int (list, tuple, None): List of cols by name to force to int
         as_float (list, tuple, None): list of cols by name to force to float64
-        kwargs: keyword args passed to pandas.DataFrame.from_records
+        kwargs: keyword args passed to pandas.DataFrame.from_records. nrows is a useful option
 
     Returns:
         pandas.DataFrame: The feature class or table converted to a pandas DataFrame
@@ -784,6 +790,90 @@ def table_as_pandas2(fname: str, cols: (str, list) = None, where: str = None, ex
             _warn('Column %s could not be coerced to type int. It probably contains nan/none/na values' % s)
 
     return df
+
+
+def shape_area_add(fname: str, fld, overwrite: bool = False, show_progress: bool = False) -> int:
+    """
+    Add a shape area field "fld".
+    Primarily used for in-memory layers which frequently do not carry over a shape_area or shape_length field and do not recalculate these fields after changes.
+
+    Optionally delete and recalculate if overwrite is True.
+
+    Args:
+        fname: fname
+        fld: field name to add
+        overwrite: Allow overwriting of field if it already exists
+        show_progress: show progress
+
+    Notes:
+        Also see shape_length_add.
+        overwrite wont work where Shape_Area and Shape_Length are read-only
+    """
+    fname = _path.normpath(fname)
+    oidfld = _common.oid_field(fname)
+    if show_progress:
+        PP = _iolib.PrintProgress(get_row_count(fname) * 2, init_msg='Writing shape area to %s ...' % fld)
+
+    rows = {}
+    for row in _arcpy.da.SearchCursor(fname, [oidfld, 'SHAPE@AREA']):
+        rows[row[0]] = row[1]
+        if show_progress: PP.increment()  # noqa
+
+    # Put after previous code deliverately
+    if overwrite:
+        # recent change means this no longer raises an error if field exists
+        _struct.DeleteField(fname, fld)
+
+    _struct.AddField(fname, fld, 'FLOAT')
+    with _arcpy.da.UpdateCursor(fname, [oidfld, fld]) as UC:
+        j = 0
+        for row in UC:
+            row[1] = rows[row[0]]
+            UC.updateRow(row)
+            if show_progress: PP.increment()  # noqa
+            j += 1
+    return j
+
+
+def shape_length_add(fname: str, fld, overwrite: bool = False, show_progress: bool = False) -> int:
+    """
+    Add a shape length field "fld".
+    Primarily used for in-memory layers which frequently do not carry over a shape_area or shape_length field and do not recalculate these fields after changes.
+
+    Args:
+        fname: fname
+        fld: field name to add
+        overwrite (bool): Allow overwrite if field already exists
+        show_progress: show progress
+
+    Notes:
+        Also see shape_length_add
+        overwrite wont work where Shape_Area and Shape_Length are read-only
+    """
+    fname = _path.normpath(fname)
+    oidfld = _common.oid_field(fname)
+    if show_progress:
+        PP = _iolib.PrintProgress(get_row_count(fname) * 2, init_msg='Writing shape length to %s ...' % fld)
+
+    rows = {}
+    for row in _arcpy.da.SearchCursor(fname, [oidfld, 'SHAPE@LENGTH']):  # more efficient to preload then write all in the looped update cursor
+        rows[row[0]] = row[1]
+        if show_progress: PP.increment()  # noqa
+
+    # Put after previous code deliverately
+    if overwrite:
+        # recent change means this no longer raises an error if field exists
+        _struct.DeleteField(fname, fld)
+
+    _struct.AddField(fname, fld, 'FLOAT')
+    with _arcpy.da.UpdateCursor(fname, [oidfld, fld]) as UC:
+        j = 0
+        for row in UC:
+            row[1] = rows[row[0]]
+            UC.updateRow(row)
+            if show_progress: PP.increment()  # noqa
+            j += 1
+    return j
 
 
 def table_as_dict(fname, cols=None, where=None, exclude_cols=('Shape', 'Shape_Length', 'Shape_Area'), orient='list', **kwargs) -> dict:
@@ -1335,11 +1425,14 @@ def del_rows(fname: str, cols: any, vals: any, where: str = None, show_progress:
         Multiple criteria is an (obviously) OR match, see examples.
 
     Examples:
+
         Delete rows where (cola=1 and colb='a') OR (cola=2 and colb='b') OR (cola=3 and colb='c')
+
         >>> del_rows('c:/shp.shp', ['cola','colb'], [[1,2,3],['a','b','c']])
         >>> del_rows('c:/shp.shp', 'cola', 1)  # deletes every record where cola==1
 
         Use wildcard delete, we don't care about cols, so just use OBJECTID\n
+
         >>> del_rows('c:/my.gdb/coutries', '*', '*', where='OBJECTID<10')
 
         Delete everything\n
@@ -1702,7 +1795,7 @@ def features_copy2(source: str, dest: str, where_clause: str = '*', fixed_values
         return 0
 
     if not no_progress:
-        PP = _iolib.PrintProgress(maximum=n*2, init_msg='\nImporting rows to %s' % source)
+        PP = _iolib.PrintProgress(maximum=n * 2, init_msg='\nImporting rows to %s' % source)
 
     # Important thing here is that we are building the src and dest cols with matching indexes in the list
     # Excepting that dest_cols has the fixed_value columns that will be set appended to the end of the dest col list
@@ -1971,12 +2064,12 @@ class Spatial(_MixinNameSpace):  # noqa
                 if show_progress: print('Deleting fields ...')
                 keep_cols_cpy += list(keep_cols)
                 keep_cols_cpy += out['good'] if out.get('good') else []
-                _struct.DeleteField(lyrtmp, keep_cols_cpy, method='KEEP_FIELDS')   # Debug, this may fail and may have to restructure this Delete
+                _struct.DeleteField(lyrtmp, keep_cols_cpy, method='KEEP_FIELDS')  # Debug, this may fail and may have to restructure this Delete
             elif keep_cols == 'FID':
                 if show_progress: print('Deleting fields ...')
                 keep_cols_cpy += fid_cols
                 keep_cols_cpy += out['good'] if out.get('good') else []
-                _struct.DeleteField(lyrtmp, keep_cols_cpy, method='KEEP_FIELDS')   # Debug, this may fail and may have to restructure this Delete
+                _struct.DeleteField(lyrtmp, keep_cols_cpy, method='KEEP_FIELDS')  # Debug, this may fail and may have to restructure this Delete
             elif keep_cols is None:
                 if show_progress: print('Deleting fields ...')
                 _struct.DeleteField(lyrtmp, _struct.fc_fields_not_required(lyrtmp), method='DELETE_FIELDS')
@@ -2059,6 +2152,172 @@ class Spatial(_MixinNameSpace):  # noqa
             _struct.fc_delete2(lyr_union)
         return True, out  # noqa
 
+    @staticmethod
+    @_decs.environ_persist
+    def slivers_merge(source: str, dest: str, area_thresh: (float, None), thinness_thresh, thresh_operator: str = ' AND ', where_clause: str = '', shape_area_fld: str = 'Shape_Area',
+                      shape_length_field: str = 'Shape_Length',
+                      keep_thinness_in_dest: bool = False,
+                      max_iterations: int = 20,
+                      export_target_features: str = None, overwrite: bool = False, show_progress: bool = True, **kwargs) -> int:
+        """
+        Merge slivers in source layer to dest layer, using area and thinness ratio threshholds.
+        Operates largely in memory for speed and allow overwriting of the source (set source and dest to the same)
+
+        Features targetted for merging can be exported without creating the dest layer by setting dest to None and specifying export_target_features.
+
+        Args:
+            source (str): Source fc
+
+            dest (str): Dest fc, this can be source as the bulk of the processingis in_memory.
+                        Accept None, to not export - but export_target_features should be set.
+
+            area_thresh (float): The area threshhold for sliver selection
+            thinness_thresh (float): The thinness threshhold for sliver selection. thinness is a value between 0 and 1. 0.1 is a good target to start around.
+            thresh_operator (str): AND or OR, applied to threshholds. Note the spaces.
+            where_clause (str): Additional preselection filter, ANDED with the threshhold where
+            shape_area_fld (str): The shape_area field in source feature class
+            shape_length_field (str): The shape length field in the source feature class
+            keep_thinness_in_dest (bool): Keep the thinness field in "dest".
+            max_iterations: maximum allowed iterations. If set to 1, that allows a single pass. ... etc.
+            export_target_features (str, None): Export the features that are selected for merging here.
+            overwrite (bool): allow overwriting
+            show_progress (bool): show progress
+
+            **kwargs:
+                Passed as-is to the Elimate tool.
+                "ex_where_clause" (exclude where clause) is particularly useful and will be applied in addition to "where_clause"
+                "selection" defaults to "LENGTH", but accepts "AREA", where it merges with longest shared boundary and greatest area neighbour respectively.
+        Raises:
+            UserWarning: If dest and export_target_features args evaluated to False.
+            ValueError: If source and dest are the same, and overwrite is False
+            ValueError: IF max_iterations looks invalid
+            errors.FieldExists: If field "thinness" already exists in "source"
+
+        Returns:
+            int: The number of slivers merged
+
+        Notes:
+            Uses the eliminate tool which requires an advanced license. See https://pro.arcgis.com/en/pro-app/latest/tool-reference/data-management/eliminate.htm.
+            Pass dest=None and a valid path for export_target_features to just review which features we would attempt to merge.
+            This also performs multipart to single part.
+        """
+
+        def _get_where(area_fld: str, area_thr: float, thinness_thr: float, where_cl) -> str:
+            area_thresh_sql = '%s < %s' % (area_fld, area_thr) if area_thresh else ''
+            thinness_thresh_sql = '%s < %s' % ('thinness', thinness_thr) if thinness_thr else ''
+            where_ = thresh_operator.join([area_thresh_sql, thinness_thresh_sql])
+            if where_cl:
+                where_ = "(%s) AND (%s)" % (where_clause, where_)
+            return where_
+
+        if not isinstance(max_iterations, int) or max_iterations <= 0 or max_iterations > 1000:
+            raise ValueError('max_iterations was invalid against criteria:\n"isinstance(max_iterations, int) or max_iterations <= 0 or max_iterations > 1000".\nThis is used to exit a possibly infinite loop, so get it right!')
+
+        if not dest and not export_target_features:
+            raise UserWarning('dest and export_target_features both evaluated to False. Set both, or one or the other')
+        # TODO: Debug slivers_merge
+        _arcpy.env.workspace = _common.gdb_from_fname('in_memory')
+
+        # add the ratio fld and calc
+        if _struct.field_exists(source, 'thinness'):
+            raise _errors.FieldExists('Field "%s" already exists in "%s"' % (source, 'thinness'))
+
+        try:
+            # Copy source to in_memory
+            source = _path.normpath(source)
+            if source.lower() == _path.normpath(dest).lower() and not overwrite:
+                raise ValueError('source and dest were the same and overwrite was False')
+
+            fname_mem = 'in_memory/%s' % _stringslib.get_random_string(from_=string.ascii_lowercase)
+            if show_progress: print('\nExploding %s to %s ...' % (source, fname_mem))
+            _arcpy.management.MultipartToSinglepart(source, fname_mem)  # necessary for the Eliminate tool, plus also stick it in_memory
+            # But - in_memory layer - length and area fields will be borked - we recalulate them in the while loop
+
+            _struct.AddField(fname_mem, 'thinness', 'DOUBLE')
+
+
+
+            if show_progress: print('\nSelecting sliver polygons ...')
+
+
+            counts = []
+            itern = 0
+            stuck_factor = 2
+            stuck = False
+            while True:
+                if show_progress: print('\nRunning iteration %s of the Eliminate loop ...' % (len(counts) + 1))
+
+                # Safety net in potential infinite loop, 20 is arbitary
+                itern += 1
+                if itern > max_iterations:
+                    print('Iterations exceeded 20. This is unexpected. Breaking out of loop. Check results')
+                    break
+
+                # we need to recalculate our thinness because we are using an in-memory layer
+                shape_length_add(fname_mem, shape_length_field, overwrite=True, show_progress=show_progress)
+                shape_area_add(fname_mem, shape_area_fld, overwrite=True, show_progress=show_progress)
+
+                if show_progress: print('\nRemoving rows with null length or area ...')
+                _crud.CRUD(fname_mem, enable_transactions=False).deletew('%s OR %s' % (_sql.is_null(shape_length_field), _sql.is_null(shape_area_fld)))  # shouldnt me needed, but results of previous eliminates can generate null shapes
+                field_apply_func(fname_mem, [shape_area_fld, shape_length_field], 'thinness', Funcs.ThinnessRatioValues, show_progress=show_progress)
+
+                _arcpy.management.MakeFeatureLayer(fname_mem, 'lyrmem')
+
+                # This is a bit of a kludge, but the idea is to decrease the number of selected features
+                # to merge up some smaller slivers with other slivers that now do not match the selection criteria (but are still slivers by the original passed criteria)
+                # the stuck_factor selects for increasingly smaller slivers, but we will eventually exit according to max_iterations
+                if len(counts) > 1 and counts[-1]/counts[-2] > 0.8 and not stuck:
+                    stuck = True
+                    where = _get_where(shape_area_fld, area_thresh/stuck_factor, thinness_thresh/stuck_factor, where_clause)
+                    stuck_factor += 1
+                else:
+                    where = _get_where(shape_area_fld, area_thresh, thinness_thresh, where_clause)
+
+                _arcpy.management.SelectLayerByAttribute('lyrmem', 'NEW_SELECTION', where_clause=where)
+
+                counts += [int(_arcpy.management.GetCount('lyrmem')[0])]  # yes, getcount[0] is a fickin string
+                if stuck and counts[-1]/counts[-2] <= 0.8: stuck = False
+
+                # Get out of the loop, nothing more to do. We have no slivers, or the number of slivers hasn't changed since last iteration.
+                # This condition can happen - see the eliminate tool documentation
+                if counts[0] == 0:
+                    print('\n *** No slivers found in %s. Nothing to do. ***' % source)
+                    return 0
+                if len(counts) > 1 and counts[-1] == counts[-2]: break
+                if counts[-1] == 0: break
+
+                # Export the features to merge, if weve asked for that. But just do it the first time.
+                if export_target_features and len(counts) == 1:
+                    export_target_features = _path.normpath(export_target_features)
+                    if show_progress: print('\nExporting slivers to %s ...' % export_target_features)
+
+                    if overwrite:
+                        _struct.Delete(export_target_features)
+
+                    _struct.ExportFeatures('lyrmem', export_target_features)
+                    if not dest: return 0
+                if show_progress: print('\nExecuting Eliminate tool ... Counts: %s; stuck: %s; stuck_factor: %s' % (counts, stuck, stuck_factor))
+                eliminated_mem = 'in_memory/%s' % _stringslib.get_random_string(from_=string.ascii_lowercase)
+                _arcpy.management.Eliminate('lyrmem', eliminated_mem, **kwargs)
+                _struct.Delete(fname_mem)  # lets not run out of memory
+                _struct.Delete('lyrmem')
+                fname_mem = eliminated_mem
+
+            _arcpy.env.workspace = _common.workspace_from_fname(dest)
+            _arcpy.env.overwriteOutput = overwrite
+            if show_progress: print('\nExporting from memory to %s' % dest)
+            if not keep_thinness_in_dest: _struct.DeleteField(eliminated_mem, 'thinness')  # noqa
+            _struct.ExportFeatures(eliminated_mem, dest)  # noqa
+
+        finally:
+            with _fuckit:
+                _struct.Delete(fname_mem)  # noqa
+                _struct.Delete(eliminated_mem)  # noqa
+                _struct.Delete('lyrmem')  # noqa
+
+        if len(counts) == 1: return counts[0]
+        return sum(_more_itertools.difference(counts, func=lambda x, y: (x - y) * -1, initial=1))
+
 
 def vertext_add(fname, vertex_index: (int, str), x_field: str, y_field: str = 'y', field_type='DOUBLE', where_clause: (str, None) = '*', fail_on_exists: bool = True,
                 show_progress: bool = False) -> int:
@@ -2125,21 +2384,8 @@ rows_delete = del_rows  # noqa. For conveniance, should of been called this in f
 
 if __name__ == '__main__':
     # quick debugging
-
-    # features copy
-    # src = r'S:\SPECIAL-ACL\ERAMMP2 Survey Restricted\2022\data\GIS\erammp.gdb\nrw_permissionable_clipped'
-    # dst = r'S:\SPECIAL-ACL\ERAMMP2 Survey Restricted\2022\data\GIS\_arcpro_projects\drone_pilot_20220725\drone_pilot_20220725.gdb\parcels'
-    # wsp = r'S:\SPECIAL-ACL\ERAMMP2 Survey Restricted\2022\data\GIS\_arcpro_projects\drone_pilot_20220725\drone_pilot_20220725.gdb'
-    # features_copy(src, dst, wsp, where_clause='sq_id=34158', permission='permission', sq_id='sq_id')
-
-    # fields_copy_by_join
-    # fname_local = 'C:/GIS/erammp_local/submission/curated_raw/botany_curated_raw_local.gdb/plot'
-    # dfout = table_summary_as_pandas(fname_local, [['OBJECTID', 'MEAN'], ['PLOT_NuMBER', 'RANGE']], ['plot_type'])  # noqa
-
-    # i = vertext_add(r'C:\GIS\erammp_local\submission\curated_raw\freshwater_curated_raw.gdb\stream_sites', 1, x_field='easting_vertex', y_field='northing_vertex', fail_on_exists=False, show_progress=True)
-
-    a, lst_out = Spatial.features_overlapping(r'\\nerctbctdb\shared\shared\SPECIAL-ACL\ERAMMP2 Survey Restricted\2022\data\GIS\erammp.gdb\address_crn_lpis_sq')
-    # a, lst_out = Spatial.features_overlapping(r'\\nerctbctdb\shared\shared\SPECIAL-ACL\ERAMMP2 Survey Restricted\current\data\GIS\erammp_current.gdb\address_crn_lpis_sq')
-    # a, lst_out = Spatial.features_overlapping(r'\\nerctbctdb\shared\shared\SPECIAL-ACL\ERAMMP2 Survey Restricted\2021\data\GIS\erammp_current.gdb\address_crn_lpis_sq')
-
+    Spatial.slivers_merge('C:/GIS/nfs_land_analysis_local.gdb/permissionable_by_land_sq', 'C:/GIS/nfs_land_analysis_local.gdb/permissionable_by_land_sq_sliverless',
+                          area_thresh=20, thinness_thresh=0.1, thresh_operator=' OR ',
+                          export_target_features=None,  # 'C:/GIS/nfs_land_analysis_local.gdb/slivers_temp'
+                          overwrite=True, show_progress=True)
     pass

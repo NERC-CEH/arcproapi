@@ -838,6 +838,7 @@ def gdb_from_fname(fname: str) -> str:
         >>> gdb_from_fname('C:/my.gdb/my/layer')
         'C:/my.gdb'
     """
+    fname = _path.normpath(fname)
     if fname[0:6] == 'memory': return 'memory'
     if fname[0:9] == 'in_memory': return 'in_memory'
     if '.gdb' in fname:
