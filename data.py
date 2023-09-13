@@ -2215,7 +2215,7 @@ class Spatial(_MixinNameSpace):  # noqa
 
         if not dest and not export_target_features:
             raise UserWarning('dest and export_target_features both evaluated to False. Set both, or one or the other')
-        # TODO: Debug slivers_merge
+
         _arcpy.env.workspace = _common.gdb_from_fname('in_memory')
 
         # add the ratio fld and calc
@@ -2234,11 +2234,9 @@ class Spatial(_MixinNameSpace):  # noqa
             # But - in_memory layer - length and area fields will be borked - we recalulate them in the while loop
 
             _struct.AddField(fname_mem, 'thinness', 'DOUBLE')
-
-
+            fname_mem_oid = _struct.field_oid(fname_mem)
 
             if show_progress: print('\nSelecting sliver polygons ...')
-
 
             counts = []
             itern = 0
@@ -2266,25 +2264,56 @@ class Spatial(_MixinNameSpace):  # noqa
                 # This is a bit of a kludge, but the idea is to decrease the number of selected features
                 # to merge up some smaller slivers with other slivers that now do not match the selection criteria (but are still slivers by the original passed criteria)
                 # the stuck_factor selects for increasingly smaller slivers, but we will eventually exit according to max_iterations
+                where = _get_where(shape_area_fld, area_thresh, thinness_thresh, where_clause)
+                where_stuck = ''
                 if len(counts) > 1 and counts[-1]/counts[-2] > 0.8 and not stuck:
                     stuck = True
-                    where = _get_where(shape_area_fld, area_thresh/stuck_factor, thinness_thresh/stuck_factor, where_clause)
+                    if show_progress: print('\nStuck, selecting subset ... Counts: %s; stuck: %s; stuck_factor: %s' % (counts, stuck, stuck_factor))
+                    where_stuck = _get_where(shape_area_fld, area_thresh/stuck_factor, thinness_thresh/stuck_factor, where_clause)
                     stuck_factor += 1
                 else:
-                    where = _get_where(shape_area_fld, area_thresh, thinness_thresh, where_clause)
+                    stuck = False
+                    stuck_factor = 2
 
                 _arcpy.management.SelectLayerByAttribute('lyrmem', 'NEW_SELECTION', where_clause=where)
-
                 counts += [int(_arcpy.management.GetCount('lyrmem')[0])]  # yes, getcount[0] is a fickin string
-                if stuck and counts[-1]/counts[-2] <= 0.8: stuck = False
+                if stuck:
+                    if stuck_factor > 5:
+                        # lets try something else, pick a random 50% subsample of the slivers to seed merges around
+                        if show_progress: print('\nStuck ... using random strategy to unstick ...')
+                        stuck_factor = 2
+                        oids = [row[0] for row in _arcpy.da.SearchCursor('lyrmem', [fname_mem_oid])]
+                        oidsrnd = _baselib.list_random_pick(oids, max(int(counts[-1]/2), 0))
+                        if not oidsrnd:
+                            if show_progress: print('\nRandom slivers could not be picked. Failed to unstick. Exiting loop ...')
+                            break
+
+                        where_rand = '(%s) AND (%s)' % (_sql.query_where_in(fname_mem_oid, oidsrnd), _get_where(shape_area_fld, area_thresh, thinness_thresh, where_clause))
+                        _arcpy.management.SelectLayerByAttribute('lyrmem', 'NEW_SELECTION', where_clause=where_rand)
+                        z = int(_arcpy.management.GetCount('lyrmem')[0])
+                        if z == 0 and show_progress:
+                            print('\nRandom slivers could not be selected. This is unexpected. *** Debug required ***. Exiting loop ...')
+                            break
+
+                        if show_progress: print('\nPicked %s slivers randomly to merge ...' % z)
+                    else:
+                        _arcpy.management.SelectLayerByAttribute('lyrmem', 'NEW_SELECTION', where_clause=where_stuck)
+                    stuck = False
 
                 # Get out of the loop, nothing more to do. We have no slivers, or the number of slivers hasn't changed since last iteration.
                 # This condition can happen - see the eliminate tool documentation
                 if counts[0] == 0:
                     print('\n *** No slivers found in %s. Nothing to do. ***' % source)
                     return 0
-                if len(counts) > 1 and counts[-1] == counts[-2]: break
-                if counts[-1] == 0: break
+
+                if len(counts) > 1 and counts[-1] == counts[-2]:
+                    if show_progress: print('\nLast two loops failed to remove any slivers. Exiting loop.')
+                    break
+
+                if counts[-1] == 0:
+                    if show_progress: print('\nMerged all slivers. No more work to do. Exiting loop.')
+                    break
+
 
                 # Export the features to merge, if weve asked for that. But just do it the first time.
                 if export_target_features and len(counts) == 1:
@@ -2296,6 +2325,8 @@ class Spatial(_MixinNameSpace):  # noqa
 
                     _struct.ExportFeatures('lyrmem', export_target_features)
                     if not dest: return 0
+
+
                 if show_progress: print('\nExecuting Eliminate tool ... Counts: %s; stuck: %s; stuck_factor: %s' % (counts, stuck, stuck_factor))
                 eliminated_mem = 'in_memory/%s' % _stringslib.get_random_string(from_=string.ascii_lowercase)
                 _arcpy.management.Eliminate('lyrmem', eliminated_mem, **kwargs)
@@ -2322,7 +2353,7 @@ class Spatial(_MixinNameSpace):  # noqa
 def vertext_add(fname, vertex_index: (int, str), x_field: str, y_field: str = 'y', field_type='DOUBLE', where_clause: (str, None) = '*', fail_on_exists: bool = True,
                 show_progress: bool = False) -> int:
     """
-    Add the x and y coordinates of a vertex
+    Add the x and y coordinates of the row shape's first or last vertex (e.g. the origin of each square in a grid-like feature class for each grid cell)
     Args:
         fname (str): The layer
         vertex_index (int, str): Index of the vertext, pass 'last' to get the last vertext in the shape. Pass 0 or 'first' to get the first
@@ -2385,7 +2416,8 @@ rows_delete = del_rows  # noqa. For conveniance, should of been called this in f
 if __name__ == '__main__':
     # quick debugging
     Spatial.slivers_merge('C:/GIS/nfs_land_analysis_local.gdb/permissionable_by_land_sq', 'C:/GIS/nfs_land_analysis_local.gdb/permissionable_by_land_sq_sliverless',
-                          area_thresh=20, thinness_thresh=0.1, thresh_operator=' OR ',
+                          area_thresh=50, thinness_thresh=0.1, thresh_operator=' OR ',
                           export_target_features=None,  # 'C:/GIS/nfs_land_analysis_local.gdb/slivers_temp'
+                          max_iterations=100,
                           overwrite=True, show_progress=True)
     pass
