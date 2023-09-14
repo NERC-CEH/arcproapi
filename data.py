@@ -1,13 +1,12 @@
 """Operations on data"""
-import math
-import string
-from abc import ABCMeta
+import math as _math
+import string as _string
+from abc import ABCMeta as _ABCMeta
 from warnings import warn as _warn
 import os.path as _path
 import inspect as _inspect
 import more_itertools as _more_itertools
 
-import arcpy.management
 import fuckit as _fuckit
 
 import pandas as _pd
@@ -15,9 +14,9 @@ import numpy as _np
 
 import arcpy as _arcpy
 
-from arcpy.conversion import TableToDBASE, TableToExcel, TableToGeodatabase, TableToSAS, TableToTable, ExcelToTable  # noqa
-from arcpy.management import MakeAggregationQueryLayer, MakeQueryLayer, MakeQueryTable, CalculateField, CalculateStatistics  # noqa   Expose here as useful inbult tools
-from arcpy.analysis import CountOverlappingFeatures, SummarizeNearby, SummarizeWithin  # noqa
+from _arcpy.conversion import TableToDBASE, TableToExcel, TableToGeodatabase, TableToSAS, TableToTable, ExcelToTable  # noqa
+from _arcpy.management import MakeAggregationQueryLayer, MakeQueryLayer, MakeQueryTable, CalculateField, CalculateStatistics  # noqa   Expose here as useful inbult tools
+from _arcpy.analysis import CountOverlappingFeatures, SummarizeNearby, SummarizeWithin  # noqa
 
 with _fuckit:
     from arcproapi.common import release
@@ -53,7 +52,7 @@ from arcproapi.export import excel_sheets_to_gdb as excel_import_sheets, csv_to_
 # See https://pro.arcgis.com/en/pro-app/latest/arcpy/data-access/editor.htm and https://pro.arcgis.com/en/pro-app/latest/tool-reference/tool-errors-and-warnings/160001-170000/tool-errors-and-warnings-160226-160250-160250.htm
 
 
-class Funcs(_MixinNameSpace, metaclass=ABCMeta):
+class Funcs(_MixinNameSpace, metaclass=_ABCMeta):
     """
     Defines some commonly used functions to use in the various field_apply/recalculate methods in this module.
 
@@ -176,8 +175,8 @@ class Funcs(_MixinNameSpace, metaclass=ABCMeta):
         Notes:
             Only supports projected coordinate systems
         """
-        numerator = 4 * math.pi * (poly.getArea('PLANAR'))
-        denom = poly.length / (math.pi * math.pi)
+        numerator = 4 * _math.pi * (poly.getArea('PLANAR'))
+        denom = poly.length / (_math.pi * _math.pi)
         return numerator / denom
 
     @staticmethod
@@ -198,7 +197,7 @@ class Funcs(_MixinNameSpace, metaclass=ABCMeta):
             float: the ratio
         """
         if area is None or perimeter is None: return ret_on_none
-        numerator = 4 * math.pi * area
+        numerator = 4 * _math.pi * area
         denom = perimeter * perimeter
         return numerator / denom
 
@@ -365,14 +364,14 @@ class ResultAsPandas(_mixins.MixinPandasHelper):
         self._kwargs = kwargs
         self._tool = tool
         self._in_features = in_features
-        self.result_memory_layer = r'%s\%s' % (memory_workspace, _stringslib.rndstr(from_=string.ascii_lowercase))
+        self.result_memory_layer = r'%s\%s' % (memory_workspace, _stringslib.rndstr(from_=_string.ascii_lowercase))
         self._memory_workspace = memory_workspace
         self.Results = {}
 
         if additional_layer_args:
             if isinstance(additional_layer_args, str): additional_layer_args = (additional_layer_args,)
             for s in additional_layer_args:
-                lyr_tmp = r'%s\%s' % ('in_memory', _stringslib.rndstr(from_=string.ascii_lowercase))
+                lyr_tmp = r'%s\%s' % ('in_memory', _stringslib.rndstr(from_=_string.ascii_lowercase))
                 self.Results[s] = ResultAsPandas._LayerDataFrame(s, lyr_tmp)
                 kwargs[s] = lyr_tmp
 
@@ -1395,7 +1394,7 @@ def memory_lyr_get(workspace='in_memory') -> str:
         >>> memory_lyr_get()
         'in_memory/arehrwfs
     """
-    return '%s/%s' % (workspace, _stringslib.rndstr(from_=string.ascii_lowercase))
+    return '%s/%s' % (workspace, _stringslib.rndstr(from_=_string.ascii_lowercase))
 
 
 def del_rows(fname: str, cols: any, vals: any, where: str = None, show_progress: bool = True, no_warn=False) -> int:
@@ -1865,7 +1864,7 @@ def table_summary_as_pandas(fname: str, statistics_fields: (str, list[list[str]]
     """
 
     fname = _path.normpath(fname)
-    out_tmp = 'in_memory/%s' % _stringslib.get_random_string(length=8, from_=string.ascii_lowercase)
+    out_tmp = 'in_memory/%s' % _stringslib.get_random_string(length=8, from_=_string.ascii_lowercase)
     _arcpy.analysis.Statistics(fname,  # noqa
                                out_tmp,
                                statistics_fields=statistics_fields,
@@ -1913,13 +1912,13 @@ class Spatial(_MixinNameSpace):  # noqa
         dest = _path.normpath(dest)
         out = False
         try:
-            lyr_union = r"in_memory/%s" % _stringslib.rndstr(from_=string.ascii_lowercase)
+            lyr_union = r"in_memory/%s" % _stringslib.rndstr(from_=_string.ascii_lowercase)
             _arcpy.analysis.Union([source], lyr_union, "ALL", None, "GAPS")  # noqa
             oidfld = _struct.field_oid(lyr_union)
             df_union = table_as_pandas2(lyr_union)
 
             # IN_FID is the df_union objectid
-            Res = ResultAsPandas(arcpy.management.FindIdentical, lyr_union, as_int=['OBJECTID', 'IN_FID', 'FEAT_SEQ'], output_record_option='ONLY_DUPLICATES', fields=['Shape'])
+            Res = ResultAsPandas(_arcpy.management.FindIdentical, lyr_union, as_int=['OBJECTID', 'IN_FID', 'FEAT_SEQ'], output_record_option='ONLY_DUPLICATES', fields=['Shape'])
 
             last_feat_seq = None
             dup_dict = {}
@@ -1951,9 +1950,9 @@ class Spatial(_MixinNameSpace):  # noqa
             _arcpy.env.workspace = _common.workspace_from_fname(dest)
             _arcpy.env.overwriteOutput = overwrite
             if dissolve_cols:
-                lyr_diss = r'in_memory/%s' % _stringslib.rndstr(from_=string.ascii_lowercase)
+                lyr_diss = r'in_memory/%s' % _stringslib.rndstr(from_=_string.ascii_lowercase)
                 if show_progress: print('Dissolving to in-memory layer ...')
-                arcpy.management.Dissolve(lyr_union, lyr_diss, dissolve_cols, multi_part=multi_part)
+                _arcpy.management.Dissolve(lyr_union, lyr_diss, dissolve_cols, multi_part=multi_part)
                 _struct.ExportFeatures(lyr_diss, dest)
             else:
                 if show_progress: print('Writing to %s ...' % dest)
@@ -2033,7 +2032,7 @@ class Spatial(_MixinNameSpace):  # noqa
         _arcpy.env.overwriteOutput = overwrite
         if isinstance(keep_cols, str): keep_cols = list[keep_cols]
         # Lets do this in memory for speed
-        lyrtmp = 'in_memory\%s' % _stringslib.get_random_string(from_=string.ascii_lowercase)  # need to use this as supports alterfield and several other features that memory workspace doesnt support
+        lyrtmp = 'in_memory\%s' % _stringslib.get_random_string(from_=_string.ascii_lowercase)  # need to use this as supports alterfield and several other features that memory workspace doesnt support
         fid_cols = ['FID_%s' % s for s in [_iolib.get_file_parts2(t)[1] for t in srcs]]
         if show_progress: print('\nPerforming initial Union ....')
         try:
@@ -2097,7 +2096,7 @@ class Spatial(_MixinNameSpace):  # noqa
                     print('Failed to reset aliases. This is not fatal. You will get this message if "dest" is in-memory.')
         finally:
             with _fuckit:
-                arcpy.management.Delete(lyrtmp)
+                _struct.Delete(lyrtmp)
 
         return dict(out)
 
@@ -2131,7 +2130,7 @@ class Spatial(_MixinNameSpace):  # noqa
         fname = _path.normpath(fname)  # noqa
         if isinstance(fields, str): fields = [fields]
         if fields is None: fields = []
-        lyr_union = r"memory\%s" % _stringslib.rndstr(from_=string.ascii_lowercase)
+        lyr_union = r"memory\%s" % _stringslib.rndstr(from_=_string.ascii_lowercase)
 
         try:
             _arcpy.analysis.Union([fname], lyr_union, "ALL", None, "GAPS")  # noqa
@@ -2228,7 +2227,7 @@ class Spatial(_MixinNameSpace):  # noqa
             if source.lower() == _path.normpath(dest).lower() and not overwrite:
                 raise ValueError('source and dest were the same and overwrite was False')
 
-            fname_mem = 'in_memory/%s' % _stringslib.get_random_string(from_=string.ascii_lowercase)
+            fname_mem = 'in_memory/%s' % _stringslib.get_random_string(from_=_string.ascii_lowercase)
             if show_progress: print('\nExploding %s to %s ...' % (source, fname_mem))
             _arcpy.management.MultipartToSinglepart(source, fname_mem)  # necessary for the Eliminate tool, plus also stick it in_memory
             # But - in_memory layer - length and area fields will be borked - we recalulate them in the while loop
@@ -2243,12 +2242,13 @@ class Spatial(_MixinNameSpace):  # noqa
             stuck_factor = 2
             stuck = False
             while True:
-                if show_progress: print('\nRunning iteration %s of the Eliminate loop ...' % (len(counts) + 1))
+                fname_mem_rcnt = get_row_count(fname_mem)
+                if show_progress: print('\nRunning iteration %s of the Eliminate loop ... Input layer has %s polygons.' % ((len(counts) + 1), fname_mem_rcnt))
 
                 # Safety net in potential infinite loop, 20 is arbitary
                 itern += 1
                 if itern > max_iterations:
-                    print('Iterations exceeded 20. This is unexpected. Breaking out of loop. Check results')
+                    print('\nIterations exceeded %s. This is unexpected. Breaking out of loop. Check results.' % max_iterations)
                     break
 
                 # we need to recalculate our thinness because we are using an in-memory layer
@@ -2328,7 +2328,7 @@ class Spatial(_MixinNameSpace):  # noqa
 
 
                 if show_progress: print('\nExecuting Eliminate tool ... Counts: %s; stuck: %s; stuck_factor: %s' % (counts, stuck, stuck_factor))
-                eliminated_mem = 'in_memory/%s' % _stringslib.get_random_string(from_=string.ascii_lowercase)
+                eliminated_mem = 'in_memory/%s' % _stringslib.get_random_string(from_=_string.ascii_lowercase)
                 _arcpy.management.Eliminate('lyrmem', eliminated_mem, **kwargs)
                 _struct.Delete(fname_mem)  # lets not run out of memory
                 _struct.Delete('lyrmem')
@@ -2419,5 +2419,6 @@ if __name__ == '__main__':
                           area_thresh=50, thinness_thresh=0.1, thresh_operator=' OR ',
                           export_target_features=None,  # 'C:/GIS/nfs_land_analysis_local.gdb/slivers_temp'
                           max_iterations=100,
+                          keep_thinness_in_dest=True,
                           overwrite=True, show_progress=True)
     pass

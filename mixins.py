@@ -1,4 +1,5 @@
 """Mixins for all uses"""
+from warnings import warn as _warn
 import os.path as _path
 import string as _string
 
@@ -82,6 +83,15 @@ class MixinEnumHelper:
     Methods:
         text_values list[str]: List of all text values, as retrieved from as_text()
         names list[str]: List of all member names, as retrieved from member.name
+
+    Class Properties and Class Members:
+        code_description_dict:
+            Define a dictionary to use to create code descriptions for coded values
+            For example,
+
+            @_classproperty
+            def code_description_dict(cls) -> dict[str:str]:  # noqa
+                return {cls.as_text(cls.A): 'The letter A', cls.as_text(cls.B): 'The letter B'}
     """
     domain_name = ''  # stop pycharm moaning
 
@@ -100,6 +110,7 @@ class MixinEnumHelper:
         Notes:
             Only supports text field types. Use domain_create2 to autodetect text, integer, float and date values and create the domain accordingly.
         """
+        _warn('domain_create2 should be used instead of domain_create. domain_create may be depreciated.', DeprecationWarning, stacklevel=2)
         try:
             x = cls.domain_name  # noqa
         except:
@@ -139,14 +150,19 @@ class MixinEnumHelper:
 
         Args:
             geodb (str): The geodatabase
-            kwargs: Passed to arcpy.management.CreateDomain. See https://pro.arcgis.com/en/pro-app/latest/tool-reference/data-management/create-domain.htm#
+
+            kwargs:
+                Passed to arcpy.management.CreateDomain.
+                See https://pro.arcgis.com/en/pro-app/latest/tool-reference/data-management/create-domain.htm#
 
         Returns:
             None
 
         Notes:
             Will undoubtedly error if the domain is assigned to a field.
-            Integer types have field type arcpy LONG, float types are set to arcpy FLOAT. Code will need revising if these types are of insufficient size. See https://pro.arcgis.com/en/pro-app/latest/tool-reference/data-management/create-domain.htm
+            Integer types have field type arcpy LONG, float types are set to arcpy FLOAT.
+            Code will need revising if these types are of insufficient size.
+            See https://pro.arcgis.com/en/pro-app/latest/tool-reference/data-management/create-domain.htm
         """
         try:
             x = cls.domain_name  # noqa
