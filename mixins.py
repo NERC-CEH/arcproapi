@@ -167,7 +167,7 @@ class MixinEnumHelper:
         try:
             x = cls.domain_name  # noqa
         except:
-            raise NotImplementedError('Cannot create domain.\nClass does not define domain_name. Define this in the enumeration in enums.py.')
+            raise NotImplementedError('Cannot create domain.\nClass does not define domain_name. Define this for the relevant class in enums.py.')
 
         geodb = _path.normpath(geodb)
         isint = all([_baselib.is_int(x) for x in cls.text_values_for_domain])

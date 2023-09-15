@@ -14,9 +14,9 @@ import numpy as _np
 
 import arcpy as _arcpy
 
-from _arcpy.conversion import TableToDBASE, TableToExcel, TableToGeodatabase, TableToSAS, TableToTable, ExcelToTable  # noqa
-from _arcpy.management import MakeAggregationQueryLayer, MakeQueryLayer, MakeQueryTable, CalculateField, CalculateStatistics  # noqa   Expose here as useful inbult tools
-from _arcpy.analysis import CountOverlappingFeatures, SummarizeNearby, SummarizeWithin  # noqa
+from arcpy.conversion import TableToDBASE, TableToExcel, TableToGeodatabase, TableToSAS, TableToTable, ExcelToTable  # noqa
+from arcpy.management import MakeAggregationQueryLayer, MakeQueryLayer, MakeQueryTable, CalculateField, CalculateStatistics  # noqa   Expose here as useful inbult tools
+from arcpy.analysis import CountOverlappingFeatures, SummarizeNearby, SummarizeWithin  # noqa
 
 with _fuckit:
     from arcproapi.common import release
@@ -329,12 +329,12 @@ class ResultAsPandas(_mixins.MixinPandasHelper):
     """
 
     class _LayerDataFrame(_mixins.MixinPandasHelper):
-        def __init__(self, arg_name: str, fname_output: str, df: _pd.DataFrame = None):
+        def __init__(self, arg_name: str, fname_output: str, df: _pd.DataFrame = None):  # noqa
             self.arg_name = arg_name
             self.fname_output = fname_output
+            self._df = None
             self.df_lower = None
-            self._df = df
-            super().__init__()
+            self.df = df
 
         @property
         def df(self):
@@ -344,10 +344,10 @@ class ResultAsPandas(_mixins.MixinPandasHelper):
         def df(self, df: _pd.DataFrame):
             if self._df is None:
                 self._df = df
-                return
 
-            self.df_lower = df.copy()
-            self.df_lower.columns = self.df_lower.columns.str.lower()
+            if self.df_lower is None:
+                self.df_lower = df.copy()
+                self.df_lower.columns = self.df_lower.columns.str.lower()
 
     def __init__(self,  # noqa
                  tool,
@@ -725,7 +725,7 @@ def pandas_to_table2(df: _pd.DataFrame, workspace: str, tablename: str, overwrit
 
 
 def table_as_pandas2(fname: str, cols: (str, list) = None, where: str = None, exclude_cols: (str, list) = ('Shape',), as_int: (list, tuple) = (),
-                     as_float: (list, tuple) = (), **kwargs):
+                     as_float: (list, tuple) = (), cols_lower: bool = False, **kwargs):
     """Export data in feature class/table fname to a pandas DataFrame
 
     Args:
@@ -735,6 +735,7 @@ def table_as_pandas2(fname: str, cols: (str, list) = None, where: str = None, ex
         exclude_cols (str, list, tuple): list of cols to exclude. Exludes Shape by default for performance reasons
         as_int (list, tuple, None): List of cols by name to force to int
         as_float (list, tuple, None): list of cols by name to force to float64
+        cols_lower (bool): force dataframe columns to lowercase
         kwargs: keyword args passed to pandas.DataFrame.from_records. nrows is a useful option
 
     Returns:
@@ -788,6 +789,9 @@ def table_as_pandas2(fname: str, cols: (str, list) = None, where: str = None, ex
         except:
             _warn('Column %s could not be coerced to type int. It probably contains nan/none/na values' % s)
 
+    if cols_lower:
+        df.columns = df.columns.str.lower()
+        return df
     return df
 
 
@@ -1939,10 +1943,11 @@ class Spatial(_MixinNameSpace):  # noqa
                     out = True
                 if show_progress: PP.increment()  # noqa
 
-            # Delete last duplicate set
+            # Delete last duplicate set - if debugging remember this ** ONLY CONTAINS THE LAST DUPLICATE TO DELETE **
             if dup_dict and row:  # noqa
                 Spatial._del_dups(lyr_union, df_union, dup_dict, row, rank_func, reverse, rank_cols, oidfld)  # noqa
                 out = True
+                PP.increment()
 
             # sanity check - did we get rid of all dups
             # RChk = arcdata.ResultAsPandas(arcpy.management.FindIdentical, lyr_union, as_int=['OBJECTID', 'IN_FID', 'FEAT_SEQ'], output_record_option='ONLY_DUPLICATES', fields=['Shape'])
@@ -1951,11 +1956,11 @@ class Spatial(_MixinNameSpace):  # noqa
             _arcpy.env.overwriteOutput = overwrite
             if dissolve_cols:
                 lyr_diss = r'in_memory/%s' % _stringslib.rndstr(from_=_string.ascii_lowercase)
-                if show_progress: print('Dissolving to in-memory layer ...')
+                if show_progress: print('\nDissolving to in-memory layer ...')
                 _arcpy.management.Dissolve(lyr_union, lyr_diss, dissolve_cols, multi_part=multi_part)
                 _struct.ExportFeatures(lyr_diss, dest)
             else:
-                if show_progress: print('Writing to %s ...' % dest)
+                if show_progress: print('\nWriting to %s ...' % dest)
                 _struct.ExportFeatures(lyr_union, dest)
         finally:
             with _fuckit:
@@ -2032,7 +2037,8 @@ class Spatial(_MixinNameSpace):  # noqa
         _arcpy.env.overwriteOutput = overwrite
         if isinstance(keep_cols, str): keep_cols = list[keep_cols]
         # Lets do this in memory for speed
-        lyrtmp = 'in_memory\%s' % _stringslib.get_random_string(from_=_string.ascii_lowercase)  # need to use this as supports alterfield and several other features that memory workspace doesnt support
+        lyrtmp = 'in_memory\%s' % _stringslib.get_random_string(
+            from_=_string.ascii_lowercase)  # need to use this as supports alterfield and several other features that memory workspace doesnt support
         fid_cols = ['FID_%s' % s for s in [_iolib.get_file_parts2(t)[1] for t in srcs]]
         if show_progress: print('\nPerforming initial Union ....')
         try:
@@ -2108,7 +2114,11 @@ class Spatial(_MixinNameSpace):  # noqa
 
         Args:
             fname (str): feature class
-            fields (str, list[str]): fields passed to FindIdentical, see https://pro.arcgis.com/en/pro-app/latest/tool-reference/data-management/find-identical.htm
+
+            fields (str, list[str]):
+                fields passed to FindIdentical, these are appended to Shape.
+                The default is None, which considers Shape only.
+                See https://pro.arcgis.com/en/pro-app/latest/tool-reference/data-management/find-identical.htm
 
         Returns:
             tuple[bool, (None, list[list[int]])]: are there overlaps, and a list of lists, where the inner lists are the overlapping polygon ids from the input layer.
@@ -2210,7 +2220,8 @@ class Spatial(_MixinNameSpace):  # noqa
             return where_
 
         if not isinstance(max_iterations, int) or max_iterations <= 0 or max_iterations > 1000:
-            raise ValueError('max_iterations was invalid against criteria:\n"isinstance(max_iterations, int) or max_iterations <= 0 or max_iterations > 1000".\nThis is used to exit a possibly infinite loop, so get it right!')
+            raise ValueError(
+                'max_iterations was invalid against criteria:\n"isinstance(max_iterations, int) or max_iterations <= 0 or max_iterations > 1000".\nThis is used to exit a possibly infinite loop, so get it right!')
 
         if not dest and not export_target_features:
             raise UserWarning('dest and export_target_features both evaluated to False. Set both, or one or the other')
@@ -2256,7 +2267,8 @@ class Spatial(_MixinNameSpace):  # noqa
                 shape_area_add(fname_mem, shape_area_fld, overwrite=True, show_progress=show_progress)
 
                 if show_progress: print('\nRemoving rows with null length or area ...')
-                _crud.CRUD(fname_mem, enable_transactions=False).deletew('%s OR %s' % (_sql.is_null(shape_length_field), _sql.is_null(shape_area_fld)))  # shouldnt me needed, but results of previous eliminates can generate null shapes
+                _crud.CRUD(fname_mem, enable_transactions=False).deletew(
+                    '%s OR %s' % (_sql.is_null(shape_length_field), _sql.is_null(shape_area_fld)))  # shouldnt me needed, but results of previous eliminates can generate null shapes
                 field_apply_func(fname_mem, [shape_area_fld, shape_length_field], 'thinness', Funcs.ThinnessRatioValues, show_progress=show_progress)
 
                 _arcpy.management.MakeFeatureLayer(fname_mem, 'lyrmem')
@@ -2266,10 +2278,10 @@ class Spatial(_MixinNameSpace):  # noqa
                 # the stuck_factor selects for increasingly smaller slivers, but we will eventually exit according to max_iterations
                 where = _get_where(shape_area_fld, area_thresh, thinness_thresh, where_clause)
                 where_stuck = ''
-                if len(counts) > 1 and counts[-1]/counts[-2] > 0.8 and not stuck:
+                if len(counts) > 1 and counts[-1] / counts[-2] > 0.8 and not stuck:
                     stuck = True
                     if show_progress: print('\nStuck, selecting subset ... Counts: %s; stuck: %s; stuck_factor: %s' % (counts, stuck, stuck_factor))
-                    where_stuck = _get_where(shape_area_fld, area_thresh/stuck_factor, thinness_thresh/stuck_factor, where_clause)
+                    where_stuck = _get_where(shape_area_fld, area_thresh / stuck_factor, thinness_thresh / stuck_factor, where_clause)
                     stuck_factor += 1
                 else:
                     stuck = False
@@ -2283,7 +2295,7 @@ class Spatial(_MixinNameSpace):  # noqa
                         if show_progress: print('\nStuck ... using random strategy to unstick ...')
                         stuck_factor = 2
                         oids = [row[0] for row in _arcpy.da.SearchCursor('lyrmem', [fname_mem_oid])]
-                        oidsrnd = _baselib.list_random_pick(oids, max(int(counts[-1]/2), 0))
+                        oidsrnd = _baselib.list_random_pick(oids, max(int(counts[-1] / 2), 0))
                         if not oidsrnd:
                             if show_progress: print('\nRandom slivers could not be picked. Failed to unstick. Exiting loop ...')
                             break
@@ -2314,7 +2326,6 @@ class Spatial(_MixinNameSpace):  # noqa
                     if show_progress: print('\nMerged all slivers. No more work to do. Exiting loop.')
                     break
 
-
                 # Export the features to merge, if weve asked for that. But just do it the first time.
                 if export_target_features and len(counts) == 1:
                     export_target_features = _path.normpath(export_target_features)
@@ -2325,7 +2336,6 @@ class Spatial(_MixinNameSpace):  # noqa
 
                     _struct.ExportFeatures('lyrmem', export_target_features)
                     if not dest: return 0
-
 
                 if show_progress: print('\nExecuting Eliminate tool ... Counts: %s; stuck: %s; stuck_factor: %s' % (counts, stuck, stuck_factor))
                 eliminated_mem = 'in_memory/%s' % _stringslib.get_random_string(from_=_string.ascii_lowercase)
@@ -2415,10 +2425,16 @@ rows_delete = del_rows  # noqa. For conveniance, should of been called this in f
 
 if __name__ == '__main__':
     # quick debugging
-    Spatial.slivers_merge('C:/GIS/nfs_land_analysis_local.gdb/permissionable_by_land_sq', 'C:/GIS/nfs_land_analysis_local.gdb/permissionable_by_land_sq_sliverless',
-                          area_thresh=50, thinness_thresh=0.1, thresh_operator=' OR ',
-                          export_target_features=None,  # 'C:/GIS/nfs_land_analysis_local.gdb/slivers_temp'
-                          max_iterations=100,
-                          keep_thinness_in_dest=True,
-                          overwrite=True, show_progress=True)
+    # Spatial.slivers_merge('C:/GIS/nfs_land_analysis_local.gdb/permissionable_by_land_sq', 'C:/GIS/nfs_land_analysis_local.gdb/permissionable_by_land_sq_sliverless',
+    #                     area_thresh=50, thinness_thresh=0.1, thresh_operator=' OR ',
+    #                    export_target_features=None,  # 'C:/GIS/nfs_land_analysis_local.gdb/slivers_temp'
+    #                   max_iterations=100,
+    #                  keep_thinness_in_dest=True,
+    #                 overwrite=True, show_progress=True)
+
+
+    # fname_tmp = r'C:\GIS\nfs_land_analysis_local.gdb\permissionable_by_land_sq'
+    # has_overlaps, fids_overlapping = Spatial.features_overlapping(fname_tmp)
+    # Spatial.unionise_self_overlapping_clean(fname_tmp, r'C:\GIS\nfs_land_analysis_local.gdb\permissionable_by_land_sq_cleaned', multi_part='SINGLE_PART')
+
     pass
