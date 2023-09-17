@@ -8,6 +8,7 @@ import sys as _sys
 import math as _math
 from pathlib import Path as _Path
 import functools as _functools
+import string as _string
 
 import fuckit as _fuckit
 import arcpy as _arcpy
@@ -15,6 +16,7 @@ import arcpy as _arcpy
 import arcproapi.errors as _errors
 
 import funclite.iolib as _iolib
+import funclite.stringslib as _stringslib
 
 # Keys is the field type string as a property of arcpy ListFields Field instance
 # Values are the type strings used by arcpy AddField
@@ -88,7 +90,7 @@ class EnumGeometryType(_Enum):
 
         Get text to use in CreateFeatureClass
 
-        >>> arcpy.mananagement.CreateFeatureClass('C:/my.gdb', 'countries', EnumGeometryType.POLYGON.name)
+        >>> _arcpy.mananagement.CreateFeatureClass('C:/my.gdb', 'countries', EnumGeometryType.POLYGON.name)  # noqa
 
     """
     POINT = 1
@@ -176,7 +178,7 @@ def memory_lyr_get(workspace='in_memory') -> str:
         >>> memory_lyr_get()
         'in_memory/arehrwfs
     """
-    return '%s/%s' % (workspace, _stringslib.rndstr(from_=string.ascii_lowercase))
+    return '%s/%s' % (workspace, _stringslib.rndstr(from_= _string.ascii_lowercase))
 
 
 def tstamp(p="", tf="%Y%m%d%H%M%S", d="_", m=False, s=()):
@@ -293,7 +295,7 @@ def find(pattern, path, sub_dirs=True):
 
 
 def fix_args(arg, arg_type=list):
-    """Fixe arguments from a script tool.
+    """Fix arguments from a script tool.
 
     For example, when using a script tool with a multivalue parameter,
     it comes in as "val_a;val_b;val_c".  This function can automatically

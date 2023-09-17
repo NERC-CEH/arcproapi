@@ -1917,11 +1917,13 @@ class Spatial(_MixinNameSpace):  # noqa
         out = False
         try:
             lyr_union = r"in_memory/%s" % _stringslib.rndstr(from_=_string.ascii_lowercase)
+            if show_progress: print('\nRunning the union ...')
             _arcpy.analysis.Union([source], lyr_union, "ALL", None, "GAPS")  # noqa
             oidfld = _struct.field_oid(lyr_union)
             df_union = table_as_pandas2(lyr_union)
 
             # IN_FID is the df_union objectid
+            if show_progress: print('\nIdentifying identical polygons ...')
             Res = ResultAsPandas(_arcpy.management.FindIdentical, lyr_union, as_int=['OBJECTID', 'IN_FID', 'FEAT_SEQ'], output_record_option='ONLY_DUPLICATES', fields=['Shape'])
 
             last_feat_seq = None
@@ -1947,7 +1949,7 @@ class Spatial(_MixinNameSpace):  # noqa
             if dup_dict and row:  # noqa
                 Spatial._del_dups(lyr_union, df_union, dup_dict, row, rank_func, reverse, rank_cols, oidfld)  # noqa
                 out = True
-                PP.increment()
+
 
             # sanity check - did we get rid of all dups
             # RChk = arcdata.ResultAsPandas(arcpy.management.FindIdentical, lyr_union, as_int=['OBJECTID', 'IN_FID', 'FEAT_SEQ'], output_record_option='ONLY_DUPLICATES', fields=['Shape'])
@@ -1955,12 +1957,14 @@ class Spatial(_MixinNameSpace):  # noqa
             _arcpy.env.workspace = _common.workspace_from_fname(dest)
             _arcpy.env.overwriteOutput = overwrite
             if dissolve_cols:
+                if show_progress: print('\nRunning the dissolve ...')
                 lyr_diss = r'in_memory/%s' % _stringslib.rndstr(from_=_string.ascii_lowercase)
                 if show_progress: print('\nDissolving to in-memory layer ...')
                 _arcpy.management.Dissolve(lyr_union, lyr_diss, dissolve_cols, multi_part=multi_part)
+                if show_progress: print('\nExporting features to %s ...' % dest)
                 _struct.ExportFeatures(lyr_diss, dest)
             else:
-                if show_progress: print('\nWriting to %s ...' % dest)
+                if show_progress: print('\nExporting features to %s ...' % dest)
                 _struct.ExportFeatures(lyr_union, dest)
         finally:
             with _fuckit:
@@ -1972,7 +1976,7 @@ class Spatial(_MixinNameSpace):  # noqa
     def _del_dups(lyr_union, df_union, dup_dict: dict, row, rank_func, reverse, rank_cols, oidfld) -> (int, dict):
         del_ids = []
         for i, itm in enumerate(dict(sorted(dup_dict.items(), key=rank_func, reverse=reverse)).items()):
-            if i != 0: del_ids += [itm[0]]  # only add to delids after 1st sorted dict item
+            if i != 0: del_ids += [itm[0]]  # only add to delids after 1st sorted dict item. i.e. we are retaining the first ordered record and deleting the rest
 
         if del_ids:
             n = 1
@@ -2433,8 +2437,7 @@ if __name__ == '__main__':
     #                 overwrite=True, show_progress=True)
 
 
-    # fname_tmp = r'C:\GIS\nfs_land_analysis_local.gdb\permissionable_by_land_sq'
+    fname_tmp = r'C:\GIS\nfs_land_analysis_local.gdb\permissionable_by_land_union'
     # has_overlaps, fids_overlapping = Spatial.features_overlapping(fname_tmp)
-    # Spatial.unionise_self_overlapping_clean(fname_tmp, r'C:\GIS\nfs_land_analysis_local.gdb\permissionable_by_land_sq_cleaned', multi_part='SINGLE_PART')
-
+    Spatial.unionise_self_overlapping_clean(fname_tmp, r'C:\GIS\nfs_land_analysis_local.gdb\permissionable_by_land_union_cleaned', multi_part='SINGLE_PART', show_progress=True)
     pass
