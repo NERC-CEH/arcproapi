@@ -37,8 +37,134 @@ import arcproapi.environ as _environ
 import arcproapi.errors as _errors
 import arcproapi.decs as _decs
 
+_str2lst = lambda v: list(v) if isinstance(v, str) else v
+_tolst = lambda v: v if isinstance(v, list) else list(v)
 
 
+
+class FieldMap:
+    """ Instantiable class that represents field remaps
+
+    Case insensitive.
+
+    Examples:
+
+        Correct name of a field is "country_name", but "country", "countryname" and "COUNTRYNAME" are used
+        >>> CountryMap = FieldMap('country_name', ['countryname', 'country'])
+    """
+    def __init__(self, field_name: str, field_alternates: list):
+        self.field_name = field_name
+        self.field_alternatives = _str2lst(field_alternates)
+
+
+class FieldsRemapper:
+    """
+    Pass instances of FieldMap and feature classes/tables and remap the names of those fields.
+
+    The field alternatives are ignored, i.e. no error is raised if no alternative are found
+    in any given fc/table. This is necessary to make the function flexiable.
+
+    But, a precheck is done to check that the fields to rename to do not exist.
+
+    Raises:
+        errors.FeatureClassOrTableNotFound: If any fnames did not exist
+        errors.StructFieldExists: If any fields to rename to exist in FieldMaps (i.e. attribute FieldMap.field_name)
+    """
+    def __init__(self, fnames: (str, list[str]), FieldMaps: (FieldMap, list[FieldMap])):
+        self.fnames = list(map(_path.normpath, _str2lst(fnames)))
+        self.FieldMaps = _tolst(FieldMaps)
+        ok, d = self._validate_fnames()
+        if not ok:
+            raise _errors.FeatureClassOrTableNotFound('FieldsRemapper had invalid fnames %s' % d['bad'])
+
+        bad = self._remap(check_only=True)[1]
+        if bad:
+            raise _errors.StructFieldExists('Rename to fields found.:\n%s\n\nCorrect your FieldMaps' % bad)
+
+
+    def remap(self):
+        """
+        Remap i.e. rename fields in feature classes/tables self.fnames according to the list of FieldMaps
+
+        Returns:
+            list of renamed fields for each layer and list of failed renames - IN THAT ORDER
+            Renames are keyed by the fc/table, with values as nested list of the "[old name, new name]"
+
+            {'lyr1': [['oldname', 'newname'], ...], 'lyr2': [['oldname', 'newname'], ...], ...},
+            {'lyr1': [['fieldold', fieldnew'], ...], ...}
+
+        Examples:
+
+            Successful rename
+
+            >>> fnames = ['C:/my.gdb/country_asia', 'C:/my.gdb/country_europe']
+            >>> Mappers = [FieldMap('population', ['popn', 'pop']), FieldMap('country', ['cnt', 'name'])]
+            >>> FieldsRemapper(fnames, Mappers).remap()
+            {'C:/my.gdb/country_asia': [['popn', 'population']], 'C:/my.gdb/country_europe': [['pop', 'population'], ['name', 'country']]}
+        """
+        return self._remap(check_only=False)
+
+
+    def _remap(self, check_only: bool):
+        """
+        Remap i.e. rename fields in feature classes/tables self.fnames according to the list of FieldMaps
+
+        Returns:
+            list of good and bad field renames and failed renames - IN THAT ORDER
+            Good renames are keyed by the fc/table, with values as nested list of the "[old name, new name]"
+            A bad field name only occurs where the new name already exists in a given fc/table
+
+            dict, dict:
+                {'lyr1': [['oldname', 'newname'], ...], 'lyr2': [['oldname', 'newname'], ...], ...},
+                {'lyr1': ['field1', 'field2']},
+                {'lyr1': [['fieldold', fieldnew'], ...], ...}
+        """
+        bad = _baselib.DictList()
+        # A list of fields that already exist in lyr
+        # {'lyr1': ['field1', 'field2']}
+
+        good = _baselib.DictList()
+        # Renamed fields in lyrs
+        # {'lyr1': [['oldname', 'newname'], ...], 'lyr2': [['oldname', 'newname'], ...], ...}
+
+        failed = _baselib.DictList()
+
+        for fname in self.fnames:
+            FM: FieldMap
+            fields = list(map(str.lower, fc_fields_get(fname)))
+
+            # The order in this loop is important
+            # It is only an error if the proper name already exists in a given layer
+            # AND we were going to do the rename because an alternative name already exists
+            for FM in self.FieldMaps:
+                for altfld in FM.field_alternatives:
+                    if field_exists(fname, altfld):
+                        if FM.field_name.lower() in fields:
+                            bad[fname] = FM.field_name
+                        else:
+                            good[fname] = [altfld, FM.field_name]
+
+        # get out of here, we havent asked for a rename
+        if check_only:
+            return good, bad, None
+
+        # do the rename
+        for fname, maps in good.items():
+            for old, new in maps:
+                try:
+                    AlterField(fname, old, new, clear_field_alias=True)
+                except:
+                    failed[fname] = [old, new]
+
+        return good, bad, failed
+
+
+    def _validate_fnames(self):
+        """
+        Validate fnames and
+        Returns:
+            bool, dict: {'good':[..., ...], 'bad': ['...', .,,]}
+        """
 
 def memory_lyr_get(workspace='in_memory') -> str:
     """ Just get an 8 char string to use as name for temp layer.

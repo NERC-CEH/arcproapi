@@ -19,6 +19,15 @@ class ReadOnlyError(Exception):
 class FieldExists(Exception):
     """The field already exists"""
 
+class FeatureClassOrTableNotFound(Exception):
+    """ The fc or table was not found
+    """
+
+class LayerNotFound(Exception):
+    """ The layer was not found - this is the ESRI layer entity and not the generic term
+    """
+
+
 # ORM Errors BEGIN
 # ----------------
 class ORMLogActionWasInvalid(Exception):
