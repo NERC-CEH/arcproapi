@@ -80,7 +80,7 @@ class FieldsRemapper:
         bad = self._remap(check_only=True)[1]
         if bad:
             raise _errors.StructFieldExists('Rename to fields found.:\n%s\n\nCorrect your FieldMaps' % bad)
-
+# TODO: Test FieldsRemapper
 
     def remap(self):
         """

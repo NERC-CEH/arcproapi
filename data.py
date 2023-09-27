@@ -625,6 +625,9 @@ def table_as_pandas(fname, cols=(), where='', null_value=_np.NaN, **kwargs):
 
 def pandas_to_table(df: _pd.DataFrame, fname: str, overwrite=False, max_str_len=0, fix_ascii_errors=False):
     """
+    Import a dataframe into a geodatabase.
+
+    *** This often fails due to codepage errors and similiar. Use pandas_to_table2 which gets the job done much more reliably ***
 
     Args:
         max_str_len (int): pandas dataframes usually stores strings as objects.
@@ -649,6 +652,7 @@ def pandas_to_table(df: _pd.DataFrame, fname: str, overwrite=False, max_str_len=
         So advise manually checking column names created in the final export.
 
     Examples:
+
         >>> d = _pd.DataFrame({'A':['a','aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa']})  # noqa
         >>> pandas_to_table(df, 'C:/my.gdb/test')  # noqa
     """
