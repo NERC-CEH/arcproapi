@@ -26,6 +26,7 @@ import arcpy as _arcpy
 import funclite.iolib as _iolib
 import funclite.baselib as _baselib
 import funclite.stringslib as _stringslib
+import docs.excel as _excel
 
 import arcproapi.common as _common
 #  Functions, imported for convieniance
@@ -41,7 +42,6 @@ _str2lst = lambda v: list(v) if isinstance(v, str) else v
 _tolst = lambda v: v if isinstance(v, list) else list(v)
 
 
-
 class FieldMap:
     """ Instantiable class that represents field remaps
 
@@ -52,6 +52,7 @@ class FieldMap:
         Correct name of a field is "country_name", but "country", "countryname" and "COUNTRYNAME" are used
         >>> CountryMap = FieldMap('country_name', ['countryname', 'country'])
     """
+
     def __init__(self, field_name: str, field_alternates: list):
         self.field_name = field_name
         self.field_alternatives = _str2lst(field_alternates)
@@ -70,6 +71,7 @@ class FieldsRemapper:
         errors.FeatureClassOrTableNotFound: If any fnames did not exist
         errors.StructFieldExists: If any fields to rename to exist in FieldMaps (i.e. attribute FieldMap.field_name)
     """
+
     def __init__(self, fnames: (str, list[str]), FieldMaps: (FieldMap, list[FieldMap])):
         self.fnames = list(map(_path.normpath, _str2lst(fnames)))
         self.FieldMaps = _tolst(FieldMaps)
@@ -80,7 +82,8 @@ class FieldsRemapper:
         bad = self._remap(check_only=True)[1]
         if bad:
             raise _errors.StructFieldExists('Rename to fields found.:\n%s\n\nCorrect your FieldMaps' % bad)
-# TODO: Test FieldsRemapper
+
+    # TODO: Test FieldsRemapper
 
     def remap(self):
         """
@@ -103,7 +106,6 @@ class FieldsRemapper:
             {'C:/my.gdb/country_asia': [['popn', 'population']], 'C:/my.gdb/country_europe': [['pop', 'population'], ['name', 'country']]}
         """
         return self._remap(check_only=False)
-
 
     def _remap(self, check_only: bool):
         """
@@ -158,13 +160,13 @@ class FieldsRemapper:
 
         return good, bad, failed
 
-
     def _validate_fnames(self):
         """
         Validate fnames and
         Returns:
             bool, dict: {'good':[..., ...], 'bad': ['...', .,,]}
         """
+
 
 def memory_lyr_get(workspace='in_memory') -> str:
     """ Just get an 8 char string to use as name for temp layer.
@@ -508,6 +510,31 @@ def fcs_delete(fnames, err_on_not_exists=False):
                 raise e
 
 
+def domain_from_excel(geodb: str, domain_name: str, xl_workbook: str, xl_sheet: str = '', xl_table: str = '', xl_range: str = ''):
+    """
+    Create a domain in a geodatabase from an excel range.
+    The excel range can be a table, or a standard A1B1 type reference.
+
+    Args:
+        geodb: The geodatabase to add the domain to
+        domain_name: The name of the domain to create
+        xl_workbook: The workbook (.xlsx file)
+        xl_sheet: The worksheet, pass to improve efficiency when looking for a table or when defining with A1:B1 xl_range (range)
+        xl_table: Table (ListObject) name
+        xl_range: "A1:B1" type range definition
+
+    Raises:
+        ValueError: If xl_table and xl_range both evaluate to True
+    """
+    if xl_table and xl_range:
+        raise ValueError('Passed an excel range and table. Use one or the other')
+    # TODO: Debug/test domain_from_excel
+    with _excel.ExcelAsDataFrame(xl_workbook, worksheet=xl_sheet, table=xl_table, range_=xl_range) as Excel:
+        df = Excel.df_lower.copy()
+    vals = _baselib.list_flatten(list(df.to_dict(orient='list').values()))
+    domain_create2(geodb, domain_name, codes=vals)
+
+
 def domain_create(geodb: str, domain_name: str, codes: (list, tuple), descriptions: (list, tuple) = (), update_option='REPLACE'):
     """
     Import as a domain into a geodatabase
@@ -540,6 +567,71 @@ def domain_create(geodb: str, domain_name: str, codes: (list, tuple), descriptio
     _arcpy.da.NumPyArrayToTable(array, table)
     # NB: You have to close and reopon any active client sessions before this appears as at ArcGISPro 3.0.1. Refreshing the geodb doesnt even work.
     _arcpy.management.TableToDomain(table, 'code', 'value', geodb, domain_name, domain_name, update_option=update_option)  # noqa
+
+
+def domain_create2(geodb: str, domain_name: str, codes: list, descs: list = None, **kwargs) -> None:
+    """
+    Create the enum as a coded domain in the geodatabase gdb
+    Range domains not yet supported.
+
+    This is an enhancemoent over domain_create as it autodetects the field type. domain_create add as 'TEXT' field type.
+
+    Args:
+        geodb (str): The geodatabase
+        domain_name: the domain name
+        codes: list of codes
+        descs: list of descriptions, just sets descriptions to the corresponding code "if not descs"
+        kwargs:
+            Passed to arcpy.management.CreateDomain.
+            See https://pro.arcgis.com/en/pro-app/latest/tool-reference/data-management/create-domain.htm#
+
+    Raises:
+        ValueError: If descs and len(codes) != len(descs). i.e. we pass descriptions, but each code doesnt have a description, or vica-versa
+
+    Returns:
+        None
+
+    Notes:
+        Will undoubtedly error if the domain is assigned to a field.
+        Integer types have field type arcpy LONG, float types are set to arcpy FLOAT.
+        Code will need revising if these types are of insufficient size.
+        See https://pro.arcgis.com/en/pro-app/latest/tool-reference/data-management/create-domain.htm
+    """
+
+    if not descs:
+        descs = codes
+
+    if len(descs) != len(codes):
+        raise ValueError('If "descs" is passed, its length must be the same as "codes"')
+
+    geodb = _path.normpath(geodb)
+    isint = all([_baselib.is_int(x) for x in codes])
+    isfloat = all([_baselib.is_float(x) for x in codes])
+    isdate = all([_baselib.is_date(x) for x in codes])
+
+    if isint:
+        vals = map(int, codes)
+        ft = 'LONG'
+    elif isfloat:
+        vals = map(float, codes)
+        ft = 'FLOAT'
+    elif isdate:
+        vals = map(_dateutil.parser.parse, codes)  # noqa
+        ft = 'DATE'
+    else:
+        vals = map(str, codes)
+        ft = 'TEXT'
+
+    if not vals: return
+
+    with _fuckit:
+        _arcpy.management.DeleteDomain(geodb, domain_name)
+    # domain description is at the domain level and NOT the values for the domain - they are set in the for v in vals loop below
+    _arcpy.management.CreateDomain(geodb, domain_name=domain_name,
+                                   domain_description=kwargs['domain_description'] if kwargs.get('domain_description', None) else domain_name,
+                                   field_type=ft, domain_type='CODED')
+    for i, v in enumerate(vals):
+        _arcpy.management.AddCodedValueToDomain(geodb, domain_name, v, descs[i])
 
 
 @_decs.environ_persist
@@ -1729,6 +1821,7 @@ def fields_rename(fname: str, from_: list, to: list, aliases: (list, str, None) 
 
     return success, failure, errors
 
+
 def fields_name_replace(fname: str, find: str, replace_with: str) -> list[str]:
     """
     Do a case insensitive search/replace on all fields in fname.
@@ -1753,6 +1846,7 @@ def fields_name_replace(fname: str, find: str, replace_with: str) -> list[str]:
         AlterField(fname, s, rename_to, clear_field_alias=True)
         out += [rename_to]
     return out
+
 
 def field_get_property(fld: _arcpy.Field, property_: str) -> any:  # noqa
     """
