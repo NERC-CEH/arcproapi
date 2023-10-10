@@ -1052,10 +1052,11 @@ class ORM(_crud.CRUD):
         Yields:
             crud.ORM: Instances of crud.ORM
         """
-        # TODO Implement read_multi, yields multiple objects
+        # TODO Implement yield_multi, yields multiple objects
         # Both where and kwargs will filter yielded instances
         # raise NotImplementedError('read_multi is not implemented')
         pass
+
 
     @staticmethod
     def log_name_get(fname: str) -> str:

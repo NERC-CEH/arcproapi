@@ -29,6 +29,7 @@ import funclite.iolib as _iolib
 import funclite.baselib as _baselib
 import funclite.stringslib as _stringslib
 from funclite.mixins import MixinNameSpace as _MixinNameSpace
+import funclite.pandaslib as _pandaslib  # noqa
 from funclite.pandaslib import df_to_dict_as_records_flatten1 as df_to_dict  # noqa Used to convert a standard dataframe into one accepted by field_update_from_dict and field_update_from_dict_addnew
 import funclite.pandaslib as pandaslib  # noqa   no _ as want to expose it to pass agg funcs to ResultsAsPandas instances
 
@@ -597,6 +598,57 @@ def field_get_dup_values(fname: str, col: str, value_list_only: bool = False, f:
     return res
 
 
+def key_info(parent: str, parent_field: str, child: str, child_field: str, as_oids: bool = False) -> dict:
+    """
+    Get a dictionary listing the "primary key" values not in child foreign key values.
+    This is a quick validation tool. A set of more advanced validation tools is planned
+    in a dedicated module, integrating arcproapi connection objects with the
+    great expectations package.
+
+    TODO: Support compound keys
+
+    Args:
+        parent (str): Parent entity
+        parent_field (str): The key field in the parent
+        child (str): Child entity
+        child_field (str): key field in the child
+        as_oids (bool): Get unique oids instead of distinct values
+
+    Returns:
+        dict: dict{'parent_only': [..], 'both': [..], 'child_only': [..]
+
+    Notes:
+        The OIDs can be used for futher processing ...
+
+    Examples:
+        >>> key_info('C:/my.gdb/coutries', 'cname', 'C:/my.gdb/towns', 'cname')
+        {'parent_only': ['NoTownCountry',...], 'both': ['England',...,], 'child_only': ['NoCountryTown',...]}
+
+        Now with oids
+        >>> key_info('C:/my.gdb/coutries', 'cname', 'C:/my.gdb/towns', 'cname', as_oids=True)
+        {'parent_only': [232, 343], 'both': [1,2,...], 'child_only': [56,77,...]}
+
+    Notes:
+        This is also exposed in arcapipro.info
+    """
+
+    parent_values = field_values(parent, parent_field, distinct=True)
+    child_values = field_values(child, child_field, distinct=True)
+
+    if not as_oids:
+        d = _baselib.list_sym_diff(parent_values, child_values, rename_keys=('parent_only', 'both', 'child_only'))
+        return d
+
+    where = _sql.query_where_in(parent_field, parent_values)
+    parent_oids = field_values(parent, 'OID@', where=where)
+
+    where = _sql.query_where_in(child_field, child_values)
+    child_oids = field_values(child, 'OID@', where=where)
+
+    d = _baselib.list_sym_diff(parent_oids, child_oids, rename_keys=('parent_only', 'both', 'child_only'))
+    return d
+
+
 def table_as_pandas(fname, cols=(), where='', null_value=_np.NaN, **kwargs):
     """(str, iter:str, iter:str, str, dict) -> pandas.dataframe
     Get a feature layer or table as a pandas dataframe
@@ -802,7 +854,7 @@ def table_as_pandas2(fname: str, cols: (str, list) = None, where: str = None, ex
 def shape_area_add(fname: str, fld, overwrite: bool = False, show_progress: bool = False) -> int:
     """
     Add a shape area field "fld".
-    Primarily used for in-memory layers which frequently do not carry over a shape_area or shape_length field and do not recalculate these fields after changes.
+    Primarily used for in-memory layers which frequently do not carry over a shape_area or shape_length fields and do not recalculate these fields after changes.
 
     Optionally delete and recalculate if overwrite is True.
 
@@ -1569,57 +1621,6 @@ def features_copy_to_new(source: str, dest: str, where_clause: (None, str) = Non
     _arcpy.analysis.Select(source, dest, sql, **kwargs)  # noqa
 
 
-def key_info(parent: str, parent_field: str, child: str, child_field: str, as_oids: bool = False) -> dict:
-    """
-    Get a dictionary listing the "primary key" values not in child foreign key values.
-    This is a quick validation tool. A set of more advanced validation tools is planned
-    in a dedicated module, integrating arcproapi connection objects with the
-    great expectations package.
-
-    TODO: Support compound keys
-
-    Args:
-        parent (str): Parent entity
-        parent_field (str): The key field in the parent
-        child (str): Child entity
-        child_field (str): key field in the child
-        as_oids (bool): Get unique oids instead of distinct values
-
-    Returns:
-        dict: dict{'parent_only': [..], 'both': [..], 'child_only': [..]
-
-    Notes:
-        The OIDs can be used for futher processing ...
-
-    Examples:
-        >>> key_info('C:/my.gdb/coutries', 'cname', 'C:/my.gdb/towns', 'cname')
-        {'parent_only': ['NoTownCountry',...], 'both': ['England',...,], 'child_only': ['NoCountryTown',...]}
-
-        Now with oids
-        >>> key_info('C:/my.gdb/coutries', 'cname', 'C:/my.gdb/towns', 'cname', as_oids=True)
-        {'parent_only': [232, 343], 'both': [1,2,...], 'child_only': [56,77,...]}
-
-    Notes:
-        This is also exposed in arcapipro.info
-    """
-
-    parent_values = field_values(parent, parent_field, distinct=True)
-    child_values = field_values(child, child_field, distinct=True)
-
-    if not as_oids:
-        d = _baselib.list_sym_diff(parent_values, child_values, rename_keys=('parent_only', 'both', 'child_only'))
-        return d
-
-    where = _sql.query_where_in(parent_field, parent_values)
-    parent_oids = field_values(parent, 'OID@', where=where)
-
-    where = _sql.query_where_in(child_field, child_values)
-    child_oids = field_values(child, 'OID@', where=where)
-
-    d = _baselib.list_sym_diff(parent_oids, child_oids, rename_keys=('parent_only', 'both', 'child_only'))
-    return d
-
-
 def features_delete_orphaned(parent: str, parent_field: str, child: str, child_field: str) -> None:
     """
     Delete orphaned features/table records
@@ -1953,7 +1954,6 @@ class Spatial(_MixinNameSpace):  # noqa
             if dup_dict and row:  # noqa
                 Spatial._del_dups(lyr_union, df_union, dup_dict, row, rank_func, reverse, rank_cols, oidfld)  # noqa
                 out = True
-
 
             # sanity check - did we get rid of all dups
             # RChk = arcdata.ResultAsPandas(arcpy.management.FindIdentical, lyr_union, as_int=['OBJECTID', 'IN_FID', 'FEAT_SEQ'], output_record_option='ONLY_DUPLICATES', fields=['Shape'])
@@ -2368,6 +2368,90 @@ class Spatial(_MixinNameSpace):  # noqa
         return sum(_more_itertools.difference(counts, func=lambda x, y: (x - y) * -1, initial=1))
 
 
+class Validation:
+    """ Instantiable class which exposes multiple data validation checks.
+    Some validation checks are paired with another layer. If no other layer is provided then
+    some validation checks (e.g. field is uniqe) can still be called.
+
+    Loads tables and feature classes into dataframes, optionally excluding shape files for efficiency
+
+
+    Raises:
+        errors.FeatureClassOrTableNotFound: If parent or child table or feature class does not exist
+    """
+
+    def __init__(self, parent: str, child: (str, None) = None, no_shapes: bool = False):
+        self._parent = _path.normpath(parent)
+        self._child = _path.normpath(child) if child else None
+        self._gdb_parent = _common.gdb_from_fname(self._parent)
+
+        if not _struct.Exists(self._parent):
+            raise _errors.FeatureClassOrTableNotFound('Parent feature class or table "%s" not found.' % self._parent)
+
+        if self._child and not _struct.Exists(self._child):
+            raise _errors.FeatureClassOrTableNotFound('Child feature class or table "%s" not found.' % self._child)
+
+        self.df_parent = table_as_pandas2(self._parent, exclude_cols=('Shape',) if no_shapes else None, cols_lower=True)
+
+        self.df_child = None
+        if child:
+            self._child = _path.normpath(child)
+            self.df_child = table_as_pandas2(self._child, exclude_cols=('Shape',) if no_shapes else None, cols_lower=True)
+
+    def key_check(self, parent_field: str, child: str, child_field: str, as_oids: bool = False) -> tuple[bool, dict]:
+        """
+        Get a dictionary listing the "primary key" values not in child foreign key values.
+        This is a quick validation tool. A set of more advanced validation tools is planned
+        in a dedicated module, integrating arcproapi connection objects with the
+        great expectations package.
+
+        TODO: Support compound keys
+
+        Args:
+            parent_field (str): The key field in the self.parent
+            child (str): Child entity
+            child_field (str): key field in the child
+            as_oids (bool): Get unique oids instead of distinct values
+
+        Returns:
+            tuple(bool, dict):
+                Returns True or False if the relationship is good
+                Also returns the dictionary with the status of values.
+                bool, dict{'self.parent_only': [..], 'both': [..], 'child_only': [..]
+
+
+        Notes:
+            The OIDs can be used for futher processing ...
+
+        Examples:
+            >>> key_info('C:/my.gdb/coutries', 'cname', 'C:/my.gdb/towns', 'cname')
+            {'self.parent_only': ['NoTownCountry',...], 'both': ['England',...,], 'child_only': ['NoCountryTown',...]}
+
+            Now with oids
+            >>> key_info('C:/my.gdb/coutries', 'cname', 'C:/my.gdb/towns', 'cname', as_oids=True)
+            {'self.parent_only': [232, 343], 'both': [1,2,...], 'child_only': [56,77,...]}
+
+        Notes:
+            This is also exposed in arcapipro.info
+        """
+
+        parent_values = field_values(self._parent, parent_field, distinct=True)
+        child_values = field_values(child, child_field, distinct=True)
+
+        if not as_oids:
+            d = _baselib.list_sym_diff(parent_values, child_values, rename_keys=('self.parent_only', 'both', 'child_only'))
+            return d['child_only'] != [], d
+
+        where = _sql.query_where_in(parent_field, parent_values)
+        parent_oids = field_values(self._parent, 'OID@', where=where)
+
+        where = _sql.query_where_in(child_field, child_values)
+        child_oids = field_values(child, 'OID@', where=where)
+
+        d = _baselib.list_sym_diff(parent_oids, child_oids, rename_keys=('parent_only', 'both', 'child_only'))
+        return d['child_only'] != [],  d
+
+
 def vertext_add(fname, vertex_index: (int, str), x_field: str, y_field: str = 'y', field_type='DOUBLE', where_clause: (str, None) = '*', fail_on_exists: bool = True,
                 show_progress: bool = False) -> int:
     """
@@ -2439,7 +2523,6 @@ if __name__ == '__main__':
     #                   max_iterations=100,
     #                  keep_thinness_in_dest=True,
     #                 overwrite=True, show_progress=True)
-
 
     fname_tmp = r'C:\GIS\nfs_land_analysis_local.gdb\permissionable_by_land_union'
     # has_overlaps, fids_overlapping = Spatial.features_overlapping(fname_tmp)
