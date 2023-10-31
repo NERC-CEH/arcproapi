@@ -14,7 +14,7 @@ from arcpy import Exists  # noqa
 # See https://pro.arcgis.com/en/pro-app/latest/tool-reference/data-management/create-domain.htm
 from arcpy.management import CreateDomain, AlterDomain, AssignDomainToField, AddCodedValueToDomain, SortCodedValueDomain  # noqa
 from arcpy.management import CreateFeatureclass, CreateTable, AssignDefaultToField  # noqa
-from arcpy.da import Describe  # noqa this is the dict version of Describe
+from arcpy.da import Describe  # noqa this is the dict version of Describe, much easier to work with in python
 from arcpy.conversion import ExcelToTable, ExportTable, ExportFeatures, TableToExcel, TableToGeodatabase, TableToDBASE, TableToSAS  # noqa
 
 import numpy as _np

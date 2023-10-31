@@ -19,6 +19,9 @@ class ReadOnlyError(Exception):
 class FieldExists(Exception):
     """The field already exists"""
 
+class FieldNotFound(Exception):
+    """ Field not found"""
+
 class FeatureClassOrTableNotFound(Exception):
     """ The fc or table was not found
     """

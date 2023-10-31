@@ -52,6 +52,7 @@ from arcproapi.export import excel_sheets_to_gdb as excel_import_sheets, csv_to_
 # TODO: All functions that write/delete/update spatial layers need to support transactions using the Editor object - otherwise an error is raised when layers are involved in a topology (and other similiar conditions)
 # See https://pro.arcgis.com/en/pro-app/latest/arcpy/data-access/editor.htm and https://pro.arcgis.com/en/pro-app/latest/tool-reference/tool-errors-and-warnings/160001-170000/tool-errors-and-warnings-160226-160250-160250.htm
 
+_sort_list_set = lambda lst: sorted(list(set(lst)))
 
 class Funcs(_MixinNameSpace, metaclass=_ABCMeta):
     """
@@ -482,7 +483,7 @@ def field_values(fname: str, col: (str, list), where: (str, None) = None, order_
 
     Args:
         fname (str): input table or table view
-        col (str, list): column name(s) as string, a csv or colon seperated string, or a list
+        col (str, list): column name(s) as string, a csv or semi-colon seperated string, or a list
         where (str): where clause
         order_by (str): order by clause like '"OBJECTID" ASC, "Shape_Area" DESC', default is None, which means order by object id if exists
         distinct (bool): unique values only
@@ -493,6 +494,7 @@ def field_values(fname: str, col: (str, list), where: (str, None) = None, order_
 
     Raises:
         RuntimeError: Columns defined in order_by must be in col, otherwise a RuntimeError is raised
+        errors.FieldNotFound: If the field or fields do not exist in fname
 
     Examples:
         >>> field_values('c:\\foo\\bar.shp', col='Shape_Length')
@@ -530,6 +532,11 @@ def field_values(fname: str, col: (str, list), where: (str, None) = None, order_
     if order_by is not None:
         order_by = 'ORDER BY ' + str(order_by)
 
+    # This check was added as we get a wierd error if field doesnt exists in enterprise geodatabase - make warning more explicit
+    bad_fields = _baselib.list_not(list(map(str.lower, cols)), list(map(str.lower, _struct.field_list(fname))))
+    if bad_fields:
+        raise _errors.FieldNotFound('Field(s) "%s" not found in "%s"' % (bad_fields, fname))
+
     # retrieve values with search cursor
     ret = []
     with _arcpy.da.SearchCursor(fname, cols, where_clause=where, sql_clause=(None, order_by)) as sc:
@@ -543,6 +550,48 @@ def field_values(fname: str, col: (str, list), where: (str, None) = None, order_
         ret = list(set(ret))
 
     return ret
+
+
+def field_values_multi_table(fnames:list, fields: (str, list), distinct: bool = True):
+    """
+    Get field values from multiple layers/tables.
+
+    If distinct is used, a sorted distinct flattened list is returned.
+    Otherwise, the values are returned as is from the field_values function.
+
+
+    Args:
+        fnames: list of layers/fnames (is normpathed)
+
+        fields:
+            If fields is a string, then the same field is used for all fnames.
+            Otherwise the list of fields is passed as is based on index. Note that fields may be nested tuples or list. See the underlying function field_values
+
+        distinct: Flattens and returns distinct values across all "cells" read from fnames and fields
+
+    Raises:
+        ValueError: IF the length of "fnames" and "fields" doesnt match, and "fields" was a tuple or list
+
+    Returns:
+        list: Unique list of values
+    """
+
+    paths = list(map(_path.normpath, fnames))
+    if isinstance(str, fields):
+        fields = [fields] * len(fnames)
+
+    if len(fnames) != len(fields):
+        raise ValueError('The length of "fnames" and "fields" lists must match.')
+
+    out = []
+    for i, fname in paths:
+        out.extend(field_values(fname, fields[i], distinct=distinct))
+
+    if distinct:
+        return _sort_list_set(_baselib.list_flatten(out))
+
+    return out
+
 
 
 def field_has_duplicates(fname: str, col: str, f: any = lambda v: v) -> bool:
@@ -2449,7 +2498,7 @@ class Validation:
         child_oids = field_values(child, 'OID@', where=where)
 
         d = _baselib.list_sym_diff(parent_oids, child_oids, rename_keys=('parent_only', 'both', 'child_only'))
-        return d['child_only'] != [],  d
+        return d['child_only'] != [], d
 
 
 def vertext_add(fname, vertex_index: (int, str), x_field: str, y_field: str = 'y', field_type='DOUBLE', where_clause: (str, None) = '*', fail_on_exists: bool = True,
@@ -2515,6 +2564,8 @@ def vertext_add(fname, vertex_index: (int, str), x_field: str, y_field: str = 'y
 
 rows_delete = del_rows  # noqa. For conveniance, should of been called this in first place but don't break existing code
 
+
+
 if __name__ == '__main__':
     # quick debugging
     # Spatial.slivers_merge('C:/GIS/nfs_land_analysis_local.gdb/permissionable_by_land_sq', 'C:/GIS/nfs_land_analysis_local.gdb/permissionable_by_land_sq_sliverless',
@@ -2524,7 +2575,7 @@ if __name__ == '__main__':
     #                  keep_thinness_in_dest=True,
     #                 overwrite=True, show_progress=True)
 
-    fname_tmp = r'C:\GIS\nfs_land_analysis_local.gdb\permissionable_by_land_union'
+    # fname_tmp = r'C:\GIS\nfs_land_analysis_local.gdb\permissionable_by_land_union'
     # has_overlaps, fids_overlapping = Spatial.features_overlapping(fname_tmp)
-    Spatial.unionise_self_overlapping_clean(fname_tmp, r'C:\GIS\nfs_land_analysis_local.gdb\permissionable_by_land_union_cleaned', multi_part='SINGLE_PART', show_progress=True)
+    # Spatial.unionise_self_overlapping_clean(fname_tmp, r'C:\GIS\nfs_land_analysis_local.gdb\permissionable_by_land_union_cleaned', multi_part='SINGLE_PART', show_progress=True)
     pass

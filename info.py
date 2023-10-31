@@ -78,13 +78,15 @@ def domain_usage(db_: str) -> (_pd.DataFrame, None):
     return _pd.DataFrame(out)
 
 
-def gdb_row_counts(gdb: str, match: (str, list) = '*', where: (str, None) = None) -> _pd.DataFrame:  # noqa
+def gdb_row_counts(gdb: str, save_to: (str, None) = None, overwrite_xlsx: bool = False, match: (str, list) = '*', where: (str, None) = None) -> _pd.DataFrame:  # noqa
     """
     Get row counts for all feature classes and tables in a geodatabase.
     Also see gdb_dump_struct.
 
     Args:
         gdb (str): Path to geodatabase
+        save_to (str, None): dump to this excel file if provided. Is normpathed.
+        overwrite_xlsx (bool): Overwrite the file given in save_to
         match (str, list, tuple): match names on this, matches all with the default, '*'
         where (str): throw this where into the data.get_row_count2 query
 
@@ -102,9 +104,9 @@ def gdb_row_counts(gdb: str, match: (str, list) = '*', where: (str, None) = None
     Examples:
         >>> gdb = r'C:\my.gdb'  # noqa
         >>> gdb_row_counts(gdb, match='__ATT')
-        full_name           base_name       type            row_cnt
-        C:/my.gdb/my_ATTACH my_ATTACH       table           3
-        C:/my.gdb/ATTFC     ATTFC           feature class   10
+        full_name           base_name       type                shape_type  row_cnt
+        C:/my.gdb/my_ATTACH my_ATTACH       table               n/a         3
+        C:/my.gdb/ATTFC     ATTFC           feature class       polygon     10
         ...
     """
     if isinstance(match, str):
@@ -121,8 +123,10 @@ def gdb_row_counts(gdb: str, match: (str, list) = '*', where: (str, None) = None
     dic = {'full_name': [s for s in fcs_tbls]}  # noqa
     dic['base_name'] = [_path.basename(s) for s in fcs_tbls]
     dic['type'] = ['feature class'] * len(fcs) + ['table'] * len(tbls)
+    dic['shape_type'] = [_struct.Describe(s)['shapeType'] for s in fcs] + ['n/a'] * len(tbls)  # noqa
     dic['row_cnt'] = [_data.get_row_count2(s, where=where) for s in fcs_tbls]
     df = _pd.DataFrame(data=dic)
+    if save_to: _save_to(df, save_to, overwrite_xlsx)
     return df
 
 
@@ -170,11 +174,7 @@ def gdb_dump_tables_and_fcs(gdb: str, save_to: (str, None) = None,
     for tbl in tbls:
         _add_fld(_iolib.fixp(gdb, tbl), tbl, 'table')
     df = _pd.DataFrame(out)
-    if save_to:
-        save_to = _path.normpath(save_to)
-        if overwrite_xlsx:
-            _iolib.file_delete(save_to)
-        df.to_excel(save_to)
+    if save_to: _save_to(df, save_to, overwrite_xlsx)
     return df
 
 
@@ -183,7 +183,7 @@ def gdb_dump_struct(gdb: str, save_to: (str, None) = None,
                     layer_match: (str, list, None) = None, field_match: (str, list, None) = None,
                     field_type_match: (str, list, None) = None,
                     overwrite_xlsx: bool = False,
-                    show_progress: bool = False) -> _pd.DataFrame:  # noqa
+                    show_progress: bool = True) -> _pd.DataFrame:  # noqa
     """
     Write the struture of a gdb
     May also work with SDE connection, but untested.
@@ -288,13 +288,7 @@ def gdb_dump_struct(gdb: str, save_to: (str, None) = None,
             PP.increment()  # noqa
 
     df = _pd.DataFrame(out)
-    if save_to:
-        save_to = _path.normpath(save_to)
-        if overwrite_xlsx:
-            _iolib.file_delete(save_to)
-        if show_progress:
-            print('Saving to excel file %s' % save_to)
-        df.to_excel(save_to)
+    if save_to: _save_to(df, save_to, overwrite_xlsx)
     return df
 
 
@@ -360,6 +354,33 @@ def sde_fname_struct_as_dict(file_path: str) -> dict:
             sde_dict['count'] = (sde_dict['raster_size'][0] *
                                  sde_dict['raster_size'][1])
     return sde_dict
+
+
+
+
+
+
+# region helper methods
+def _save_to(df: _pd.DataFrame, dest: str, overwrite_xlsx: bool = False, show_progress: bool = True) -> None:
+    """
+    Internal helper method
+    Args:
+        df: the dataframe
+        dest: place to save
+        overwrite_xlsx: allow overwrite
+
+    Returns: None
+    """
+    save_to = _path.normpath(dest)
+    if overwrite_xlsx:
+        _iolib.file_delete(save_to)
+    df.to_excel(save_to)
+    if show_progress:
+        print('Saving to excel file %s' % save_to)
+# endregion
+
+
+
 
 
 if __name__ == '__main__':
