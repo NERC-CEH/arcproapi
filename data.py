@@ -278,7 +278,7 @@ class ResultAsPandas(_mixins.MixinPandasHelper):
         df (_pd.DataFrame): Dataframe of the output layer
         df_lower (_pd.DataFrame): Dataframe of the output layer, all col names forced to lower case
         _fname_output (str): Name of the in-memory layer/table output created by execution of "tool"
-        tool_execution_result (_arcpy.Result): The result object returned from execution of "tool"
+        execution_result (_arcpy.Result): The result object returned from execution of "tool"
         Results: A dictionary of all Results, the main result is keyed as "main", with any additional results keyed with the values in the additional_layer_args member.
 
 
@@ -378,7 +378,10 @@ class ResultAsPandas(_mixins.MixinPandasHelper):
                 kwargs[s] = lyr_tmp
 
         keys = dict(_inspect.signature(tool).parameters).keys()
-        if 'in_dataset' in keys:
+        if tool in [_arcpy.analysis.Near]:  # Near appends fields to in_features, so we have to hack it, there is probably a whole family of tools that follow this call pattern, expand as needed
+            _struct.ExportFeatures(in_features, '%s/%s' % (self.result_memory_layer, _stringslib.rndstr(from_=_string.ascii_lowercase)))
+            self.execution_result = tool(in_dataset=self.result_memory_layer, **kwargs)
+        elif 'in_dataset' in keys:
             self.execution_result = tool(in_dataset=in_features, out_dataset=self.result_memory_layer, **kwargs)
         elif 'in_features' in keys:
             self.execution_result = tool(in_features=in_features, out_feature_class=self.result_memory_layer, **kwargs)
@@ -386,7 +389,7 @@ class ResultAsPandas(_mixins.MixinPandasHelper):
             self.execution_result = tool(*in_features, out_feature_class=self.result_memory_layer, **kwargs)
         else:
             raise _errors.DataUnknownKeywordsForTool(
-                'The tool "%s" had unknown keywords. Currently code only accepts tools which support arguments "in_features", "in_dataset" and the "in_polygons in_sum_features" pairing.\n\nThis will need fixing in code.' % str(
+                'The tool "%s" had unknown keywords. Currently code only accepts tools which support arguments "in_features", "in_dataset" and the "in_polygons in_sum_features" pairing. Along with analysis.Near.\n\nThis will need fixing in code.' % str(
                     tool))
 
         self.df = table_as_pandas2(self.result_memory_layer, cols=columns, where=where, exclude_cols=exclude_cols, as_int=as_int, as_float=as_float)

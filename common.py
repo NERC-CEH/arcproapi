@@ -738,6 +738,54 @@ def is_locked(fname: str) -> (bool, None):
     return not _arcpy.TestSchemaLock(fname)
 
 
+def field_name_clean(s:str):
+    """
+    Cleans a field name to reduce it to a lower case alpha-ASCII name delimited by underscores
+
+    Args:
+        s:
+
+    Raises:
+        RecursionError: If over 100 attempts are made to fix seperator character (i.e. "_") duplicates
+
+    Returns:
+        str: The cleaned name. Returns empty string if "not s" evaluates to True
+
+    Examples:
+
+        Basic
+
+        >>> field_name_clean('_123my-field')
+        'my_field'
+    """
+    if not s: return ''
+    ss = s
+    for ltr in _string.punctuation:
+        ss = ss.replace(ltr, '_')
+    ss = ss.lower()
+    ss = _stringslib.filter_alphanumeric1(ss, strict=True, include=('_',))
+
+    n = 0
+    while True:
+        if not ss: return ''
+        i = len(s)
+        s = s.replace('__', '_')
+        if i == len(s): break
+        n += 1
+        if n > 100:
+            raise RecursionError('Recursion error when fixing input string "%s"' % s)
+
+    def _not_n(char: str):
+        try:
+            xx = int(char)
+            return False
+        except:
+            return True
+
+    ss = ''.join(filter(_not_n, ss))
+    ss = ss.strip('_')
+
+
 def names(fname, filterer=None):
     """(str, func)->list
 

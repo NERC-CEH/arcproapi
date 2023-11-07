@@ -23,7 +23,7 @@ import funclite.baselib as _baselib
 import arcproapi.structure as _struct
 from arcproapi.structure import fcs_field_sym_diff as fc_field_sym_diff  # noqa - expose here as well - makes sense
 from arcproapi.structure import fcs_schema_compare as fc_schema_compare  # noqa - expose here as well - makes sense
-from arcproapi.structure import gdb_find_cols  # noqa - as above
+from arcproapi.structure import gdb_find_cols, FieldsDescribe  # noqa - as above
 
 import arcproapi.data as _data
 from arcproapi.data import key_info  # noqa - expose here as well - makes sense
@@ -386,6 +386,10 @@ def _save_to(df: _pd.DataFrame, dest: str, overwrite_xlsx: bool = False, show_pr
 if __name__ == '__main__':
     with _fuckit:
         import xlwings  # noqa
+    import sys
+    sys.path.extend(['C:\\development\\erammp-python'])
+    import erammp.config as config  # noqa
+
 
     # Use for quick debugging
     # row_counts
@@ -404,4 +408,5 @@ if __name__ == '__main__':
         gdb_dump_tables_and_fcs(r'S:\GMEP_Restricted\WP3_Restricted\WG_Data_Handover\EIDC_GMEP_SPATIAL\GMEP_SPATIAL_v2.gdb',
                                 save_to=r'S:\GMEP_Restricted\WP3_Restricted\WG_Data_Handover\EIDC_GMEP_SPATIAL\GMEP_SPATIAL_v2_checkout.xlsx')
     pass
+
     exit()

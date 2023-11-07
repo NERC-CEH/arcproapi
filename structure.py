@@ -13,7 +13,7 @@ from arcpy import Exists  # noqa
 
 # See https://pro.arcgis.com/en/pro-app/latest/tool-reference/data-management/create-domain.htm
 from arcpy.management import CreateDomain, AlterDomain, AssignDomainToField, AddCodedValueToDomain, SortCodedValueDomain  # noqa
-from arcpy.management import CreateFeatureclass, CreateTable, AssignDefaultToField  # noqa
+from arcpy.management import CreateFeatureclass, CreateTable, AssignDefaultToField, CreateFileGDB  # noqa
 from arcpy.da import Describe  # noqa this is the dict version of Describe, much easier to work with in python
 from arcpy.conversion import ExcelToTable, ExportTable, ExportFeatures, TableToExcel, TableToGeodatabase, TableToDBASE, TableToSAS  # noqa
 
@@ -33,6 +33,7 @@ import arcproapi.common as _common
 from arcproapi.common import get_row_count2 as rowcnt  # noqa kept to not break code
 from arcproapi.common import get_row_count2 as get_row_count2  # noqa
 from arcproapi.common import get_row_count as get_row_count  # noqa
+from arcproapi.common import field_name_clean  # noqa
 
 import arcproapi.environ as _environ
 import arcproapi.errors as _errors
@@ -1698,7 +1699,7 @@ def field_copy_definition(fc_src: str, fc_dest: str, source_field_name: str, ren
 
 
 def field_rename(fname: str, col: str, newcol: str, skip_name_validation: bool = False, alias='') -> str:
-    """Rename column in table tbl and return the new name of the column.
+    """Rename column in fc/table fname and return the new name of the column.
 
     This function first adds column newcol, re-calculates values of col into it,
     and deletes column col.
@@ -1740,6 +1741,47 @@ def field_rename(fname: str, col: str, newcol: str, skip_name_validation: bool =
         _arcpy.CalculateField_management(fname, newcol, "!" + col + "!", "PYTHON_9.3")
         _arcpy.DeleteField_management(fname, col)
     return newcol
+
+
+def field_rename_to_alias(fname: str, cols: (str, list), skip_name_validation: bool = False, new_alias='ORIGINAL', show_progress: bool = False) -> list[str]:
+    """Rename column in table tbl and return the new name of the column.
+
+    Args:
+        fname: table with the column to fname
+        cols: name of the column to fname, or a list of names
+        new_alias: field alias for newcol
+        skip_name_validation: Do not call arpy.ValidateFieldName to get a valid name. Useful as this can truncate perfectly valid names
+        show_progress: Show progress
+
+    Returns:
+        list[str]: List if new col names
+
+    Raises:
+        error.ArcapiError: If col does not exist or newcol already exists
+
+    Notes:
+        Provided largely for compatibility "historical" arcproapi functions.
+        ArcPro provides the function arcpy.management.AlterField (exposed in this module).
+        Alterfield is recommended as this does an non-transactioned AddField, CalculateField then DeleteField
+    """
+    fname = _path.normpath(fname)
+    Flds = FieldsDescribe(fname)
+
+    if isinstance(cols, str): cols = [cols]
+    new_names = []
+
+    if show_progress: PP = _iolib.PrintProgress(iter_=cols, init_msg='Setting col names to their respective alias ...')
+    for col in cols:
+        if not skip_name_validation:
+            new_name = field_name_clean(Flds[col]['aliasname'])  # noqa
+        else:
+            new_name = Flds[col]['aliasname']  # noqa
+
+        AlterField(fname, col, new_name, new_field_alias=col if new_alias == 'ORIGINAL' else '')  # noqa
+        new_names += new_name
+        if show_progress: PP.increment()  # noqa
+
+    return new_names  # noqa
 
 
 def fields_rename(fname: str, from_: list, to: list, aliases: (list, str, None) = None, skip_name_validation: bool = False, show_progress: bool = False):
@@ -1848,13 +1890,143 @@ def fields_name_replace(fname: str, find: str, replace_with: str) -> list[str]:
     return out
 
 
+class FieldsDescribe:
+    """ Small wrapper around arcpy.ListFields allowing the retieval of a
+    field object or the dictionary represention of a field object
+    using the field name.
+
+    Also supports 3 methods to retrieve special field(s).
+
+
+    Instance attributes for each field dict member are lower case.
+
+        So this *** will fail ***, use 'aliasname' instead.
+            >>> FieldsDescribe.OID()['aliasName']
+
+
+    Methods:
+
+        editable:
+            All fields flagged as editable
+
+        OID:
+            The OID field
+
+        Geometry:
+            The geometry field
+
+
+    Notes:
+        See https://pro.arcgis.com/en/pro-app/latest/arcpy/classes/field.htm
+
+    Examples:
+
+        First create an instance of FieldsDescribe
+
+            >>> FD = FieldsDescribe('C:/my.gdb/countries')
+
+
+        Then we can ask for dictionaries describing an individual field
+
+            >>> FD.country  # noqa
+            {'name': 'country', 'aliasName': 'COUNTRY_EU', 'isnullable': False ...}
+
+
+        We also expose the field object in the class instance field attributes ..
+
+            >>> FD.country['field']  # noqa
+            <Field object at ...>
+
+
+        Get all editable fields as a list of arcpy.Field instances
+
+            >>> FD.editable(as_fields=True)
+            [<Field object at ...>, <Field object at ...>, ...]
+
+
+        Get the OID field as a dict
+
+            >>> FD.OID()
+            {'aliasName': 'OID', 'basename': 'OID', ...}
+
+    """
+
+    def __init__(self, fname: str):
+        self._fname = _path.normpath(fname)
+        self.Fields: list = _arcpy.ListFields(self._fname)
+
+        F: _arcpy.Field
+        for F in self.Fields:
+            self.__dict__[F.name] = {k.lower(): v for k, v in {'aliasName': F.aliasName, 'basename': F.baseName,
+                                                               'defaultvalue': F.defaultValue, 'domain': F.domain,
+                                                               'editable': F.editable, 'isnullable': F.isNullable,
+                                                               'length': F.length, 'name': F.name,
+                                                               'precision': F.precision, 'required': F.required,
+                                                               'scale': F.scale, 'type': F.type, 'field': F}.items(),
+                                     }
+
+    def __getitem__(self, item: (str, int)) -> dict:
+        if isinstance(item, int):
+            return list(filter(lambda s: s[0] == '_', self.__dict__.values()))[item]
+        return self.__dict__[item]
+
+    def editable(self, as_fields: bool = False) -> (dict[str:dict[str]], dict[str: _arcpy.Field]):
+        """
+        Get list of editabler fields, either as a dict of the Fields attributes
+
+        Args:
+            as_fields:
+
+        Returns:
+            dict[str:dict:[str]]: A dictionary of dictionaries where the outer keys are field names
+
+
+        Examples:
+
+            >>> FieldsDescribe('c:/my.gdb/countries').editable(as_fields=True)
+            [<Field object at ...>, <Field object at ...>, ...]
+        """
+        if as_fields:
+            return {k: v['Field'] for k, v in self.__dict__.items() if v['editable']}
+
+    def OID(self, as_field: bool = False) -> (_arcpy.Field, dict[str]):
+        """
+        Get the oid field
+
+        Args:
+            as_field: As arcpy.Field, else as dict
+
+        Returns:
+            Arpy field instance or dict of the OID field
+
+
+        Examples:
+
+            >>> FieldsDescribe('c:/my.gdb/countries').OID(as_fields=True)
+            <Field object at ...>
+        """
+        if as_field:
+            return list(filter(lambda f: f.type == 'OID', self.Fields))[0]
+
+        return [self.__dict__[k] for k, v in self.__dict__.items() if v['type'] == 'OID'][0]
+
+    def Geometry(self, as_field: bool = False) -> (_arcpy.Field, dict[str]):
+        if as_field:
+            return list(filter(lambda f: f.type == 'OID', self.Fields))[0]
+
+        return [self.__dict__[k] for k, v in self.__dict__.items() if v['type'] == 'Geometry'][0]
+
+
 def field_get_property(fld: _arcpy.Field, property_: str) -> any:  # noqa
     """
     Get property value from an arcpy field describe object using a string rather than a property.
 
     Args:
         fld (arcpy.Field): The field object (e.g. fields returned from ListField )
-        property_ (str): The property name, eg. 'isNullable'. See https://pro.arcgis.com/en/pro-app/latest/arcpy/classes/field.htm
+
+        property_ (str):
+            The property name, eg. 'isNullable'. See https://pro.arcgis.com/en/pro-app/latest/arcpy/classes/field.htm
+            property_ in ['aliasname', 'basename', defaultvalue, domain, editable, isnullable, length, name, precision, required, scale, type]
 
     Returns:
         any: the value of the property, or None of property_ is not a member of fld
@@ -1864,11 +2036,12 @@ def field_get_property(fld: _arcpy.Field, property_: str) -> any:  # noqa
         because the Describe object does not expose __dict__ or getattr()
 
     Examples:
+
         >>> field_get_property(field_list('c:/my.shp', objects=True)[0], 'type')
         'OID'
     """
     p = property_.lower()
-    if p == 'aliasName': return fld.aliasName
+    if p == 'aliasname': return fld.aliasName
     if p == 'basename': return fld.baseName
     if p == 'defaultvalue': return fld.defaultValue
     if p == 'domain': return fld.domain
