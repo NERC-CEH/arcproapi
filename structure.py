@@ -29,15 +29,19 @@ import funclite.stringslib as _stringslib
 import docs.excel as _excel
 
 import arcproapi.common as _common
+
 #  Functions, imported for convieniance
 from arcproapi.common import get_row_count2 as rowcnt  # noqa kept to not break code
 from arcproapi.common import get_row_count2 as get_row_count2  # noqa
 from arcproapi.common import get_row_count as get_row_count  # noqa
 from arcproapi.common import field_name_clean  # noqa
+from arcproapi.enums import EnumFieldProperties  # noqa
 
 import arcproapi.environ as _environ
 import arcproapi.errors as _errors
 import arcproapi.decs as _decs
+
+
 
 _str2lst = lambda v: list(v) if isinstance(v, str) else v
 _tolst = lambda v: v if isinstance(v, list) else list(v)
@@ -1772,6 +1776,15 @@ def field_rename_to_alias(fname: str, cols: (str, list), skip_name_validation: b
 
     if show_progress: PP = _iolib.PrintProgress(iter_=cols, init_msg='Setting col names to their respective alias ...')
     for col in cols:
+
+        #  Dont rename if alias and name same
+        if col.lower() == Flds[col][EnumFieldProperties.aliasName.name].lower():
+            PP.increment()  # noqa
+            continue
+
+        if col.lower() == Flds[col]['aliasname'].lower():
+            PP.increment()
+            continue
         if not skip_name_validation:
             new_name = field_name_clean(Flds[col]['aliasname'])  # noqa
         else:
@@ -1898,11 +1911,8 @@ class FieldsDescribe:
     Also supports 3 methods to retrieve special field(s).
 
 
-    Instance attributes for each field dict member are lower case.
-
-        So this *** will fail ***, use 'aliasname' instead.
-            >>> FieldsDescribe.OID()['aliasName']
-
+    Instance attributes for each field dict member follow those of esri.Field object.
+    This is camel-case for compound property names, e.g. "aliasName", "isNullable".
 
     Methods:
 
@@ -1917,7 +1927,10 @@ class FieldsDescribe:
 
 
     Notes:
-        See https://pro.arcgis.com/en/pro-app/latest/arcpy/classes/field.htm
+        See https://pro.arcgis.com/en/pro-app/latest/arcpy/classes/field.htm.
+
+        The dictionary keys (or properties of arcpy.Field instances) are defined in
+        *** EnumFieldProperties  *** (exposed in this module) which is useful as an aide-memoir.
 
     Examples:
 
@@ -1951,13 +1964,14 @@ class FieldsDescribe:
 
     """
 
+
     def __init__(self, fname: str):
         self._fname = _path.normpath(fname)
         self.Fields: list = _arcpy.ListFields(self._fname)
-
+        self._index = 0
         F: _arcpy.Field
         for F in self.Fields:
-            self.__dict__[F.name] = {k.lower(): v for k, v in {'aliasName': F.aliasName, 'basename': F.baseName,
+            self.__dict__[F.name] = {k: v for k, v in {'aliasName': F.aliasName, 'basename': F.baseName,
                                                                'defaultvalue': F.defaultValue, 'domain': F.domain,
                                                                'editable': F.editable, 'isnullable': F.isNullable,
                                                                'length': F.length, 'name': F.name,
@@ -1970,24 +1984,111 @@ class FieldsDescribe:
             return list(filter(lambda s: s[0] == '_', self.__dict__.values()))[item]
         return self.__dict__[item]
 
-    def editable(self, as_fields: bool = False) -> (dict[str:dict[str]], dict[str: _arcpy.Field]):
+
+    def __iter__(self):
         """
-        Get list of editabler fields, either as a dict of the Fields attributes
+        Iterate the the dictionary representation of each field.
+
+        Examples:
+            >>> print(next(FieldsDescribe('C:/country.shp')))
+            {'aliasname': 'country_name', 'basename': countryname', 'editable': True, ...}
+        """
+        return iter(tuple(self.__dict__.values()))
+
+    def __next__(self):
+        try:
+            return tuple(self.__dict__.values())[self._index]
+        except:
+            raise StopIteration
+        self._index += 1
+
+
+    def __repr__(self):
+        lst = [self._fname]
+
+        # looks complicated, but we just want all fields that are class members, excluding the fname (which weve just added above
+        for v in (itm for itm in self.__dict__.items() if itm[0][0] != '_'):
+            lst += [v]
+        return '\n'.join(lst)
+
+
+    def iterfields(self):
+        """
+        Iterates arcpy Field objects
+        """
+        if not self.Fields:
+            return []
+        return iter(self.Fields)
+
+
+    def editable(self, as_fields: bool = False, names_only: bool = False) -> (dict[str:dict[str]], dict[str: _arcpy.Field]):
+        """
+        Get list of editable fields, either as a dict of the Fields attributes.
+
+        Editable refers to the data within the field, and not the field itself.
 
         Args:
-            as_fields:
+            as_fields: Return instances of arcpy.Field
+            names_only: Return a list of field names
+
+        Raises:
+            UserWarning: If as_fields and names_only are both True
 
         Returns:
             dict[str:dict:[str]]: A dictionary of dictionaries where the outer keys are field names
-
 
         Examples:
 
             >>> FieldsDescribe('c:/my.gdb/countries').editable(as_fields=True)
             [<Field object at ...>, <Field object at ...>, ...]
         """
+        if as_fields and names_only:
+            raise UserWarning('Both as_fields and names_only were True, pick one or the other')
+
         if as_fields:
             return {k: v['Field'] for k, v in self.__dict__.items() if v['editable']}
+
+        if as_fields:
+            return {k: v['Field'] for k, v in self.__dict__.items() if v['required']}
+
+        if names_only:
+            return [k for k, v in self.__dict__.items() if v['required']]
+
+        return {k: self.__dict__[k] for k, v in self.__dict__.items() if v['required']}
+
+    def required(self, as_fields: bool = False, names_only: bool = False):
+        """
+        Get list of required fields, either as a dict of the Fields attributes.
+
+        Requried is those fields that a "compulsory" for the layer/table, e.g. OID and Shape.
+
+        Args:
+            as_fields: Return instances of arcpy.Field
+            names_only: Return list of required field names only
+
+        Raises:
+            UserWarning: If as_fields and names_only are both True
+
+        Returns:
+            dict[str:dict[str]]: A dictionary of dictionaries where the outer keys are field names
+            list[str]: List of field names only
+
+        Examples:
+
+            >>> FieldsDescribe('c:/my.gdb/countries').required(as_fields=True)
+            [<Field object at ...>, <Field object at ...>, ...]
+        """
+
+        if as_fields and names_only:
+            raise UserWarning('Both as_fields and names_only were True, pick one or the other')
+
+        if as_fields:
+            return {k: v['Field'] for k, v in self.__dict__.items() if v['required']}
+
+        if names_only:
+            return [k for k, v in self.__dict__.items() if v['required']]
+
+        return {k: self.__dict__[k] for k, v in self.__dict__.items() if v['required']}
 
     def OID(self, as_field: bool = False) -> (_arcpy.Field, dict[str]):
         """
@@ -2510,4 +2611,5 @@ def fc_in_toplogy(fname: str) -> bool:
 if __name__ == '__main__':
     #  Quick debugging here
     #  example = fc_aliases_clear(r'\\nerctbctdb\shared\shared\SPECIAL-ACL\ERAMMP2 Survey Restricted\current\data\GIS\erammp_current.gdb\land_all_unionised')
+    # rootm =
     pass
