@@ -3,7 +3,7 @@ from enum import Enum as _Enum
 import arcproapi.mixins as _mixins
 
 
-class EnumSpatialReference(_Enum, _mixins.MixinEnumHelper):
+class EnumSpatialReference(_mixins.MixinEnumHelper, _Enum):
     """ Enums representing spatial references, to expand as required.
 
     These enums represent the strings returned by arcpy.da.Describe(<layer>)['spatialReference'].name
@@ -13,7 +13,7 @@ class EnumSpatialReference(_Enum, _mixins.MixinEnumHelper):
     
     
     
-class EnumFieldProperties(_Enum, _mixins.MixinEnumHelper):
+class EnumFieldProperties(_mixins.MixinEnumHelper, _Enum):
     """
     Enumeration for properties of field object.
 

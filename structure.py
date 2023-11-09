@@ -1976,7 +1976,7 @@ class FieldsDescribe:
                                                                'editable': F.editable, 'isnullable': F.isNullable,
                                                                'length': F.length, 'name': F.name,
                                                                'precision': F.precision, 'required': F.required,
-                                                               'scale': F.scale, 'type': F.type, 'field': F}.items(),
+                                                               'scale': F.scale, 'type': F.type, 'field': F}.items()
                                      }
 
     def __getitem__(self, item: (str, int)) -> dict:
