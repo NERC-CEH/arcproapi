@@ -48,7 +48,6 @@ from arcproapi.common import get_row_count2 as get_row_count2
 from arcproapi.common import get_row_count as get_row_count  # noqa
 from arcproapi.export import excel_sheets_to_gdb as excel_import_sheets, csv_to_gdb as csv_to_table  # noqa Rearranged, import here so as not to break scripts/compatibility
 
-
 # TODO: All functions that write/delete/update spatial layers need to support transactions using the Editor object - otherwise an error is raised when layers are involved in a topology (and other similiar conditions)
 # See https://pro.arcgis.com/en/pro-app/latest/arcpy/data-access/editor.htm and https://pro.arcgis.com/en/pro-app/latest/tool-reference/tool-errors-and-warnings/160001-170000/tool-errors-and-warnings-160226-160250-160250.htm
 
@@ -61,6 +60,18 @@ class Funcs(_MixinNameSpace, metaclass=_ABCMeta):
     Methods:
         FidToOneZero: After a spatial operation, e.g. union, we get FID_<table_name> cols. This reduces those scenarios to a 1 or a 0. "0 = 0;  <Null> = 0;  -1 = 0;  > 0 = 1
     """
+
+    @staticmethod
+    def FloatToLong(v: float) -> int:
+        """
+        Scientific round on float,  to integer (long datatype in ESRI).
+        Args:
+            v (float): the value
+
+        Returns:
+            int: The rounded float as an int
+        """
+        return int(round(v, 0))
 
     @staticmethod
     def LongToOneZero(v: int) -> int:
@@ -264,7 +275,7 @@ class ResultAsPandas(_mixins.MixinPandasHelper):
     Args:
         tool: An arcpy tool which supports the in_features argument and a single out_feature class
         columns: columns to retain in the resulting dataframe
-        additional_layer_args (tuple[str]): List of the kwargs that point to additional output tables. This allows additional dataframe to be exposed. As an example, see the CountOverlappingFeatures which accepts an argument to define output_overlap_table.
+        additional_layer_args (tuple[str]): List of the kwargs that point to additional output tables. This allows additional dataframes to be exposed. As an example, see the CountOverlappingFeatures which accepts an argument to define output_overlap_table.
         where: where query to apply to the underlying spatial results table/feature class, passed to data.table_as_pandas2
         as_int (tuple[str], list[str]): List of cols forced to an int in the resulting dataframe
         as_float (tuple[str], list[str]): List of cols forced to a float in the resulting dataframe
@@ -366,7 +377,7 @@ class ResultAsPandas(_mixins.MixinPandasHelper):
         self._kwargs = kwargs
         self._tool = tool
         self._in_features = in_features
-        self.result_memory_layer = r'%s\%s' % (memory_workspace, _stringslib.rndstr(from_=_string.ascii_lowercase))
+        self.result_memory_layer = memory_lyr_get(memory_workspace)
         self._memory_workspace = memory_workspace
         self.Results = {}
 
@@ -378,8 +389,8 @@ class ResultAsPandas(_mixins.MixinPandasHelper):
                 kwargs[s] = lyr_tmp
 
         keys = dict(_inspect.signature(tool).parameters).keys()
-        if tool in [_arcpy.analysis.Near]:  # Near appends fields to in_features, so we have to hack it, there is probably a whole family of tools that follow this call pattern, expand as needed
-            _struct.ExportFeatures(in_features, '%s/%s' % (self.result_memory_layer, _stringslib.rndstr(from_=_string.ascii_lowercase)))
+        if tool in [_arcpy.analysis.Near]:  # Near appends fields to in_features, so we have to hack it, there is probably a whole family of tools that follow this call pattern, expand  in filter as needed
+            _struct.ExportFeatures(in_features, self.result_memory_layer)
             self.execution_result = tool(in_dataset=self.result_memory_layer, **kwargs)
         elif 'in_dataset' in keys:
             self.execution_result = tool(in_dataset=in_features, out_dataset=self.result_memory_layer, **kwargs)
@@ -555,7 +566,7 @@ def field_values(fname: str, col: (str, list), where: (str, None) = None, order_
     return ret
 
 
-def field_values_multi_table(fnames:list, fields: (str, list), distinct: bool = True):
+def field_values_multi_table(fnames: list, fields: (str, list), distinct: bool = True):
     """
     Get field values from multiple layers/tables.
 
@@ -594,7 +605,6 @@ def field_values_multi_table(fnames:list, fields: (str, list), distinct: bool = 
         return _sort_list_set(_baselib.list_flatten(out))
 
     return out
-
 
 
 def field_has_duplicates(fname: str, col: str, f: any = lambda v: v) -> bool:
@@ -673,10 +683,13 @@ def key_info(parent: str, parent_field: str, child: str, child_field: str, as_oi
         The OIDs can be used for futher processing ...
 
     Examples:
+
         >>> key_info('C:/my.gdb/coutries', 'cname', 'C:/my.gdb/towns', 'cname')
         {'parent_only': ['NoTownCountry',...], 'both': ['England',...,], 'child_only': ['NoCountryTown',...]}
 
+
         Now with oids
+
         >>> key_info('C:/my.gdb/coutries', 'cname', 'C:/my.gdb/towns', 'cname', as_oids=True)
         {'parent_only': [232, 343], 'both': [1,2,...], 'child_only': [56,77,...]}
 
@@ -2432,76 +2445,165 @@ class Validation:
         errors.FeatureClassOrTableNotFound: If parent or child table or feature class does not exist
     """
 
-    def __init__(self, parent: str, child: (str, None) = None, no_shapes: bool = False):
-        self._parent = _path.normpath(parent)
-        self._child = _path.normpath(child) if child else None
-        self._gdb_parent = _common.gdb_from_fname(self._parent)
+    def __init__(self, parent: str, no_shapes: bool = False):
+        self.fname = _path.normpath(parent)
+        self.gdb = _common.gdb_from_fname(self.fname)
 
-        if not _struct.Exists(self._parent):
-            raise _errors.FeatureClassOrTableNotFound('Parent feature class or table "%s" not found.' % self._parent)
+        if not _struct.Exists(self.fname):
+            raise _errors.FeatureClassOrTableNotFound('Parent feature class or table "%s" not found.' % self.fname)
 
-        if self._child and not _struct.Exists(self._child):
-            raise _errors.FeatureClassOrTableNotFound('Child feature class or table "%s" not found.' % self._child)
+        self.df = table_as_pandas2(self.fname, exclude_cols=('Shape',) if no_shapes else None, cols_lower=True)
 
-        self.df_parent = table_as_pandas2(self._parent, exclude_cols=('Shape',) if no_shapes else None, cols_lower=True)
-
-        self.df_child = None
-        if child:
-            self._child = _path.normpath(child)
-            self.df_child = table_as_pandas2(self._child, exclude_cols=('Shape',) if no_shapes else None, cols_lower=True)
-
-    def key_check(self, parent_field: str, child: str, child_field: str, as_oids: bool = False) -> tuple[bool, dict]:
+    def near(self, is_near_fnames: (str, list[str]), threshhold: (float, int), is_near_filters: (str, list[str], None) = None, keep_cols: (tuple[str], None) = None, thresh_error_test='>=', raise_exception: bool = False, show_progress: bool = False, **kwargs) -> (_pd.DataFrame, None):
         """
-        Get a dictionary listing the "primary key" values not in child foreign key values.
-        This is a quick validation tool. A set of more advanced validation tools is planned
-        in a dedicated module, integrating arcproapi connection objects with the
-        great expectations package.
+        Get
 
-        TODO: Support compound keys
+        Columns are case insensitive and all set to lower case in the resulting pandas dataframes.
+
+        Can also be used for a "within" by setting an appropriate threshhold to
 
         Args:
-            parent_field (str): The key field in the self.parent
-            child (str): Child entity
-            child_field (str): key field in the child
-            as_oids (bool): Get unique oids instead of distinct values
+
+            is_near_fnames: Single feature class or list of feature classes containing near feature candidates
+
+            threshhold:
+                Threshhold distance, above which is considered as suspect, only results above threshold are returned.
+                Distance is in planar units of "fname" feature class.
+                This can be overridden by defining kwargs which are passed to arcpy.analyss.Near
+
+            is_near_filters:
+                Filter applied to is_near_fnames feature classes. The filter is applied via arcpy, hence the format is that used by ESRI feature layers.
+                If multiple is_near_fnames are passed, but is_near_filters is a string or a length 1 iterable, then the filter is applied to all layers.
+                This is really useful if, for example, we have a subset of sample sites for a given year that we wish to validate a dataset against
+
+
+            thresh_error_test:
+                Conditional statement text defining the threshhold boundary condition test.
+                Examples include '==', '<=', '>'. If records match the test, this is the exception condition is met.
+                The default is ">=", hence any record that is >= threshhold from any feature in in_near_names is an exception.
+
+            keep_cols:
+                List of cols to keep from fname.
+                The output result cols  'NEAR_FID', 'NEAR_DIST', 'NEAR_FC' and the OID of fname are always retained
+
+            raise_exception:
+                If True, will raise an exception if any records above threshhold are found.
+                This is useful for processing pipelines, where we want execution to halt if anything is suspect.
+
+            show_progress: show progress
+
+            kwargs:
+                Keyword arguments passed to arcpy.analysis.Near.
+                Supports search_radius, location, angle, method, field_names, distance_unit
+                See https://pro.arcgis.com/en/pro-app/latest/tool-reference/analysis/near.htm
+
+        Raises:
+            UserWarning: If raise_exception is True and suspect records (above threshhold distance) are found
 
         Returns:
-            tuple(bool, dict):
-                Returns True or False if the relationship is good
-                Also returns the dictionary with the status of values.
-                bool, dict{'self.parent_only': [..], 'both': [..], 'child_only': [..]
 
+            pandas.DataFrame:
+                A dataframe of features in fname which are greater than threshold distance from is_near_fnames if there were exceptions
+
+            None:
+                If no exceptions were found
+        """
+        fname = self.fname
+        if not thresh_error_test: thresh_error_test = '>='
+        if isinstance(is_near_fnames, str): is_near_fnames = [is_near_fnames]
+        is_near_fnames = [_path.normpath(s) for s in is_near_fnames]
+
+        oid_fname = _common.get_id_col(fname)
+        keep = [oid_fname]
+        keep += ['NEAR_FID', 'NEAR_DIST', 'NEAR_FC']
+        keep += keep_cols if isinstance(keep_cols, (list, tuple)) else []
+        keep = list(set(keep))
+        keep = list(map(str.lower, keep))
+
+        if isinstance(is_near_filters, str):
+            is_near_filters = [is_near_filters]
+
+        if is_near_filters and len(is_near_filters) == 1 and len(is_near_fnames) > 1:
+            is_near_filters = is_near_filters * len(is_near_fnames)
+
+        is_near_fnames_tmp = []
+        try:
+            if is_near_filters:
+                # This creates in memory layers filtered for the wheres
+                if len(is_near_filters) != len(is_near_fnames):
+                    raise ValueError('len(is_near_filters) != len(is_near_fnames)')
+
+                is_near_fnames_tmp = [memory_lyr_get() for s in is_near_fnames]
+                for i, lyr in is_near_fnames_tmp:
+                    features_copy2(is_near_fnames[i], is_near_fnames_tmp[i], is_near_filters[i], no_progress=not show_progress)
+                kwargs['near_features'] = is_near_fnames_tmp
+            else:  # no filters, much easier!
+                kwargs['near_features'] = is_near_fnames
+
+            Nr = ResultAsPandas(_arcpy.analysis.Near, in_features=fname, **kwargs)
+
+            Nr.df_lower: _pd.DataFrame  # noqa for pycharm autocomplete
+            Nr.df_lower = Nr.df_lower[keep]
+
+            Nr.df_lower.query('NEAR_DIST %s @threshhold' % thresh_error_test, inplace=True)
+            if len(Nr.df_lower) > 0 and raise_exception:
+                raise UserWarning('Layer %s had features outside of threshold distance condition "%s %s" with features %s' % (fname, thresh_error_test, threshhold, is_near_fnames))
+        finally:
+            with _fuckit:
+                [_struct.Delete(s) for s in is_near_fnames_tmp]
+
+        return Nr.df_lower if len(Nr.df_lower) > 0 else None
+
+    def referential_integrity(self, parent_field, child, child_field, in_parent_only_is_error: bool = False, as_oids=False, raise_exception: bool = False) -> (dict[str:list], None):
+        """
+        Wrapper around key_info. Exposed here as key_info is primarily a data validation check.
+        So more obvious here, but no need to refactor.
+
+        Args:
+            parent_field (str): The key field in the parent
+            child (str): Child entity
+            child_field (str): key field in the child
+            in_parent_only_is_error: Consider a value in parent but not in child to be an exception.
+            as_oids (bool): Get unique oids instead of distinct values
+
+            raise_exception:
+                If True, will raise an exception referential integrity is broken.
+                This is useful for processing pipelines, where we want execution to halt if anything is suspect.
+
+        Returns:
+
+            dict[str:list]:
+                dictionary key errors, with keys "parent_only" and "child_only" if key errors were found
+                dict{'parent_only': [..], 'both': [..], 'child_only': [..]
 
         Notes:
             The OIDs can be used for futher processing ...
 
+
         Examples:
-            >>> key_info('C:/my.gdb/coutries', 'cname', 'C:/my.gdb/towns', 'cname')
-            {'self.parent_only': ['NoTownCountry',...], 'both': ['England',...,], 'child_only': ['NoCountryTown',...]}
 
-            Now with oids
-            >>> key_info('C:/my.gdb/coutries', 'cname', 'C:/my.gdb/towns', 'cname', as_oids=True)
-            {'self.parent_only': [232, 343], 'both': [1,2,...], 'child_only': [56,77,...]}
 
-        Notes:
-            This is also exposed in arcapipro.info
+            Single line RI check
+
+            >>> Validation('C:/my.shp').referential_integrity('cname', 'C:/my.gdb/towns', 'cname', in_parent_only_is_error=True)  # noqa
+            {'parent_only': ['NoTownCountry',...], 'child_only': ['NoCountryTown',...]}
         """
+        parent = self.fname
+        res = key_info(parent, parent_field, child, child_field, as_oids)
+        if raise_exception:
+            if res['child_only']:
+                raise UserWarning('Invalid foreign key values "%s" in "%s.%s"' % (res['child_only'], child, child_field))
+            if in_parent_only_is_error and res['parent_only']:
+                raise UserWarning('Primary key values "%s" in parent "%s.%s" were not in child "%s.%s"' % (res['parent_only'], parent, parent_field, child, child_field))
 
-        parent_values = field_values(self._parent, parent_field, distinct=True)
-        child_values = field_values(child, child_field, distinct=True)
+        out_dict = {}
+        if res['child_only']:
+            out_dict['child_only'] = res['child_only']
 
-        if not as_oids:
-            d = _baselib.list_sym_diff(parent_values, child_values, rename_keys=('self.parent_only', 'both', 'child_only'))
-            return d['child_only'] != [], d
+        if in_parent_only_is_error and res['parent_only']:
+            out_dict['parent_only'] = res['parent_only']
 
-        where = _sql.query_where_in(parent_field, parent_values)
-        parent_oids = field_values(self._parent, 'OID@', where=where)
-
-        where = _sql.query_where_in(child_field, child_values)
-        child_oids = field_values(child, 'OID@', where=where)
-
-        d = _baselib.list_sym_diff(parent_oids, child_oids, rename_keys=('parent_only', 'both', 'child_only'))
-        return d['child_only'] != [], d
+        return out_dict if out_dict else None
 
 
 def vertext_add(fname, vertex_index: (int, str), x_field: str, y_field: str = 'y', field_type='DOUBLE', where_clause: (str, None) = '*', fail_on_exists: bool = True,
@@ -2566,8 +2668,6 @@ def vertext_add(fname, vertex_index: (int, str), x_field: str, y_field: str = 'y
 
 
 rows_delete = del_rows  # noqa. For conveniance, should of been called this in first place but don't break existing code
-
-
 
 if __name__ == '__main__':
     # quick debugging
