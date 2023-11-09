@@ -25,6 +25,8 @@ with _fuckit:
         from arcpy.conversion import ExportTable, ExportFeatures  # noqa
     import xlwings as _xlwings  # never will be implemented on linux
 
+import great_expectations as _gx
+
 import funclite.iolib as _iolib
 import funclite.baselib as _baselib
 import funclite.stringslib as _stringslib
@@ -2440,9 +2442,47 @@ class Validation:
 
     Loads tables and feature classes into dataframes, optionally excluding shape files for efficiency
 
+    Methods:
+
+    Fields:
+        fname: The original feature class name
+        gdb: The geodatabase
+
+        gx_df:
+            An instance of self.df, exposed as a great expectations data instance.
+            See the great-expectations documentation for list of expectations.
+            See https://github.com/great-expectations/great_expectations/blob/develop/examples/notebooks/explore_titanic_data.ipynb for some examples
+            And https://greatexpectations.io/expectations/?filterType=Backend%20support&gotoPage=1&showFilters=true&viewType=Summary for list of expectations
+
 
     Raises:
         errors.FeatureClassOrTableNotFound: If parent or child table or feature class does not exist
+
+    Examples:
+
+        Make use of great expectations via gx_df
+
+        >>> Validation('C:/country.shp').gx_df.expect_column_values_to_be_in_set("Continent", ['Asia', 'Europe', ...])
+            {
+              "meta": {},
+              "exception_info": {
+                "raised_exception": false,
+                "exception_traceback": null,
+                "exception_message": null
+              },
+              "success": true,
+              "result": {
+                "element_count": 1313,
+                "missing_count": 0,
+                "missing_percent": 0.0,
+                "unexpected_count": 0,
+                "unexpected_percent": 0.0,
+                "unexpected_percent_total": 0.0,
+                "unexpected_percent_nonmissing": 0.0,
+                "partial_unexpected_list": []
+              }
+            }
+
     """
 
     def __init__(self, parent: str, no_shapes: bool = False):
@@ -2453,6 +2493,7 @@ class Validation:
             raise _errors.FeatureClassOrTableNotFound('Parent feature class or table "%s" not found.' % self.fname)
 
         self.df = table_as_pandas2(self.fname, exclude_cols=('Shape',) if no_shapes else None, cols_lower=True)
+        self.gx_df = _gx.from_pandas(self.df)
 
     def near(self, is_near_fnames: (str, list[str]), threshhold: (float, int), is_near_filters: (str, list[str], None) = None, keep_cols: (tuple[str], None) = None, thresh_error_test='>=', raise_exception: bool = False, show_progress: bool = False, **kwargs) -> (_pd.DataFrame, None):
         """
@@ -2533,7 +2574,7 @@ class Validation:
                 if len(is_near_filters) != len(is_near_fnames):
                     raise ValueError('len(is_near_filters) != len(is_near_fnames)')
 
-                is_near_fnames_tmp = [memory_lyr_get() for s in is_near_fnames]
+                is_near_fnames_tmp = [memory_lyr_get() for _ in is_near_fnames]
                 for i, lyr in is_near_fnames_tmp:
                     features_copy2(is_near_fnames[i], is_near_fnames_tmp[i], is_near_filters[i], no_progress=not show_progress)
                 kwargs['near_features'] = is_near_fnames_tmp
@@ -2604,6 +2645,9 @@ class Validation:
             out_dict['parent_only'] = res['parent_only']
 
         return out_dict if out_dict else None
+
+
+
 
 
 def vertext_add(fname, vertex_index: (int, str), x_field: str, y_field: str = 'y', field_type='DOUBLE', where_clause: (str, None) = '*', fail_on_exists: bool = True,
