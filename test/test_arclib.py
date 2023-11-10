@@ -16,7 +16,6 @@
 #-------------------------------------------------------------------------------
 """
 
-
 import datetime as _datetime
 import os
 import os.path as _path
@@ -30,7 +29,7 @@ import arcproapi.common as _common
 import arcproapi.data as _data
 import arcproapi.httplib as http
 import arcproapi.meta as meta
-from arcproapi.errors import ArcapiError, MapNotFound, MapFrameNotFound, LayoutNotFound # noqa
+from arcproapi.errors import ArcapiError, MapNotFound, MapFrameNotFound, LayoutNotFound  # noqa
 
 
 class TestGlobalFunctions(unittest.TestCase):
@@ -42,18 +41,18 @@ class TestGlobalFunctions(unittest.TestCase):
         except:
             self.testingfolder = _path.join(_path.dirname(_path.realpath(sys.argv[0])), 'testing')
         self.testing_gdb = _path.join(self.testingfolder, 'testing.gdb')
-        #self.t_table = _path.join(self.testing_gdb, '\left_i_right')
-        #self.t_fc =  _path.join(self.testing_gdb, 'left_i_right')
-        #self.t_cols = ('OBJECTID', 'Shape', 'CCARM2', 'POINT_X', u'POINT_Y', u'ROUND_X', 'ROUND_Y', 'name', 'propagatedName', 'fullName', 'GID', 'DOWNGID', 'HA_NUM','STRAHLER', 'SHREVE', 'OS_NAME', 'FNODE_FULL', 'TNODE_FULL', 'NAMENOXML', 'Shape_Length')
-        self.t_fc =  _path.join(self.testing_gdb, 'ne_110m_admin_0_countries')
+        # self.t_table = _path.join(self.testing_gdb, '\left_i_right')
+        # self.t_fc =  _path.join(self.testing_gdb, 'left_i_right')
+        # self.t_cols = ('OBJECTID', 'Shape', 'CCARM2', 'POINT_X', u'POINT_Y', u'ROUND_X', 'ROUND_Y', 'name', 'propagatedName', 'fullName', 'GID', 'DOWNGID', 'HA_NUM','STRAHLER', 'SHREVE', 'OS_NAME', 'FNODE_FULL', 'TNODE_FULL', 'NAMENOXML', 'Shape_Length')
+        self.t_fc = _path.join(self.testing_gdb, 'ne_110m_admin_0_countries')
         self.t_fc2 = _path.join(self.testing_gdb, 'Illinois')
         self.t_tab = _path.join(self.testing_gdb, 'Illinois_county_info')
-        self.t_cols =  ('OBJECTID','Shape','ScaleRank','LabelRank','FeatureCla',
-                      'SOVEREIGNT','SOV_A3','ADM0_DIF','LEVEL','TYPE','ADMIN',
-                      'ADM0_A3','GEOU_DIF','GEOUNIT','GU_A3','SU_DIF','SUBUNIT',
-                      'SU_A3','NAME','ABBREV','POSTAL','NAME_FORMA','TERR_',
-                      'NAME_SORT','MAP_COLOR','POP_EST','GDP_MD_EST','FIPS_10_',
-                      'ISO_A2','ISO_A3','ISO_N3','Shape_Length','Shape_Area')
+        self.t_cols = ('OBJECTID', 'Shape', 'ScaleRank', 'LabelRank', 'FeatureCla',
+                       'SOVEREIGNT', 'SOV_A3', 'ADM0_DIF', 'LEVEL', 'TYPE', 'ADMIN',
+                       'ADM0_A3', 'GEOU_DIF', 'GEOUNIT', 'GU_A3', 'SU_DIF', 'SUBUNIT',
+                       'SU_A3', 'NAME', 'ABBREV', 'POSTAL', 'NAME_FORMA', 'TERR_',
+                       'NAME_SORT', 'MAP_COLOR', 'POP_EST', 'GDP_MD_EST', 'FIPS_10_',
+                       'ISO_A2', 'ISO_A3', 'ISO_N3', 'Shape_Length', 'Shape_Area')
         pass
 
     def tearDown(self):
@@ -61,22 +60,22 @@ class TestGlobalFunctions(unittest.TestCase):
 
     def testnames(self):
         est = map(str, tuple(_common.names(self.t_fc)))
-        obs = ('OBJECTID','Shape','ScaleRank','LabelRank','FeatureCla',
-                'SOVEREIGNT','SOV_A3','ADM0_DIF','LEVEL','TYPE','ADMIN',
-                'ADM0_A3','GEOU_DIF','GEOUNIT','GU_A3','SU_DIF','SUBUNIT',
-                'SU_A3','NAME','ABBREV','POSTAL','NAME_FORMA','TERR_',
-                'NAME_SORT','MAP_COLOR','POP_EST','GDP_MD_EST','FIPS_10_',
-                'ISO_A2','ISO_A3','ISO_N3','Shape_Length','Shape_Area')
+        obs = ('OBJECTID', 'Shape', 'ScaleRank', 'LabelRank', 'FeatureCla',
+               'SOVEREIGNT', 'SOV_A3', 'ADM0_DIF', 'LEVEL', 'TYPE', 'ADMIN',
+               'ADM0_A3', 'GEOU_DIF', 'GEOUNIT', 'GU_A3', 'SU_DIF', 'SUBUNIT',
+               'SU_A3', 'NAME', 'ABBREV', 'POSTAL', 'NAME_FORMA', 'TERR_',
+               'NAME_SORT', 'MAP_COLOR', 'POP_EST', 'GDP_MD_EST', 'FIPS_10_',
+               'ISO_A2', 'ISO_A3', 'ISO_N3', 'Shape_Length', 'Shape_Area')
         self.assertEqual(tuple(est), obs)
         pass
 
     def testtypes(self):
         est = map(str, tuple(_common.types(self.t_fc)))
-        obs = ('OID','Geometry','SmallInteger','SmallInteger','String','String',
-                'String','Single','Single','String','String','String','Single',
-                'String', 'String','Single','String','String','String','String',
-                'String','String', 'String','String','Single','Double','Double',
-                'Single','String','String', 'Single','Double','Double')
+        obs = ('OID', 'Geometry', 'SmallInteger', 'SmallInteger', 'String', 'String',
+               'String', 'Single', 'Single', 'String', 'String', 'String', 'Single',
+               'String', 'String', 'Single', 'String', 'String', 'String', 'String',
+               'String', 'String', 'String', 'String', 'Single', 'Double', 'Double',
+               'Single', 'String', 'String', 'Single', 'Double', 'Double')
         pass
 
     def testnrow(self):
@@ -108,13 +107,12 @@ class TestGlobalFunctions(unittest.TestCase):
             vals = _data.field_values(fc, 'SHAPE@XY', w, 'Shape_Length ASC')
         pass
 
-
-##    def testdistinct(self):
-##        pass
+    ##    def testdistinct(self):
+    ##        pass
 
     def testhead(self):
         est = 5
-        hd = _common.head(self.t_fc, est, geoms = " ", verbose=False)
+        hd = _common.head(self.t_fc, est, geoms=" ", verbose=False)
         obs = len(hd[0])
         self.assertEqual(est, obs)
         pass
@@ -122,7 +120,7 @@ class TestGlobalFunctions(unittest.TestCase):
     def testchart(self):
         obs = r'c:\temp\chart.jpg'
         t_fc = self.t_fc
-        est = _charts_stats.chart(t_fc, obs, texts = {'txt': 'Element txt'}, openit=False)
+        est = _charts_stats.chart(t_fc, obs, texts={'txt': 'Element txt'}, openit=False)
         self.assertEqual(str(est).lower(), str(obs).lower())
         pass
 
@@ -130,11 +128,11 @@ class TestGlobalFunctions(unittest.TestCase):
         pic = r'c:\temp\plot.png'
         x = range(20)
         _charts_stats.plot(x, out_file=pic, openit=False)
-        y = range(50,70)
+        y = range(50, 70)
         _charts_stats.plot(x, y, pic, 'Main', 'X [m]', 'Y [m]', 'o', 'k', openit=False)
         os.remove(pic)
         with self.assertRaises(_common.ArcapiError):
-            _charts_stats.plot(x, [1,2,3], pic, 'Main', 'X [m]', 'Y [m]', 'o', 'k', openit=False)
+            _charts_stats.plot(x, [1, 2, 3], pic, 'Main', 'X [m]', 'Y [m]', 'o', 'k', openit=False)
         pass
 
     def testhist(self):
@@ -149,7 +147,7 @@ class TestGlobalFunctions(unittest.TestCase):
         pic = r'c:\temp\plot.png'
         x = range(20)
         _charts_stats.bars(x, out_file=pic, openit=False)
-        y = range(50,70)
+        y = range(50, 70)
         _charts_stats.bars(x, out_file=pic, labels=y, main='Main', xlab='X', ylab='Y', openit=False)
         _charts_stats.bars([], openit=False)
         os.remove(pic)
@@ -157,8 +155,8 @@ class TestGlobalFunctions(unittest.TestCase):
 
     def testpie(self):
         pic = r'c:\temp\plot.png'
-        x = [1,2,3,4,5,6,7]
-        y = [1,1,2,2,3,3,3]
+        x = [1, 2, 3, 4, 5, 6, 7]
+        y = [1, 1, 2, 2, 3, 3, 3]
         _charts_stats.pie(x, openit=False)
         _charts_stats.pie(x, y, main="A chart", out_file=pic, autopct='%1.1f%%', openit=False)
         _charts_stats.pie(x=[], y=[], openit=False)
@@ -207,8 +205,8 @@ class TestGlobalFunctions(unittest.TestCase):
         self.assertTrue(all((est1 == obs, est2 == obs)))
         pass
 
-##    def testdocu(self):
-##        pass
+    ##    def testdocu(self):
+    ##        pass
 
     def testmeta(self):
         fcws = 'c:\\temp'
@@ -216,7 +214,7 @@ class TestGlobalFunctions(unittest.TestCase):
         fcnm = _path.basename(tempshp)
 
         # testing entries
-        ttl,pps,abt = "Bar","example", "Column Spam means eggs"
+        ttl, pps, abt = "Bar", "example", "Column Spam means eggs"
 
         fc = arcpy.FeatureClassToFeatureClass_conversion(
             self.t_fc,
@@ -230,11 +228,11 @@ class TestGlobalFunctions(unittest.TestCase):
         _common.dlt(fc)
         self.assertEqual(set(editted.values()), set(retrieved.values()))
 
-##    def testmsg(self):
-##        pass
+    ##    def testmsg(self):
+    ##        pass
 
     def testfrequency(self):
-        est = _common.frequency([1,1,2,3,4,4,4])
+        est = _common.frequency([1, 1, 2, 3, 4, 4, 4])
         obs = {1: 2, 2: 1, 3: 1, 4: 3}
         samekeys = set(est.keys()) == set(obs.keys())
         good = all([samekeys] + [est[i] == obs[i] for i in est])
@@ -264,7 +262,7 @@ class TestGlobalFunctions(unittest.TestCase):
         est.append(len(_common.tstamp("lr")) == len('lr20140216184045'))
         est.append(len(_common.tstamp("lr", "%H%M%S")) == len('lr184045'))
         est.append(len(_common.tstamp("lr", "%H%M%S")) == len('lr184045'))
-        est.append(len(_common.tstamp("lr", "%H%M%S", s=('run',1))) == len('lr184527_run_1'))
+        est.append(len(_common.tstamp("lr", "%H%M%S", s=('run', 1))) == len('lr184527_run_1'))
         obs = [True, True, True, True, True]
         self.assertEqual(est, obs)
         pass
@@ -274,8 +272,8 @@ class TestGlobalFunctions(unittest.TestCase):
         wc = '"OBJECTID" < 11'
         lr = arcpy.management.MakeFeatureLayer(self.t_fc, "lr", wc).getOutput(0)
         # TODO: test for deleting layers won't pass even though _common.dlt works
-        #print lr
-        #print arcpy.Exists(lr)
+        # print lr
+        # print arcpy.Exists(lr)
         tempfc = 'in_memory\\tmp'
         if arcpy.Exists(tempfc):
             arcpy.Delete_management(tempfc)
@@ -302,18 +300,17 @@ class TestGlobalFunctions(unittest.TestCase):
         wc = '"OBJECTID" < ' + str(obs + 1)
         ofc = arcpy.CreateScratchName("tmp_out.dbf", workspace="c:\\temp").replace('.dbf', '.shp')
         cs = 27700
-        ptfc = _common.to_points(self.t_fc, ofc, "POP_EST", "GDP_MD_EST", cs, w = wc)
+        ptfc = _common.to_points(self.t_fc, ofc, "POP_EST", "GDP_MD_EST", cs, w=wc)
         est = int(arcpy.GetCount_management(ptfc).getOutput(0))
         arcpy.Delete_management(ptfc)
         self.assertEqual(est, obs)
         pass
 
-
-##    def testwsp(self):
-##        pass
-##
-##    def testswsp(self):
-##        pass
+    ##    def testwsp(self):
+    ##        pass
+    ##
+    ##    def testswsp(self):
+    ##        pass
 
     def testto_scratch(self):
         est = []
@@ -338,25 +335,25 @@ class TestGlobalFunctions(unittest.TestCase):
         _common.to_scratch('foo.shp', 0) == _path.join(s, 'foo_shp')
         _common.to_scratch('foo.shp', 1) == _path.join(s, 'foo_shp0')
 
-        eq = all([ei == oi for ei,oi in zip(est, obs)])
+        eq = all([ei == oi for ei, oi in zip(est, obs)])
         self.assertTrue(eq)
 
     def testremap_sa(self):
         est = []
 
-        remapped = _common.remap_3d(10,50,10)
+        remapped = _common.remap_3d(10, 50, 10)
         est.append(remapped == '10 20 1;20 30 2;30 40 3;40 50 4')
 
-        remapped = _common.remap_3d(0,5,1)
+        remapped = _common.remap_3d(0, 5, 1)
         est.append(remapped == '0 1 1;1 2 2;2 3 3;3 4 4;4 5 5')
 
-        remapped = _common.remap_3d(-10,10,5)
+        remapped = _common.remap_3d(-10, 10, 5)
         est.append(remapped == '-10 -5 1;-5 0 2;0 5 3;5 10 4')
 
-        remapped = _common.remap_3d(-10,10,-5)
+        remapped = _common.remap_3d(-10, 10, -5)
         est.append(remapped == '')
 
-        remapped = _common.remap_3d(10,-20,-7)
+        remapped = _common.remap_3d(10, -20, -7)
         est.append(remapped == '10 3 1;3 -4 2;-4 -11 3;-11 -18 4;-18 -25 5')
 
         self.assertTrue(all(est))
@@ -364,23 +361,23 @@ class TestGlobalFunctions(unittest.TestCase):
     def testremap_3d(self):
         est = []
 
-        remapped = _common.remap_sa(10,50,10)
+        remapped = _common.remap_sa(10, 50, 10)
         ob = [[[10, 20], 1], [[20, 30], 2], [[30, 40], 3], [[40, 50], 4]]
         est.append(remapped == ob)
 
-        remapped = _common.remap_sa(0,5,1)
+        remapped = _common.remap_sa(0, 5, 1)
         ob = [[[0, 1], 1], [[1, 2], 2], [[2, 3], 3], [[3, 4], 4], [[4, 5], 5]]
         est.append(remapped == ob)
 
-        remapped = _common.remap_sa(-10,10,5)
+        remapped = _common.remap_sa(-10, 10, 5)
         ob = [[[-10, -5], 1], [[-5, 0], 2], [[0, 5], 3], [[5, 10], 4]]
         est.append(remapped == ob)
 
-        remapped = _common.remap_sa(-10,10,-5)
+        remapped = _common.remap_sa(-10, 10, -5)
         ob = []
         est.append(remapped == ob)
 
-        remapped = _common.remap_sa(10,-20,-7)
+        remapped = _common.remap_sa(10, -20, -7)
         ob = [
             [[10, 3], 1], [[3, -4], 2], [[-4, -11], 3], [[-11, -18], 4],
             [[-18, -25], 5]
@@ -423,7 +420,8 @@ class TestGlobalFunctions(unittest.TestCase):
             for rast in [int_rst, est]:
                 try:
                     arcpy.Delete_management(rast)
-                except:pass
+                except:
+                    pass
         pass
 
     def testfill_no_data(self):
@@ -440,7 +438,8 @@ class TestGlobalFunctions(unittest.TestCase):
             for rast in [est, null]:
                 try:
                     arcpy.Delete_management(rast)
-                except:pass
+                except:
+                    pass
         pass
 
     def testmeters_to_feet(self):
@@ -509,7 +508,8 @@ class TestGlobalFunctions(unittest.TestCase):
         est = [f.name for f in arcpy.ListFields(copy)]
         try:
             arcpy.Delete_management(copy)
-        except: pass
+        except:
+            pass
         for f in flds:
             self.assertTrue(f in est)
         pass
@@ -534,13 +534,14 @@ class TestGlobalFunctions(unittest.TestCase):
         est = [f.name for f in arcpy.ListFields(copy)]
         try:
             arcpy.Delete_management(copy)
-        except: pass
+        except:
+            pass
         for f in flds:
             self.assertTrue(f in est)
         pass
 
     def testconcatenate(self):
-        est = _common.concatenate(['A','B','C'], '-')
+        est = _common.concatenate(['A', 'B', 'C'], '-')
         self.assertEqual(est, 'A-B-C')
         pass
 
@@ -559,7 +560,8 @@ class TestGlobalFunctions(unittest.TestCase):
         del rows
         try:
             arcpy.Delete_management(copy)
-        except: pass
+        except:
+            pass
         self.assertEqual(est, obs)
         pass
 
@@ -571,12 +573,12 @@ class TestGlobalFunctions(unittest.TestCase):
         fig = _path.join(self.testingfolder, 'IL_county_pop.png')
         # will use 'CNTY_FIPS' as case field since our pop field is
         # already populated for each county
-        _common.create_pie_chart(fig, tv, 'NAME','POP2000', 'IL Counties')
+        _common.create_pie_chart(fig, tv, 'NAME', 'POP2000', 'IL Counties')
         self.assertTrue(_path.exists(fig))
-####        try:
-####            arcpy.Delete_management(fig) # may want to look at the figure, pretty cool!
-####        except:
-####            pass
+        ####        try:
+        ####            arcpy.Delete_management(fig) # may want to look at the figure, pretty cool!
+        ####        except:
+        ####            pass
         pass
 
     def testcombine_pdfs(self):
@@ -605,7 +607,7 @@ class TestGlobalFunctions(unittest.TestCase):
 
     def testlist_data(self):
         """TODO: Write more tests for listing data"""
-        expected = ['testing.gdb','testing_files']
+        expected = ['testing.gdb', 'testing_files']
         data = _common.list_data(self.testingfolder)
         datas = str("".join(data))
         all_in = all([(ei in datas) for ei in expected])
@@ -619,7 +621,7 @@ class TestGlobalFunctions(unittest.TestCase):
     def testrequest_json(self):
         """Get json from arcgis sampleserver"""
         u = 'http://sampleserver3.arcgisonline.com/ArcGIS/rest/services'
-        d = _common.request(u, {'f':'json'}, 'json')
+        d = _common.request(u, {'f': 'json'}, 'json')
         items = [
             isinstance(d, dict),
             isinstance(d.get('services'), list),
@@ -676,4 +678,4 @@ class TestGlobalFunctions(unittest.TestCase):
 
 
 if __name__ == '__main__':
-    unittest.main(verbosity = 2)
+    unittest.main(verbosity=2)

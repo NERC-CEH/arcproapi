@@ -32,7 +32,7 @@ lut_field_types = {
 }
 
 
-class Version(_Enum):
+class EnumVersion(_Enum):
     """Version enumeration"""
     ArcPro = 1
     ArcMap = 2
@@ -178,7 +178,7 @@ def memory_lyr_get(workspace='in_memory') -> str:
         >>> memory_lyr_get()
         'in_memory/arehrwfs
     """
-    return '%s/%s' % (workspace, _stringslib.rndstr(from_= _string.ascii_lowercase))
+    return '%s/%s' % (workspace, _stringslib.rndstr(from_=_string.ascii_lowercase))
 
 
 def tstamp(p="", tf="%Y%m%d%H%M%S", d="_", m=False, s=()):
@@ -738,7 +738,7 @@ def is_locked(fname: str) -> (bool, None):
     return not _arcpy.TestSchemaLock(fname)
 
 
-def field_name_clean(s:str):
+def field_name_clean(s: str, recursions: int = 100):
     """
     Cleans a field name to reduce it to a lower case alpha-ASCII name delimited by underscores
 
@@ -746,17 +746,19 @@ def field_name_clean(s:str):
         s:
 
     Raises:
-        RecursionError: If over 100 attempts are made to fix seperator character (i.e. "_") duplicates
+        RecursionError: If over "recursions" attempts are made to fix seperator character (i.e. "_") duplicates
 
     Returns:
         str: The cleaned name. Returns empty string if "not s" evaluates to True
 
     Examples:
 
-        Basic
-
         >>> field_name_clean('_123my-field')
         'my_field'
+
+        >>> field_name_clean('123my-8£$field1')
+        'my_field1'
+
     """
     if not s: return ''
     ss = s
@@ -768,22 +770,19 @@ def field_name_clean(s:str):
     n = 0
     while True:
         if not ss: return ''
-        i = len(s)
-        s = s.replace('__', '_')
-        if i == len(s): break
+        i = len(ss)
+        ss = ss.replace('__', '_')
+        if i == len(ss): break
         n += 1
-        if n > 100:
+
+        # Lets not risk getting in infinite recursion - defensive get-out
+        if n > recursions:
             raise RecursionError('Recursion error when fixing input string "%s"' % s)
 
-    def _not_n(char: str):
-        try:
-            xx = int(char)
-            return False
-        except:
-            return True
-
-    ss = ''.join(filter(_not_n, ss))
+    ss.lstrip('0123456789')
+    # ss.rstrip('0123456789')  # Nope, lets keep these, suffixing with a number is just about valid practice/naming e.g. comment1, comment2
     ss = ss.strip('_')
+    return ss
 
 
 def names(fname, filterer=None):
@@ -1120,19 +1119,19 @@ def release() -> str:
     return _arcpy.GetInstallInfo()['Version']
 
 
-def version() -> Version:
+def version() -> EnumVersion:
     """
     Get version, ie ArcPro or ArcMap
 
     Returns:
-        Version: Version as an enumeration.
+        EnumVersion: Version as an enumeration.
 
     Examples:
         >>> version()
         Version.ArcPro
     """
     d = _arcpy.GetInstallInfo()
-    return Version.ArcPro if d['ProductName'] == 'ArcGISPro' else Version.ArcMap
+    return EnumVersion.ArcPro if d['ProductName'] == 'ArcGISPro' else EnumVersion.ArcMap
 
 
 def pretty_field_mapping(field_map_str: str, to_console: bool = True, return_it: bool = False) -> (str, None):

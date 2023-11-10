@@ -41,8 +41,6 @@ import arcproapi.environ as _environ
 import arcproapi.errors as _errors
 import arcproapi.decs as _decs
 
-
-
 _str2lst = lambda v: list(v) if isinstance(v, str) else v
 _tolst = lambda v: v if isinstance(v, list) else list(v)
 
@@ -1747,13 +1745,20 @@ def field_rename(fname: str, col: str, newcol: str, skip_name_validation: bool =
     return newcol
 
 
-def field_rename_to_alias(fname: str, cols: (str, list), skip_name_validation: bool = False, new_alias='ORIGINAL', show_progress: bool = False) -> list[str]:
+def fc_fields_rename_to_alias(fname: str, cols: (str, list, str) = 'ALL', skip_name_validation: bool = False, new_alias='ORIGINAL', show_progress: bool = False) -> (list[str], None):
     """Rename column in table tbl and return the new name of the column.
 
     Args:
         fname: table with the column to fname
-        cols: name of the column to fname, or a list of names
-        new_alias: field alias for newcol
+
+        cols:
+            str: Name of a single column or 'ALL' to rename all not-editable and not-required fields
+            (tuple, list): A list/tuple of names.
+            None: then we just return.
+
+        new_alias:
+            str: If "ORIGINAL" sets to original col name. If:"CLEAR", clears the alias
+
         skip_name_validation: Do not call arpy.ValidateFieldName to get a valid name. Useful as this can truncate perfectly valid names
         show_progress: Show progress
 
@@ -1768,33 +1773,40 @@ def field_rename_to_alias(fname: str, cols: (str, list), skip_name_validation: b
         ArcPro provides the function arcpy.management.AlterField (exposed in this module).
         Alterfield is recommended as this does an non-transactioned AddField, CalculateField then DeleteField
     """
+    if not cols: return None  # noqa
     fname = _path.normpath(fname)
     Flds = FieldsDescribe(fname)
-
     if isinstance(cols, str): cols = [cols]
+
+    if cols == ['ALL']:
+        cols = Flds.not_required_editable(names_only=True)
+
     new_names = []
 
     if show_progress: PP = _iolib.PrintProgress(iter_=cols, init_msg='Setting col names to their respective alias ...')
     for col in cols:
-
         #  Dont rename if alias and name same
         if col.lower() == Flds[col][EnumFieldProperties.aliasName.name].lower():
-            PP.increment()  # noqa
+            if show_progress: PP.increment()  # noqa
             continue
 
         if col.lower() == Flds[col]['aliasname'].lower():
-            PP.increment()
+            if show_progress: PP.increment()
             continue
         if not skip_name_validation:
             new_name = field_name_clean(Flds[col]['aliasname'])  # noqa
         else:
             new_name = Flds[col]['aliasname']  # noqa
 
-        AlterField(fname, col, new_name, new_field_alias=col if new_alias == 'ORIGINAL' else '')  # noqa
+        AlterField(fname, col, new_name, new_field_alias=col if new_alias == 'ORIGINAL' else new_name)  # noqa
         new_names += new_name
         if show_progress: PP.increment()  # noqa
 
     return new_names  # noqa
+
+
+# The general function support single field renaming, no need to rewrite/adapt/wrap
+field_rename_to_alias = fc_fields_rename_to_alias
 
 
 def fields_rename(fname: str, from_: list, to: list, aliases: (list, str, None) = None, skip_name_validation: bool = False, show_progress: bool = False):
@@ -1914,10 +1926,16 @@ class FieldsDescribe:
     Instance attributes for each field dict member follow those of esri.Field object.
     This is camel-case for compound property names, e.g. "aliasName", "isNullable".
 
+    The dictionary representations of each field are instances of funclib.baselib.DictAttributes
+    This allows access to the dictionary fields as if they were a class instance.
+
     Methods:
 
         editable:
-            All fields flagged as editable
+            All fields flagged as editable, means the fields are editable, includes Shape ofcourse
+
+        required:
+            All fields that are required for the layer, this is from OBJECTID, Shape, Shape_Length, Shape_Area .. etc
 
         OID:
             The OID field
@@ -1962,8 +1980,19 @@ class FieldsDescribe:
             >>> FD.OID()
             {'aliasName': 'OID', 'basename': 'OID', ...}
 
-    """
 
+        Use OID Field as if it were a class
+
+            >>> OID = FD.OID()
+            >>> FD.name, FD.type  # noqa
+            'OBJECTID', 'LONG'
+
+
+        Iterate the fields
+
+        >>> [F for F in FD][0].name  # noqa
+        'OBJECTID'
+    """
 
     def __init__(self, fname: str):
         self._fname = _path.normpath(fname)
@@ -1971,18 +2000,16 @@ class FieldsDescribe:
         self._index = 0
         F: _arcpy.Field
         for F in self.Fields:
-            self.__dict__[F.name] = {k: v for k, v in {'aliasName': F.aliasName, 'basename': F.baseName,
-                                                               'defaultvalue': F.defaultValue, 'domain': F.domain,
-                                                               'editable': F.editable, 'isnullable': F.isNullable,
-                                                               'length': F.length, 'name': F.name,
-                                                               'precision': F.precision, 'required': F.required,
-                                                               'scale': F.scale, 'type': F.type, 'field': F}.items()
-                                     }
+            self.__dict__[F.name] = _baselib.DictAttributed({k: v for k, v in {'aliasName': F.aliasName, 'basename': F.baseName,
+                                                                               'defaultvalue': F.defaultValue, 'domain': F.domain,
+                                                                               'editable': F.editable, 'isnullable': F.isNullable,
+                                                                               'length': F.length, 'name': F.name,
+                                                                               'precision': F.precision, 'required': F.required,
+                                                                               'scale': F.scale, 'type': F.type, 'field': F}.items()
+                                                             })
 
-    def __getitem__(self, item: (str, int)) -> dict:
-        if isinstance(item, int):
-            return list(filter(lambda s: s[0] == '_', self.__dict__.values()))[item]
-        return self.__dict__[item]
+    def __getitem__(self, item: str) -> dict:
+        return self._field_items()[item]
 
 
     def __iter__(self):
@@ -1993,23 +2020,32 @@ class FieldsDescribe:
             >>> print(next(FieldsDescribe('C:/country.shp')))
             {'aliasname': 'country_name', 'basename': countryname', 'editable': True, ...}
         """
-        return iter(tuple(self.__dict__.values()))
+        return iter((v for v in self._field_items().values()))
 
     def __next__(self):
         try:
-            return tuple(self.__dict__.values())[self._index]
+            t = tuple(v for v in self._field_items().values())[self._index]  # noqa
+            return t
         except:
             raise StopIteration
         self._index += 1
-
 
     def __repr__(self):
         lst = [self._fname]
 
         # looks complicated, but we just want all fields that are class members, excluding the fname (which weve just added above
-        for v in (itm for itm in self.__dict__.items() if itm[0][0] != '_'):
-            lst += [v]
+        for v in (itm for itm in self._field_items().items()):
+            lst += [str(v)]
         return '\n'.join(lst)
+
+
+    def _field_items(self):
+        """
+        tuple if self.__dict__ which are actually fields with dicts
+        Excludes self.Fields
+        """
+        return {k: v for k, v in self.__dict__.items() if k != 'Fields' and k[0] != '_' and isinstance(v, _baselib.DictAttributed)}
+
 
 
     def iterfields(self):
@@ -2019,6 +2055,40 @@ class FieldsDescribe:
         if not self.Fields:
             return []
         return iter(self.Fields)
+
+    def not_required_editable(self, as_fields: bool = False, names_only:bool = False) -> (dict[str:dict[str]], dict[str: _arcpy.Field], list[str]):
+        """
+        Get list of fields that not required, but are editable either as a dict of the Fields attributes.
+
+        This should be the "user" fields which can be edited.
+
+        Untested on feature classes with date/edit tracking enabled.
+
+        Args:
+            as_fields: Return instances of arcpy.Field
+            names_only: Return a list of field names
+
+        Raises:
+            UserWarning: If as_fields and names_only are both True
+
+        Returns:
+            dict[str:dict:[str]]: A dictionary of dictionaries where the outer keys are field names
+
+        Examples:
+
+            >>> FieldsDescribe('c:/my.gdb/countries').not_required_editable(as_fields=True)
+            [<Field object at ...>, <Field object at ...>, ...]
+        """
+        if as_fields and names_only:
+            raise UserWarning('Both as_fields and names_only were True, pick one or the other')
+
+        if as_fields:
+            return {k: v['field'] for k, v in self._field_items().items() if v['editable'] and not v['required']}
+
+        if names_only:
+            return [k for k, v in self._field_items().items() if v['editable'] and not v['required']]
+
+        return {k: v for k, v in self._field_items().items() if v['editable'] and not v['required']}
 
 
     def editable(self, as_fields: bool = False, names_only: bool = False) -> (dict[str:dict[str]], dict[str: _arcpy.Field]):
@@ -2046,15 +2116,12 @@ class FieldsDescribe:
             raise UserWarning('Both as_fields and names_only were True, pick one or the other')
 
         if as_fields:
-            return {k: v['Field'] for k, v in self.__dict__.items() if v['editable']}
-
-        if as_fields:
-            return {k: v['Field'] for k, v in self.__dict__.items() if v['required']}
+            return {k: v['field'] for k, v in self._field_items().items() if v['editable']}
 
         if names_only:
-            return [k for k, v in self.__dict__.items() if v['required']]
+            return [k for k, v in self._field_items().items() if v['editable']]
 
-        return {k: self.__dict__[k] for k, v in self.__dict__.items() if v['required']}
+        return {k: v for k, v in self._field_items().items() if v['editable']}
 
     def required(self, as_fields: bool = False, names_only: bool = False):
         """
@@ -2083,12 +2150,12 @@ class FieldsDescribe:
             raise UserWarning('Both as_fields and names_only were True, pick one or the other')
 
         if as_fields:
-            return {k: v['Field'] for k, v in self.__dict__.items() if v['required']}
+            return {k: v['field'] for k, v in self._field_items().items() if v['required']}
 
         if names_only:
-            return [k for k, v in self.__dict__.items() if v['required']]
+            return [k for k, v in self._field_items().items() if v['required']]
 
-        return {k: self.__dict__[k] for k, v in self.__dict__.items() if v['required']}
+        return {k: self.__dict__[k] for k, v in self._field_items().items() if v['required']}
 
     def OID(self, as_field: bool = False) -> (_arcpy.Field, dict[str]):
         """
@@ -2108,14 +2175,12 @@ class FieldsDescribe:
         """
         if as_field:
             return list(filter(lambda f: f.type == 'OID', self.Fields))[0]
-
-        return [self.__dict__[k] for k, v in self.__dict__.items() if v['type'] == 'OID'][0]
+        return [self.__dict__[k] for k, v in self._field_items().items() if v['type'] == 'OID'][0]
 
     def Geometry(self, as_field: bool = False) -> (_arcpy.Field, dict[str]):
         if as_field:
-            return list(filter(lambda f: f.type == 'OID', self.Fields))[0]
-
-        return [self.__dict__[k] for k, v in self.__dict__.items() if v['type'] == 'Geometry'][0]
+            return list(filter(lambda f: f.type == 'Geometry', self.Fields))[0]
+        return [self.__dict__[k] for k, v in self._field_items().items() if v['type'] == 'Geometry'][0]
 
 
 def field_get_property(fld: _arcpy.Field, property_: str) -> any:  # noqa

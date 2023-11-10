@@ -390,6 +390,10 @@ class ResultAsPandas(_mixins.MixinPandasHelper):
                 self.Results[s] = ResultAsPandas._LayerDataFrame(s, lyr_tmp)
                 kwargs[s] = lyr_tmp
 
+        errstr = 'The tool "%s" had unknown keywords. '  % str(tool)
+        errstr += 'Currently code only accepts tools which support arguments "in_features", "in_dataset" and the "in_polygons in_sum_features" pairing. '
+        errstr += 'Along with analysis.Near.\n\nThis will need fixing in code.'
+
         keys = dict(_inspect.signature(tool).parameters).keys()
         if tool in [_arcpy.analysis.Near]:  # Near appends fields to in_features, so we have to hack it, there is probably a whole family of tools that follow this call pattern, expand  in filter as needed
             _struct.ExportFeatures(in_features, self.result_memory_layer)
@@ -397,13 +401,24 @@ class ResultAsPandas(_mixins.MixinPandasHelper):
         elif 'in_dataset' in keys:
             self.execution_result = tool(in_dataset=in_features, out_dataset=self.result_memory_layer, **kwargs)
         elif 'in_features' in keys:
-            self.execution_result = tool(in_features=in_features, out_feature_class=self.result_memory_layer, **kwargs)
+            if 'out_table' in keys:  # CheckGeometry
+                self.execution_result = tool(in_features=in_features, out_table=self.result_memory_layer, **kwargs)
+            elif 'out_feature_class' in keys:
+                self.execution_result = tool(in_features=in_features, out_feature_class=self.result_memory_layer, **kwargs)
+            else:
+                # Just try and get the outtable for tools that i'm not aware of yet
+                no_out = True
+                for out in keys:
+                    if out.startswith('out_'):
+                        no_out = False
+                        self.execution_result = tool(in_features=in_features, out_feature_class=self.result_memory_layer, **kwargs)
+                        break
+                if no_out:
+                    raise _errors.DataUnknownKeywordsForTool(errstr)
         elif 'in_polygons' in keys and 'in_sum_features' in keys:  # arcpy.analysis.SummarizeWithin & SummarizeNearBy
             self.execution_result = tool(*in_features, out_feature_class=self.result_memory_layer, **kwargs)
         else:
-            raise _errors.DataUnknownKeywordsForTool(
-                'The tool "%s" had unknown keywords. Currently code only accepts tools which support arguments "in_features", "in_dataset" and the "in_polygons in_sum_features" pairing. Along with analysis.Near.\n\nThis will need fixing in code.' % str(
-                    tool))
+            raise _errors.DataUnknownKeywordsForTool(errstr)
 
         self.df = table_as_pandas2(self.result_memory_layer, cols=columns, where=where, exclude_cols=exclude_cols, as_int=as_int, as_float=as_float)
         self.df_lower = self.df.copy()

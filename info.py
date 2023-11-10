@@ -10,12 +10,16 @@ Structure on-the-other-hand, has many methods which are consumed directly by oth
 """
 
 import os.path as _path  # noqa
-
+i
 import arcpy as _arcpy
 from arcpy.da import Describe  # noqa this is the dict version of Describe
 
 import pandas as _pd
 import fuckit as _fuckit
+
+with _fuckit:
+    # ArcGISPro >= 3.2
+    from arcpy.management import GenerateSchemaReport  # noqa
 
 import funclite.iolib as _iolib
 import funclite.baselib as _baselib
@@ -137,6 +141,9 @@ def gdb_dump_tables_and_fcs(gdb: str, save_to: (str, None) = None,
 
     Performs quicker than gdb_row_counts.
 
+    In arcgispro 3.2, GenerateSchemaReport was implemented by ESRI.
+    https://pro.arcgis.com/en/pro-app/latest/tool-reference/data-management/generate-schema-report.htm
+
     Args:
         gdb (str): the geodatabase, set the environment.
         save_to (str, None): dump to this excel file if provided. Is normpathed.
@@ -188,6 +195,9 @@ def gdb_dump_struct(gdb: str, save_to: (str, None) = None,
     Write the struture of a gdb
     May also work with SDE connection, but untested.
 
+    In arcgispro 3.2, GenerateSchemaReport was implemented by ESRI.
+    https://pro.arcgis.com/en/pro-app/latest/tool-reference/data-management/generate-schema-report.htm
+
     Args:
         gdb (str): the geodatabase, set the environment.
         save_to (str, None): dump to this excel file if provided. Is normpathed.
@@ -208,7 +218,7 @@ def gdb_dump_struct(gdb: str, save_to: (str, None) = None,
         FileExistsError: If save_to is given and the file exists, but overwrite_xlsx is False
 
     Notes:
-        All filters are case insensitive
+        All filters are case insensitive.
 
     Examples:
         Print all layers matching "*count*" (e.g. country, county), of field type "*int*" with name matching "*popula*" or "*people_*"
@@ -296,6 +306,9 @@ def sde_fname_struct_as_dict(file_path: str) -> dict:
     """
     Return a dict describing a sde feature class or table details and structure.
 
+    In arcgispro 3.2, GenerateSchemaReport was implemented by ESRI.
+    https://pro.arcgis.com/en/pro-app/latest/tool-reference/data-management/generate-schema-report.htm
+
     Args:
         file_path (str): Input database file path to read.
 
@@ -357,7 +370,53 @@ def sde_fname_struct_as_dict(file_path: str) -> dict:
 
 
 
+def geometry_check(fnames: (str, list[str])) -> dict[str:list[str], str:list[str]]:
+    """
+    Currently a simple boolean check geometry on inputted fnames
 
+    Args:
+        fnames:
+
+    Returns:
+        dict['bad':list[str], 'good':list[str]]: A dictionary of features with good and bad geometry
+
+
+    Examples:
+
+        >>> geometry_check(['C:/my.gdb/country', 'C:/my.gdb/county', 'C:/my.gdb/region', 'C:/my.gdb/town'])
+        {'good':['country', 'county'], 'bad':['region', 'town']}
+    """
+    # TODO: Extent to include the results datasets - probably exported to an xlsx
+    # See https://pro.arcgis.com/en/pro-app/latest/tool-reference/data-management/check-geometry.htm
+
+    if isinstance(fnames, str): fnames = [fnames]
+    out = _baselib.DictList()
+    for fname in map(_path.normpath, fnames):
+        RAP = _data.ResultAsPandas(_arcpy.management.CheckGeometry, fname)
+        if RAP.execution_result[1]:
+            out['bad'] = _path.basename(fname)
+        else:
+            out['good'] = _path.basename(fname)
+    return dict(out)
+
+
+def gdb_geometry_check(gdb: str) -> dict[str:list[str], str:list[str]]:
+    """
+    Boolean check for bad geometry on all feature class in a geodatabase
+
+    Args:
+        gdb: Geodatabase
+
+    Returns:
+        dict['bad':list[str], 'good':list[str]]: A dictionary of features with good and bad geometry
+
+
+    Examples:
+
+        >>> geometry_check('C:/my.gdb')
+        {'good':['country', 'county'], 'bad':['region', 'town']}
+    """
+    return geometry_check(_struct.gdb_fc_list(gdb, full_path=True))
 
 
 # region helper methods

@@ -32,8 +32,7 @@ class Version(_Enum):
     ArcPro = 1
     ArcMap = 2
 
-
-def version() -> Version:
+def version_as_enum() -> Version:
     """
     Get version, ie ArcPro or ArcMap
 
@@ -41,11 +40,20 @@ def version() -> Version:
         Version: Version as an enumeration.
 
     Examples:
-        >>> version()
+        >>> version_as_enum()
         Version.ArcPro
     """
     d = _arcpy.GetInstallInfo()
     return Version.ArcPro if d['ProductName'] == 'ArcGISPro' else Version.ArcMap
+
+def product_name():
+    return _arcpy.GetInstallInfo()['ProductName']
+
+def arcpro_version():
+    try:
+        return _arcpy.GetInstallInfo()['Version']
+    except:
+        return ''
 
 def release() -> str:
     """Get the release number.
@@ -62,12 +70,12 @@ def current_project():
     """Return handle to the CURRENT map document.
     ***Can be used only in an ArcMap session***
     """
-    if version() == Version.ArcPro:
+    if version_as_enum() == Version.ArcPro:
         return mp.ArcGISProject("CURRENT")
     return mp.MapDocument("CURRENT")  # noqa
 
 
-if version() == Version.ArcPro:
+if version_as_enum() == Version.ArcPro:
     import arcpy.mp as mp  # noqa
     #import arcpy.MetadataImporter_conversion # noqa
 else:
