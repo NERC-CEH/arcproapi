@@ -225,6 +225,64 @@ class UpdateCursor(_da.UpdateCursor):
         self._rowcount = i
         return i
 
+class InsertCursor(_da.InsertCursor):
+    """Wrapper around arcpy.da.InsertCursor.
+
+    The InsertCursor method is pretty straight forward, but this is provided for completeness - it marginally eases the call to insert rows.
+
+    Args:
+        fname (str): name of feature class or table
+
+        kwargs:
+            keyword value pairs, if field names and iterables (lists/tuples) where the iterables are the values
+
+    Raises:
+        ValueError: If all the iterables in kwargs.values() are not of equal length.
+
+    Examples:
+
+        >>> Cur = InsertCursor('c:/my.gdb/mytable', country=['UK','France'], population=[56e6, 45e6])
+        >>> Cur.inserted_n
+        2
+    """
+    # TODO: InsertCursor needs debugging/testing
+
+    def __init__(self, fname, show_progress: bool = False, **kwargs):
+        fname = _path.normpath(fname)
+        self._fname = fname
+        self._kwargs: dict = kwargs
+        self.inserted_n = 0
+        self._show_progress = show_progress
+
+        # If invalid args passed, lets error before we try anything else
+        x = len(list(kwargs.values())[0])
+        if not all(x == len(lst) for lst in kwargs.values()):
+            raise ValueError('All the iterables in kwargs.values() must be of equal length')
+        self._n = x
+        super().__init__(fname, self._kwargs.keys())
+        self._insertRows()
+
+    def __repr__(self):
+        return '%s\nFields: %s\nInserted rows: %s' % (self._fname, self._kwargs.keys(), self.inserted_n)
+
+    def _insertRows(self) -> int:
+        """
+        Do the insert
+
+        Returns:
+            int: Number of rows inserted
+        """
+        if self._show_progress:
+            PP = _iolib.PrintProgress(maximum=self._n)
+        i = 0
+        for row in zip(self._kwargs.items()):
+            super().insertRow(row)
+            i += 1
+            if self._show_progress: PP.increment()  # noqa
+
+        self.inserted_n = i
+        return i
+
 
 class _Row:
     """
@@ -287,6 +345,7 @@ class _Row:
                 self._row[self._flds.index('SHAPE@')] = v
             else:
                 self._row[self._flds.index(k)] = v
+
 
     def fields(self):
         """Generator which yields crud._Row fields
@@ -601,7 +660,7 @@ class CRUD:
             >>>     C.insert(orderid=1, supplier='Foo Company')
             1
         """
-        i = None
+        i = None  # noqa
         cols = list(kwargs.keys())
         values = list(kwargs.values())
 

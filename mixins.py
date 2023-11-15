@@ -232,7 +232,7 @@ class MixinEnumHelper:
         gdb = _get_gdb(fname)
         if not _chkdom(gdb, cls.domain_name): # noqa
             cls.domain_create2(gdb)  # noqa
-        return _struct.domains_assign(cls.fname, {cls.domain_name: [flds]})
+        return _struct.domains_assign(fname, {cls.domain_name: [flds]})
 
 
     @_classproperty

@@ -429,18 +429,19 @@ def fc_fields_alias_clear(fname: str, where: str = '', fields: iter = None, show
 def fc_delete(fname: str) -> bool:
     """Deletes a table or feature class.
 
-    This is now superflous - use arcpy.management.Delete. See note.
+    This method is currently superflous - use arcpy.management.Delete. See note.
 
     Returns:
         bool: False if fname does not exist, True if fname exists and was deleted.
 
     Notes:
         arcpy 3.0.1 - arcpy.management.Delete appears to have changed and no longer raises an error if the layer does not exist.
+        It is unknown if this is a deliberate design decision or will be reverted at some later date.
     """
     deletted = False
     fname = _path.normpath(fname)
     if _arcpy.Exists(fname):
-        _arcpy.Delete_management(fname)
+        Delete(fname)
         deletted = True
     return deletted
 
@@ -1171,7 +1172,7 @@ def field_retype(fname: str, field_name: str, change_to: (str, type), default_on
     fld: _arcpy.Field = fields_get(fname, field_name, no_error_on_multiple=False, as_objs=True)[0]  # noqa
 
     # Check if we need to change the field type - if we dont, dont bother
-    if field_type == _common.eFieldTypeTextForListFields.as_field_type_text(fld.name):
+    if field_type == _common.eFieldTypeTextForListFields.as_field_type_text(fld.type):
         return
 
     temp_name = _stringslib.get_random_string(from_=_stringslib.string.ascii_lowercase)
@@ -1204,11 +1205,11 @@ def field_retype(fname: str, field_name: str, change_to: (str, type), default_on
         with _fuckit:
             DeleteField(fname, temp_name)
         raise e
-    if show_progress: print('Deleting the old field ...')
+    if show_progress: print('\nDeleting the old field "%s" ...' % field_name)
     DeleteField(fname, field_name)
-    if show_progress: print('Renaming the temporary field to the old field name ...')
+    if show_progress: print('Renaming the temporary field "%s" to the old field name "%s" ...' % (temp_name, field_name))
     AlterField(fname, temp_name, field_name)
-    if show_progress: print('Done')
+    if show_progress: print('...Done')
 
 
 def fields_get(fname, wild_card='*', field_type='All', no_error_on_multiple: bool = True, as_objs: bool = False) -> (list[str], list[_arcpy.Field], None):
