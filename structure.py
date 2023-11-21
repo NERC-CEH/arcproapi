@@ -34,6 +34,7 @@ import arcproapi.common as _common
 from arcproapi.common import get_row_count2 as rowcnt  # noqa kept to not break code
 from arcproapi.common import get_row_count2 as get_row_count2  # noqa
 from arcproapi.common import get_row_count as get_row_count  # noqa
+from arcproapi.common import EnumFieldTypeText  # noqa
 from arcproapi.common import field_name_clean  # noqa
 from arcproapi.enums import EnumFieldProperties  # noqa
 
@@ -1890,17 +1891,21 @@ def fields_rename(fname: str, from_: list, to: list, aliases: (list, str, None) 
     return success, failure, errors
 
 
-def fields_name_replace(fname: str, find: str, replace_with: str) -> list[str]:
+def fields_name_replace(fname: str, find: str, replace_with: str, show_progress: bool = False) -> list[str]:
     """
     Do a case insensitive search/replace on all fields in fname.
-    Aliases are reset to new name.
+
+    Aliases are reset to the new name.
+
     Args:
         fname: lyr/fc
         find: text to find (and replace)
         replace_with: replace find with this text
+        show_progress: show progress
 
     Returns:
         list[str]: list of new field names
+        Returns an empty list of no field names contained "find"
 
     Examples:
 
@@ -1909,10 +1914,19 @@ def fields_name_replace(fname: str, find: str, replace_with: str) -> list[str]:
     """
     fname = _path.normpath(fname)
     out = []
-    for s in [t for t in map(str.lower, fields_get(fname)) if replace_with.lower() in t]:
+
+    to_replace = [t for t in map(str.lower, fields_get(fname)) if find.lower() in t]
+    if not to_replace: return []
+
+    if show_progress:
+        PP = _iolib.PrintProgress(iter_=to_replace, init_msg='Replacing field names in "%s" ...' % fname)
+
+    for s in to_replace:
         rename_to = s.replace(find.lower(), replace_with)
         AlterField(fname, s, rename_to, clear_field_alias=True)
         out += [rename_to]
+        if show_progress: PP.increment()  # noqa
+
     return out
 
 

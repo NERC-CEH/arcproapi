@@ -57,6 +57,7 @@ class FieldNamesSpecial:
     xyz = 'SHAPE@XYZ'
 
 
+# At some point these enumerations should be refactored into enums.py
 class EnumFieldTypeText(_Enum):
     """Field Type text as required for addfield..
 

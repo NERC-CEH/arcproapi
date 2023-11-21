@@ -1,3 +1,5 @@
+# There are multiple enums in common.py that should be refactored into this module at some point
+
 from enum import Enum as _Enum
 
 import arcproapi.mixins as _mixins

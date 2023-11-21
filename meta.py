@@ -4,6 +4,8 @@ import os.path as _path
 
 import arcpy as _arcpy
 
+from funclite.stringslib import pretty_date_time_now as _pdtn
+
 import arcproapi as _arcapi
 import arcproapi.common as _common
 
@@ -35,7 +37,7 @@ class MetaBuilderBasic:
     """
     # No license as this is exposed through arcpy metadata class
     def __init__(self, title: str, what: str = '', purpose: str = '', where: str = '', when: str = '', how: str = '', lineage: str = '', missing_data: str = '', caveats_and_limitations: str = '',
-                 quality_control: str = '', credit: str = '', license: str = '', inputs: (tuple[str], list[str]) = (), scripts: (tuple[str], list[str]) = ()):
+                 quality_control: str = '', credit: str = '', license: str = '', inputs: (tuple[str], list[str]) = (), scripts: (tuple[str], list[str]) = ()):  # noqa
         self.title = title
         self.purpose = purpose
         self.what = what
@@ -50,9 +52,10 @@ class MetaBuilderBasic:
         self.credit = credit
         self.license = license
         self.lineage = lineage
+        self.creation_date = _pdtn()
 
     def summary(self) -> str:
-        return self.description(filt=('what', 'purpose'))
+        return self.description(filt=('what', 'purpose', 'creation_date'))
 
     def description(self, filt=()) -> str:
         jn = []
