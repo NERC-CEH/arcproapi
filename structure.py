@@ -640,14 +640,20 @@ def domain_create2(geodb: str, domain_name: str, codes: list, descs: list = None
 
 
 @_decs.environ_persist
-def domains_assign(fname: str, domain_field_dict: dict[str: list[list, str]], show_progress: bool = False) -> dict[str:list[str]]:
+def domains_assign(fname: str, domain_field_dict: dict[str: list[list, str]], error_on_failure: bool = False, show_progress: bool = False) -> dict[str:list[str]]:
     """
     Assign domains to multiple fields in layer fname.
 
     Args:
         fname (str): The feature class/table
-        domain_field_dict (dict): A dictionary of domain names, as already defined in the geodatabase, with the column name(s) as a list, also accepts the col name as a string.
-        The keys of dict can also be an enumeration, where the enumeration class name is the domain name.
+
+        domain_field_dict (dict):
+
+            A dictionary of domain names, as already defined in the geodatabase, with the column name(s) as a list, also accepts the col name as a string.
+            The keys of dict can also be an enumeration, where the enumeration class name is the domain name.
+
+        error_on_failure: Raise an error on failure, otherwise errors can be detected in the returned dictionary, with item key "fail"
+
         show_progress (bool): show progress
 
     Returns:
@@ -682,17 +688,21 @@ def domains_assign(fname: str, domain_field_dict: dict[str: list[list, str]], sh
         if isinstance(cols, str):
             cols = [cols]
         for col in cols:
-            try:
+            if error_on_failure:
                 AssignDomainToField(fname, col, dname)
                 success += ['%s:%s' % (dname, col)]
-            except Exception as e:
-                if 'schema lock' in str(e):
-                    _warn('\nAssignment of domain enum "%s" to table/fc "%s" failed for field "%s". *** Schema Lock ***' % (dname, fname, col))
-                    serr = '**schema lock**'
-                else:
-                    serr = str(e)
-                    if show_progress: print('\nError assigning domain "%s:%s".\n%s' % (dname, col, serr))
-                failed += ['%s:%s  %s' % (dname, col, serr)]
+            else:
+                try:
+                    AssignDomainToField(fname, col, dname)
+                    success += ['%s:%s' % (dname, col)]
+                except Exception as e:
+                    if 'schema lock' in str(e):
+                        _warn('\nAssignment of domain enum "%s" to table/fc "%s" failed for field "%s". *** Schema Lock ***' % (dname, fname, col))
+                        serr = '**schema lock**'
+                    else:
+                        serr = str(e)
+                        if show_progress: print('\nError assigning domain "%s:%s".\n%s' % (dname, col, serr))
+                    failed += ['%s:%s  %s' % (dname, col, serr)]
         if show_progress:
             PP.increment()  # noqa
     return {'success': success, 'fail': failed}

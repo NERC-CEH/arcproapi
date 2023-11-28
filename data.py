@@ -390,7 +390,7 @@ class ResultAsPandas(_mixins.MixinPandasHelper):
                 self.Results[s] = ResultAsPandas._LayerDataFrame(s, lyr_tmp)
                 kwargs[s] = lyr_tmp
 
-        errstr = 'The tool "%s" had unknown keywords. '  % str(tool)
+        errstr = 'The tool "%s" had unknown keywords. ' % str(tool)
         errstr += 'Currently code only accepts tools which support arguments "in_features", "in_dataset" and the "in_polygons in_sum_features" pairing. '
         errstr += 'Along with analysis.Near.\n\nThis will need fixing in code.'
 

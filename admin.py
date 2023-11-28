@@ -6,7 +6,7 @@ import arcpy as _arcpy
 import funclite.iolib as _iolib
 
 class BackUps:
-    
+
     @staticmethod
     def backup_sde(sde_file: str, out_gdb: str, overwrite: bool = False) -> None:
         """   
@@ -26,7 +26,11 @@ class BackUps:
         Notes:
             This script adapted from Shaun Astbury's scripts in UKCEH.
             Temporaily changes workspace, then resets it back to the original
+
+        Credit:
+            This script was authored by Shaun Astbury who worked for CEH GMEP Project. It has subsequently been edited to run under arcgispro and Python >= 3.7
         """
+        # TODO Fix backup_sde up
         sde_file = _path.normpath(sde_file)
 
         if _arcpy.Exists(out_gdb) and overwrite:

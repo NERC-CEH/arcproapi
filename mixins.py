@@ -201,7 +201,7 @@ class MixinEnumHelper:
 
 
     @classmethod
-    def domain_assign(cls, fname: str, flds: (str, list[str])) -> dict[str:list[str]]:
+    def domain_assign(cls, fname: str, flds: (str, list[str]), error_on_failure: bool = True) -> dict[str:list[str]]:
         """
         Assign a domain.
         Now creates the domain in the workspace if it does not already exist.
@@ -232,7 +232,7 @@ class MixinEnumHelper:
         gdb = _get_gdb(fname)
         if not _chkdom(gdb, cls.domain_name): # noqa
             cls.domain_create2(gdb)  # noqa
-        return _struct.domains_assign(fname, {cls.domain_name: [flds]})
+        return _struct.domains_assign(fname, {cls.domain_name: flds}, error_on_failure=error_on_failure)
 
 
     @_classproperty
