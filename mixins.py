@@ -12,8 +12,7 @@ import bs4 as _bs4
 import pandas as _pd
 import xlwings as _xlwings
 
-import arcproapi.conversion as conversion  # noqa
-from arcproapi import structure as _struct, conversion as conversion  # noqa
+import arcproapi.conversion as conversion  # noqa - for convieniance
 
 from funclite import pandaslib as pandaslib
 import funclite.baselib as _baselib
@@ -232,7 +231,8 @@ class MixinEnumHelper:
         gdb = _get_gdb(fname)
         if not _chkdom(gdb, cls.domain_name): # noqa
             cls.domain_create2(gdb)  # noqa
-        return _struct.domains_assign(fname, {cls.domain_name: flds}, error_on_failure=error_on_failure)
+        from arcproapi.structure import domains_assign  # import here, otherwise get circular import reference
+        return domains_assign(fname, {cls.domain_name: flds}, error_on_failure=error_on_failure)
 
 
     @_classproperty
@@ -457,7 +457,8 @@ class MixinPandasHelper:
             list[_arcpy.Field]: If as_objs is True
 
         """
-        return _struct.fc_fields_get(self.fname_output, as_objs=as_objs)  # noqa
+        from arcproapi.structure import fc_fields_get  # import here, otherwise get circular import err
+        return fc_fields_get(self.fname_output, as_objs=as_objs)  # noqa
 
     def shape_area(self, where: (str, None) = None, conv_func=conversion.m2_to_km2, **kwargs) -> float:
         """
@@ -472,7 +473,9 @@ class MixinPandasHelper:
             float: Sum of polygon areas, returns 0 if no records matched.
 
         Notes:
-            Assumed that layers have BNG spatial reference, hence Shape_Area is square meters. If this is not the case, then use a custom conversion function, otherwise the returned area will be wrong.
+            Assumed that layers have BNG spatial reference, hence Shape_Area is square meters.
+            If this is not the case, then use a custom conversion function, otherwise the returned area will be wrong.
+            Note that mixins exposes the conversion module, which provides other conversion functions
 
         Examples:
             >>> ResultsAsPandas(..args..).shape_area(where="crn in ('A123', 'A234')")  # noqa

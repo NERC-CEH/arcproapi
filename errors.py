@@ -123,6 +123,12 @@ class DisplayFeatureClassNameMatchedMultipleLayers(Exception):
 
 
 ########
+# gdb  #
+########
+class GDBExists(Exception):
+    """GDB already exists"""
+
+########
 # geom #
 ########
 class GeomInvalidTypeString(Exception):

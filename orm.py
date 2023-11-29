@@ -184,7 +184,7 @@ def class_def2(fname: str, composite_key_cols: (list, tuple), workspace: (str, N
     init_args = []
     members = []
 
-    for fld in _struct.field_list(fname, objects=True):  # type:_arcpy.Field
+    for fld in _struct.field_list(fname, shape=True, objects=True):  # type:_arcpy.Field
         if fld.baseName.lower() not in map(str.lower, exclude):
             init_args.append('%s=None' % fld.baseName)
             members.append('\t\tself.%s = %s' % (fld.baseName, fld.baseName))
