@@ -61,6 +61,57 @@ def query_where_in(field_name: str, values: (tuple, str, list), datasource: str 
     return sql
 
 
+def query_where_not_in(field_name: str, values: (tuple, str, list), datasource: str = '', override_field_delim: str = '', exclude_none: bool = False):
+    """(str, iter, str) -> str
+    build a simple where NOT IN ( query
+
+    Args:
+        field_name (str): name of column to query
+        values (tuple, str, list): iterable or single value to match
+        datasource (str):
+            path to datasource, passed to columns_delim to add delimited for field_name
+            see https://desktop.arcgis.com/en/arcmap/10.3/analyze/arcpy-functions/addfielddelimiters.htm
+        override_field_delim (str): override the field delim
+        exclude_none (bool): Exclude None values from the where. The None value can cause an error to be raised when using the where for da.<Cursor>, with an error that misdirects you to think the columns are invalid.
+
+    Returns:
+            str: the query string
+
+    Notes:
+        Consider using pypika for complex queries. https://github.com/kayak/pypika
+        Field delims:
+            file gdbs & shapefiles = "
+            Personal gdbs = []
+            ArcSDE = <No delimiters>
+
+    Examples:
+        >>> query_where_in('ID', (123,345), 'c:/temp/my.gdb')
+        '"ID" IN (123, 345)'
+    """
+    if isinstance(values, str): values = [values]
+    if exclude_none:
+        values = [v for v in values if v is not None]
+
+    def _f(v):
+        if isinstance(v, str):
+            return "'%s'" % v
+        return str(v)
+
+    # not currently used
+    def _getdelim(v):
+        if override_field_delim:
+            return '%s%s%s' % (override_field_delim, v, override_field_delim)
+        return columns_delim(field_name, datasource)
+
+    if isinstance(values, (int, float, str)):
+        values = (values,)
+
+    lst = [_f(s) for s in values]
+
+    sql = '%s NOT IN (%s)' % (field_name, ','.join(lst))
+    return sql
+
+
 def strip_where(sql):
     """(str)->str
     Get everything after the where clause in a string

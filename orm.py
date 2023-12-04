@@ -144,7 +144,7 @@ def class_def(fname: str, composite_key_cols: (str, list), workspace: str,
     hdr = class_dec + init_str + super_
     return hdr
 
-
+# TODO: Fix class_def and class_def2 up to automatically include the readonly spatial and management fields so that the values are loaded when reading values in
 def class_def2(fname: str, composite_key_cols: (list, tuple), workspace: (str, None),
                exclude: (tuple, list, None) = ('Shape_Length', 'Shape_Area', 'created_date', 'last_edited_date')
                ) -> str:
