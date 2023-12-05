@@ -269,13 +269,14 @@ class Excel(_MixinNameSpace):  # noqa
 
 class ResultAsPandas(_mixins.MixinPandasHelper):
     """
-    Retreieve the results of any arcpy operation which returns and table or layer as a pandas dataframe.
+    Get the results of any arcpy operation which returns a table or layer, as a pandas dataframe.
+
     Also exposes pandas aggregate functions to summarise the data and some other "helper" methods.
 
-    Also has a mechanism to load secondary results sets. These are exposed as a dictionary collection of _LayerDataFrame objects. See example
+    Also has a mechanism to load secondary results sets. These are exposed as a dictionary collection of _LayerDataFrame objects. See the examples.
 
     Args:
-        tool: An arcpy tool which supports the in_features argument and a single out_feature class
+        tool: An arcpy tool which supports the in_features argument and a single out_feature class (support is being extended).
         columns: columns to retain in the resulting dataframe
         additional_layer_args (tuple[str]): List of the kwargs that point to additional output tables. This allows additional dataframes to be exposed. As an example, see the CountOverlappingFeatures which accepts an argument to define output_overlap_table.
         where: where query to apply to the underlying spatial results table/feature class, passed to data.table_as_pandas2
@@ -660,21 +661,72 @@ def field_get_dup_values(fname: str, col: str, value_list_only: bool = False, f:
         list: Simple list of values which have duplicates
         dict: A dictionary of duplicates. Keys are the duplicate values and values are is the counts of duplicate values
 
+
     Examples:
+
         sum_of_stuff col n, has duplicates for 2 and 10. Asked for simple list
-        >>> field_get_dup_values('c:/my.gdb/sum_of_stuff','n')
+
+        >>> field_get_dup_values('c:/my.gdb/sum_of_stuff', 'n', value_list_only=True)
         [2, 10]
 
-        fave_colour colour has 2 occurences of blue and 5 occurences of black - and we asked for this detail
-        and don't care about case
-        >>> field_get_dup_values('c:/my.gdb/fave_colour','colour', False, f=str.lower)
+
+        fave_colour colour has 2 occurences of blue and 5 occurences of black, ignore case
+
+        >>> field_get_dup_values('c:/my.gdb/fave_colour', 'colour', False, f=str.lower)
         {'blue':2,'black':5}
     """
-    # DEBUG THIS
     fname = _path.normpath(fname)
     vals = list(map(f, field_values(fname, col)))
     res = _baselib.list_get_dups(vals, value_list_only=value_list_only)
     return res
+
+
+def fields_get_dup_values(fname: str, cols: list, value_list_only: bool = False, sep: str = _stringslib.Characters.Language.emdash,  f: any = lambda v: v):
+    """
+    Check a set of columns for duplicate values across those columns.
+    i.e. Treat the columns as being a compound key
+
+    Args:
+        fname (str): Feature class or table
+        cols (list, tuple): cols to check
+        value_list_only (bool): Get as simple list rather than dict
+        sep: Seperator for the returned field values (defaults to emdash)
+        f (any): function passed to map, typical use would be f=str.lower to make duplicate checks case insensitive
+
+    Returns:
+        list: Simple list of values which have duplicates
+        dict: A dictionary of duplicates. Keys are the duplicate values and values are is the counts of duplicate values
+
+    Examples:
+
+        Error in data, duplicate for Wales and England
+
+        >>> fields_get_dup_values('c:/my.gdb/country', ['name', 'continent'], value_list_only=True)
+        ['Wales - Europe', 'England - Europe']
+
+        Ask for dup number, Wales has two dups, England has 5
+
+        >>> field_get_dup_values('c:/my.gdb/fave_colour', 'colour', value_list_only=False, f=str.lower)
+        {'Wales - Europe': 2, 'England - Europe': 5}
+    """
+    vals = []
+    splitter = '+_)(*&^]'
+    fname = _path.normpath(fname)
+    for col in cols:
+        vals += list(map(lambda s: str(f(s)), field_values(fname, col)))  # lambda forces to a string, required for the join on the next line
+    concat = [splitter.join(v) for v in zip(*vals)]
+
+    def _rep(s):
+        return s.replace(splitter, sep)
+
+    dups: dict = _baselib.list_get_dups(concat)  # noqa
+    if value_list_only:
+        if not dups: return []
+        return list(map(_rep, dups.keys()))
+
+    if not dups: return {}
+    return {_rep(k): v for k, v in dups.items()}
+
 
 
 def key_info(parent: str, parent_field: str, child: str, child_field: str, as_oids: bool = False) -> dict:
@@ -870,7 +922,7 @@ def table_as_pandas2(fname: str, cols: (str, list) = None, where: str = None, ex
         fname (str): Path to feature class or table.
         cols (str, list, tuple): column list to retrieve.
         where (str): where clause, passed as-is to SearchCursor
-        exclude_cols (str, list, tuple): list of cols to exclude. Exludes Shape by default for performance reasons
+        exclude_cols (str, list, tuple, None): list of cols to exclude. Exludes Shape by default for performance reasons. Pass none or an empty tuple to NOT exclude any cols
         as_int (list, tuple, None): List of cols by name to force to int
         as_float (list, tuple, None): list of cols by name to force to float64
         cols_lower (bool): force dataframe columns to lowercase
@@ -899,7 +951,7 @@ def table_as_pandas2(fname: str, cols: (str, list) = None, where: str = None, ex
 
     if isinstance(exclude_cols, str): exclude_cols = [exclude_cols]
     if isinstance(cols, str): cols = [cols]
-
+    if exclude_cols is None: exclude_cols = tuple()
     def _filt(ss, col_list):
         return ss.lower() not in map(str.lower, col_list)
 
@@ -2093,7 +2145,7 @@ class Spatial(_MixinNameSpace):  # noqa
 
             keep_cols (str, list[str], None):
 
-                Specify which fields to keep in the layer.
+                Specify which fields to keep in the layer. keep_cols are added to is_fields. i.e. You do not have to specify is_fields in keep_cols.
 
                 NB ** DO NOT SPECIFY NON-EDITABLE FIELDS - e.g. Shape, OBJECTID, Shape_Area, Shape_Length - An ESRI BUG WILL CAUSE DeleteFields to Fail **
 
@@ -2450,6 +2502,51 @@ class Spatial(_MixinNameSpace):  # noqa
         return sum(_more_itertools.difference(counts, func=lambda x, y: (x - y) * -1, initial=1))
 
 
+    @staticmethod
+    def intersect_not(in_feature: str, in_feature1: str, **kwargs) -> list[int]:
+        """
+        Check if any features in our layer DO NOT intersect with in_feature.
+
+        Returning a list of features which ** DO NOT ** intersect any in_feature.
+
+        Args:
+            in_feature: first feature
+            in_feature1: other feature
+
+            **kwargs:
+                keyword arguments passed to arcpy.analysis.Intersect
+                See https://pro.arcgis.com/en/pro-app/latest/tool-reference/analysis/intersect.htm
+
+        Raises:
+            TypeError: If the ResultsAsPandas output ResultsAsPandas.df was not an isntance of pandas.DataFrame. This is an unexpected result would require further investigation.
+
+        Returns:
+            List of OIDs for the features that DO NOT intersect with in_feature
+            Returns an empty list, if all features intersected
+
+        Notes:
+            This uses the standard intersect, if performance is an issue, then
+            a new function could be created using the pairwise intersect
+            But pairwise intersect is not available under the standard license
+        """
+        in_feature = _path.normpath(in_feature)
+        in_feature1 = _path.normpath(in_feature1)
+
+
+        RAP = ResultAsPandas(_arcpy.analysis.Intersect,
+                             in_features=[in_feature, in_feature1],
+                             join_attributes='ONLY_FID', **kwargs)
+
+        if isinstance(RAP.df, _pd.DataFrame):
+            if len(RAP.df) == 0: return field_values(in_feature, _common.oid_field(in_feature))  # i.e. no intersects, so all in_features DO NOT intersect in_feature1
+        else:
+            raise TypeError('ResultsAsPandas had an empty results dataframe. This is unexpected')
+        in_feat_oids = field_values(in_feature, _common.oid_field(in_feature))
+        fid_col = 'fid_%s' % _path.basename(in_feature).lower()
+        in_feat_intersect_oids = list(map(int, RAP.df_lower[fid_col].to_list()))
+        return sorted(_baselib.list_not(in_feat_oids, in_feat_intersect_oids))
+
+
 class Validation:
     """ Instantiable class which exposes multiple data validation checks.
     Some validation checks are paired with another layer. If no other layer is provided then
@@ -2503,11 +2600,12 @@ class Validation:
     def __init__(self, parent: str, no_shapes: bool = False):
         self.fname = _path.normpath(parent)
         self.gdb = _common.gdb_from_fname(self.fname)
-
+        self.fname_base = _path.basename(self.fname)
         if not _struct.Exists(self.fname):
             raise _errors.FeatureClassOrTableNotFound('Parent feature class or table "%s" not found.' % self.fname)
 
-        self.df = table_as_pandas2(self.fname, exclude_cols=('Shape',) if no_shapes else None, cols_lower=True)
+        exclude_cols = ('Shape',) if no_shapes else tuple()
+        self.df = table_as_pandas2(self.fname, exclude_cols=exclude_cols, cols_lower=True)
         self.gx_df = _gx.from_pandas(self.df)
 
     def near(self, is_near_fnames: (str, list[str]), threshhold: (float, int), is_near_filters: (str, list[str], None) = None, keep_cols: (tuple[str], None) = None, thresh_error_test='>=', raise_exception: bool = False, show_progress: bool = False, **kwargs) -> (_pd.DataFrame, None):
@@ -2632,6 +2730,8 @@ class Validation:
                 dictionary key errors, with keys "parent_only" and "child_only" if key errors were found
                 dict{'parent_only': [..], 'both': [..], 'child_only': [..]
 
+            None: if no issues
+
         Notes:
             The OIDs can be used for futher processing ...
 
@@ -2660,6 +2760,38 @@ class Validation:
             out_dict['parent_only'] = res['parent_only']
 
         return out_dict if out_dict else None
+
+
+    def intersects_all(self, in_feature: str, **kwargs) -> (list[int], None):
+        """
+        Check that no features in our layer are fully outside of in_feature.
+
+        E.g. No polygons are outside of a square sample area.
+
+        Args:
+            in_feature: Feature to check against
+            **kwargs: passed to arcpy.analysis.Intersect
+
+        Returns:
+            None: If there were no issues, i.e. all features in our layer (self.fname) intersected with at least one feature in fc in_feature
+            list[int]: List of OIDs in self.fname that had no intersect with in_Feature
+
+
+        Examples:
+
+            Check passed, all lpis polygons lie within sample_squares
+
+            >>> Validation('C:/my.gdb/lpis').intersects_all('C:/my.gdb/sample_squares')
+            None
+
+            Check failed, some lpis polygons are outside of our sample_squares
+
+            >>> Validation('C:/my.gdb/lpis').intersects_all('C:/my.gdb/sample_squares')
+            [12, 33, 55]
+        """
+        out = Spatial.intersect_not(self.fname, in_feature, **kwargs)
+        if not out: return None
+        return out  # noqa
 
 
 

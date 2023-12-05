@@ -2081,7 +2081,7 @@ class FieldsDescribe:
             return []
         return iter(self.Fields)
 
-    def not_required_editable(self, as_fields: bool = False, names_only:bool = False) -> (dict[str:dict[str]], dict[str: _arcpy.Field], list[str]):
+    def not_required_editable(self, as_fields: bool = False, names_only: bool = False) -> (dict[str:dict[str]], dict[str: _arcpy.Field], list[str]):
         """
         Get list of fields that not required, but are editable either as a dict of the Fields attributes.
 
@@ -2576,12 +2576,40 @@ def gdb_field_rename(gdb: str, to: str, from_: (list, tuple), retype: _common.En
     return didnt_rename
 
 
-def gdb_rel_one_to_many_create(fname1: str, col1: str, fname_many: str, col_many: str, workspace: (str, None) = None, **kwargs) -> None:
+@_decs.environ_persist
+def gdb_rel_list(gdb: str) -> dict[str:list[str, str]]:
+    """
+    Get a dict of relationships, with keys being the relationship name and the values being a list of [parent table, child table]
+
+    Args:
+        gdb: geodatabase
+
+    Returns:
+        Dictionary with keys being the relationship name and the values being a list of [parent table, child table]
+
+
+    Examples:
+        >>> gdb_rel_list('C:/my.gdb')
+        {'rel_country_region':['countryname', 'countryname'], ...}
+    """
+    out = {}
+    for rc in (c.name for c in _arcpy.Describe(gdb).children if c.datatype == "RelationshipClass"):
+        des_rc = _arcpy.Describe(_iolib.fixp(gdb, rc))
+        parent = des_rc.originalClassNames
+        child = des_rc.destinationClassNames
+        out[rc] = [parent, child]
+    return out
+
+
+@_decs.environ_persist
+def gdb_rel_one_to_many_create(fname1: str, col1: str, fname_many: str, col_many: str, workspace: (str, None) = None, **kwargs) -> (str, None):
     """
     Quickly create a one to many relationship. Conveniance function to standardise naming.
 
     If fname1 and fname_many are not in a geodatabase,
     then pass workspace and the relative paths of the layers within that workspace.
+
+    If the relationship exists, no error will be raised.
 
     Args:
         fname1 (str):
@@ -2596,34 +2624,38 @@ def gdb_rel_one_to_many_create(fname1: str, col1: str, fname_many: str, col_many
             See https://pro.arcgis.com/en/pro-app/latest/tool-reference/data-management/create-relationship-class.htm
 
     Returns:
-        None
+        str: The fully qualified name of the relationship
+        None: If the relationship already exists by name (no other checks are made)
 
     Notes:
         If workspace is passed, then the workspace is reset to the original one before the function exits.
 
     Examples:
-        >>> gdb_rel_one_to_many_create('C:/my.gdb/parent', 'C:/my.gdb/parent', 'parentid', 'fkparentid')
+
+        >>> gdb_rel_one_to_many_create('C:/my.gdb/parent', 'parentid', 'C:/my.gdb/child', 'parentid')
+        'C:/my.gdb/rel_parent_parentid_child_parentid'
     """
     np = _path.normpath
     fname1 = np(fname1)
     fname_many = np(fname_many)
-    ws_orig = ''
 
+    if workspace:
+        workspace = np(workspace)
+    else:
+        workspace = _common.gdb_from_fname(fname1)
+    _arcpy.env.workspace = workspace
+    rel_name = _iolib.fixp(workspace, 'rel_%s_%s_%s_%s' % (_path.basename(fname1), col1, _path.basename(fname_many), col_many))
     try:
-        if workspace:
-            ws_orig = _arcpy.env.workspace
-            workspace = np(workspace)
-        else:
-            workspace = _common.gdb_from_fname(fname1)
-
-        rel_name = _iolib.fixp(workspace, 'rel_%s_%s' % (col1, col_many))
         _arcpy.management.CreateRelationshipClass(fname1, fname_many, rel_name, "SIMPLE",
                                                   _path.basename(fname_many),
                                                   _path.basename(fname1), cardinality="ONE_TO_MANY",
-                                                  origin_primary_key=fname1, origin_foreign_key=fname_many, **kwargs)
-    finally:
-        if ws_orig:
-            _arcpy.env.workspace = ws_orig
+                                                  origin_primary_key=col1, origin_foreign_key=col_many, **kwargs)
+    except Exception as err:
+        if '000725' in str(err) and 'already exists' in str(err):
+            return  # noqa
+        raise err
+    return rel_name
+
 
 
 @_decs.environ_persist

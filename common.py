@@ -862,12 +862,24 @@ def is_gdb(fname):
 
     Notes:
         currently just checks for .gdb in fname
-
-    TODO:
-        make is_shape and is_gdb robust
     """
     return fname[-4:] == '.gdb'
 
+def is_memory(fname):
+    """Does it look like a memory feature class
+
+    Args:
+        fname (str): feature class
+
+    Returns: bool
+
+    Notes:
+        currently just checks for starting with "memory/" or "in_memory/" in fname
+    """
+    fname = _path.normpath(fname).lower()
+    if fname[0:len('memory/')] in ('memory/', 'memory\\') : return True
+    if fname[0:len('in_memory/')] in ('in_memory/', 'in_memory\\'): return True
+    return False
 
 def gdb_from_fname(fname: str) -> str:
     """
