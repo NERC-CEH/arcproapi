@@ -718,6 +718,7 @@ class CRUD:
              CRUD.FieldNamesSpecial is a aide-memoir to ESRI's special field names.
 
         Examples:
+
             >>> with CRUD('c:/my.gdb', enable_transactions=True) as C:
             >>>     C.updatew("supplier='Old Widgets' AND address='Old Address'", supplier='New Widgets', Address='New Address')
         """

@@ -126,9 +126,11 @@ class Funcs(_MixinNameSpace, metaclass=_ABCMeta):
     @staticmethod
     def TextToOneZero(v: str) -> int:
         """
-        Reduce text to 1 or 0
+        Reduce text to 1 or 0. If not isinstance(v, str), also return 0
+
         Returns: int: 1 or 0
         """
+        if not isinstance(v, str): return 0
         if not v: return 0
         return 1
 
