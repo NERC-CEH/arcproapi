@@ -341,6 +341,9 @@ class Map:
             clear_definition_query (bool): clear the definition query from the layer
             clear_selection (bool): deselect selected features
 
+        Raises:
+            errors.ArcapiError: If ESRI broke  layer.setSelectionSet ... AGAIN
+
         Returns: None
 
         Notes:
@@ -348,12 +351,20 @@ class Map:
         """
         # noinspection PyBroadException
         try:
-            lyr = self.Map.listLayers(lyr_name_or_lyr)[0] if isinstance(lyr_name_or_lyr, str) else lyr_name_or_lyr
+            if isinstance(lyr_name_or_lyr, str):
+                lyr = self.Map.listLayers(lyr_name_or_lyr)[0] if isinstance(lyr_name_or_lyr, str) else lyr_name_or_lyr
+            else:
+                lyr = lyr_name_or_lyr
             if clear_definition_query:
                 lyr.definitionQuery = ''
                 lyr.updateDefinitionQueries([])  # Make sure. https://pro.arcgis.com/en/pro-app/latest/arcpy/mapping/layer-class.htm
             if clear_selection:
+                # ESRI broke setSelectionSet between about 2.7 and 3.0 (unsure if its fixed in later version as its a PITA for me to upgrade
+                # Passing an empty list used to reset, but now it doesnt
+                # Changed to using the tool
                 lyr.setSelectionSet([], 'NEW')
+                if lyr.getSelectionSet():  # lets see if the clearing the selection worked
+                    raise _errors.ArcapiError('FFS ESRI broke layer.setSelectionSet again. Failed to clear the selection. This will need debugging to find a work around .. AGAIN!')
         except:
             self.Logger.log('clear_layer_filters failed for layer %s' % lyr_name_or_lyr)
 
@@ -503,7 +514,7 @@ class Map:
         Columns included in the o parameter must be included in the col parameter!
 
         Args:
-            lyr_or_table_name (str): input table or table view
+            lyr_or_table_name (str): input table or table view, also accepts a Layer instance
             col (str, list[str]): input column name(s) as string or a list; valid options are:
                 col='colA'
                 col=['colA']
@@ -526,14 +537,17 @@ class Map:
             >>>     M.field_get_values('c:/foo/bar.shp', 'SHAPE@XY', 'Shape_Length DESC')
             Traceback (most recent call last): ....
         """
-        if search_layers_first:
-            obj = get_item(self.Map.listLayers(lyr_or_table_name))
-            if not obj:
-                obj = get_item(self.Map.listTables(lyr_or_table_name))
-        else:
-            obj = get_item(self.Map.listTables(lyr_or_table_name))
-            if not obj:
+        if isinstance(lyr_or_table_name, str):
+            if search_layers_first:
                 obj = get_item(self.Map.listLayers(lyr_or_table_name))
+                if not obj:
+                    obj = get_item(self.Map.listTables(lyr_or_table_name))
+            else:
+                obj = get_item(self.Map.listTables(lyr_or_table_name))
+                if not obj:
+                    obj = get_item(self.Map.listLayers(lyr_or_table_name))
+        else:
+            obj = lyr_or_table_name
 
         # unpack column names
         if isinstance(col, (list, tuple)):
@@ -567,7 +581,7 @@ class Map:
             if 'returned NULL without setting an error' in str(e):
                 raise ValueError('It is likely that that arpx project refers to a layer that no longer exists. Check your project.') from e
             elif 'Cannot find field ' in str(e):
-                raise  ValueError('A field was not found. If referring to a joined table or feature class, then check you are using the fully qualified name, eg sq.sq_id\nThe error was %s' % getattr(e, 'message', repr(e))) from e
+                raise ValueError('A field was not found. If referring to a joined table or feature class, then check you are using the fully qualified name, eg sq.sq_id') from e
             raise e
 
         if unique:
