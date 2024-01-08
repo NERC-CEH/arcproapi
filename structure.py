@@ -1223,7 +1223,7 @@ def field_retype(fname: str, field_name: str, change_to: (str, type), default_on
     if show_progress: print('...Done')
 
 
-def fields_get(fname, wild_card='*', field_type='All', no_error_on_multiple: bool = True, as_objs: bool = False) -> (list[str], list[_arcpy.Field], None):
+def fields_get(fname: str, wild_card: str = '*', field_type: str = 'All', no_error_on_multiple: bool = True, as_objs: bool = False) -> (list[str], list[_arcpy.Field], None):
     """Return a list of field objects where name matches the specified pattern.
 
     Args:
@@ -1528,15 +1528,18 @@ def fcs_field_sym_diff(fname1: str, fname2: str, ignore_case=True) -> dict:
 
 
 def fc_schema_copy(template: str, new: str, sr: str = ''):
-    """Copy the schema (field definition) of a feature class or a table.
+    """
+    Copy the schema (field definition) of a feature class or a table.
 
     Args:
         template (str): template table or fc
         new (str): new output fc or table
-        sr (str): spatial reference (only applies if fc). If no sr
-          is defined, it will default to sr of template.
+
+        sr (str):
+            spatial reference (only applies if fc). If no sr is defined, it will default to sr of template.
 
     Examples:
+
         >>> fc_schema_copy(r'C:\Temp\soils_city.shp', r'C:\Temp\soils_county.shp')
     """
     path, name = _path.split(new)

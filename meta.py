@@ -4,7 +4,7 @@ import os.path as _path
 
 import arcpy as _arcpy
 
-from funclite.stringslib import pretty_date_time_now as _pdtn
+from funclite.stringslib import pretty_date_time_now
 
 import arcproapi as _arcapi
 import arcproapi.common as _common
@@ -17,7 +17,9 @@ class LicenseText:
 
 
 class MetaBuilderBasic:
-    """ A way to build summary and description for the write_basic metadata method, to get some standard structure/formatting and as an aide-memoir in what to include.
+    """
+    Build summary and description for the write_basic metadata method.
+    Adds a standard structure/formatting and as an aide-memoir in what to include.
 
     The "what" and "purpose" builds the summary.
 
@@ -29,6 +31,9 @@ class MetaBuilderBasic:
         description (str): Built from all attributes, except title
         write_basic: Convieniance function to write out the metadata to the specified fname
 
+    Notes:
+        creation_date is set to the current date by default
+
     Examples:
 
         >>> Build = MetaBuilderBasic(title='title', purpose='purpose', ...)  # noqa
@@ -37,7 +42,7 @@ class MetaBuilderBasic:
     """
     # No license as this is exposed through arcpy metadata class
     def __init__(self, title: str, what: str = '', purpose: str = '', where: str = '', when: str = '', how: str = '', lineage: str = '', missing_data: str = '', caveats_and_limitations: str = '',
-                 quality_control: str = '', credit: str = '', license: str = '', inputs: (tuple[str], list[str]) = (), scripts: (tuple[str], list[str]) = ()):  # noqa
+                 quality_control: str = '', credit: str = '', license: str = '', creation_date: str = pretty_date_time_now(), inputs: (tuple[str], list[str]) = (), scripts: (tuple[str], list[str]) = ()):  # noqa
         self.title = title
         self.purpose = purpose
         self.what = what
@@ -52,7 +57,7 @@ class MetaBuilderBasic:
         self.credit = credit
         self.license = license
         self.lineage = lineage
-        self.creation_date = _pdtn()
+        self.creation_date = creation_date
 
     def summary(self) -> str:
         return self.description(filt=('what', 'purpose', 'creation_date'))

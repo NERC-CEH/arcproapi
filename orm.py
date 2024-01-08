@@ -25,7 +25,6 @@ import funclite.baselib as _baselib
 import funclite.stringslib as _stringslib
 
 
-
 class EnumLogAction(_Enum):
     add = 1
     update = 2
@@ -80,6 +79,8 @@ def class_def(fname: str, composite_key_cols: (str, list), workspace: str,
     """
     Create a static class definition from a feature class.
     Used to quickly make class definitions to include in code
+
+    This is replaced by class_def2, which is more up-to-date
 
     Args:
         fname (str): feature class/table name
@@ -144,6 +145,7 @@ def class_def(fname: str, composite_key_cols: (str, list), workspace: str,
     hdr = class_dec + init_str + super_
     return hdr
 
+
 # TODO: Fix class_def and class_def2 up to automatically include the readonly spatial and management fields so that the values are loaded when reading values in
 def class_def2(fname: str, composite_key_cols: (list, tuple), workspace: (str, None),
                exclude: (tuple, list, None) = ('Shape_Length', 'Shape_Area', 'created_date', 'last_edited_date')
@@ -176,26 +178,51 @@ def class_def2(fname: str, composite_key_cols: (list, tuple), workspace: (str, N
     class_dec = 'class %s(_orm.ORM):\n\t"""class %s"""' % (_make_class_name(fname), _make_class_name(fname))
     class_dec = class_dec + '\n\tfname = %s' % ("'%s'" % fname)
     class_dec = class_dec + '\n\tcomposite_key_cols = %s' % composite_key_cols
-    class_dec = class_dec + '\n\tworkspace = %s  # %s' % (workspace, "****DONT FORGET TO CHEK THE WORKSPACE****")
-    class_dec = class_dec + '\n\n'
+    class_dec = class_dec + '\n\tworkspace = %s  # %s' % (workspace, "****DONT FORGET TO CHECK THE WORKSPACE****")
+    class_dec = class_dec + '\n'
 
     init_str = '\tdef __init__(self, enable_transactions=False, lazy_load=True, #):\n'
 
     init_args = []
     members = []
 
+    fld_list_for_FieldList = []
     for fld in _struct.field_list(fname, shape=True, objects=True):  # type:_arcpy.Field
         if fld.baseName.lower() not in map(str.lower, exclude):
             init_args.append('%s=None' % fld.baseName)
             members.append('\t\tself.%s = %s' % (fld.baseName, fld.baseName))
+            fld_list_for_FieldList += [fld.baseName]
         else:
             # bit of a kludge, should detect the name of fields used in tracking, but need a quick fix. Note we dont want these as passed arguments as they are read only
             # TODO: Enable proper support for tracking fields in orm creation
-            if fld == 'created_date': members.append('\t\tself.created_date = None')
-            if fld == 'last_edited_date': members.append('\t\tself.last_edited_date = None')
+            if fld == 'created_date':
+                members.append('\t\tself.created_date = None')
+                fld_list_for_FieldList += [fld.baseName]
 
+            if fld == 'last_edited_date':
+                members.append('\t\tself.last_edited_date = None')
+                fld_list_for_FieldList += [fld.baseName]
 
+    # Writing the domain_use property, so we are prompted to added it manually
+    class_dec += '\n\n'
+    class_dec += ('\t@_classproperty\n'
+                  '\tdef domain_use(cls) -> dict[_Enum, list]:  # noqa\n'
+                  '\t\t"""\n'
+                  '\t\tGet a dictionary of where the domain is used.\n'
+                  '\t\tNote that it returns the actual Enum class, and not the enum name as a string.\n\n'
+                  '\t\tReturns:\n'
+                  '\t\t\tdict[Enum, list]: A dictionary of the domain use. {Enum1:[field11, field12, ...], Enum2:[field21, field22, ...]}\n'
+                  '\t\t"""\n'
+                  '\t\treturn {}  # noqa\n'
+                  )
 
+    # Build the FieldList enumeration helper
+    class_dec += '\n\tclass Fields(_Enum):\n'
+    for i, fld in enumerate(fld_list_for_FieldList):
+        class_dec += '\n\t\t%s = %s' % (fld, i)
+    class_dec += '\n\n'
+
+    # super delegation ... obviously
     super_ = ('\t\tsuper().__init__(%s, %s, %s, %s)' %
               ('%s.fname' % _make_class_name(fname),
                '%s.composite_key_cols' % _make_class_name(fname),
@@ -203,7 +230,6 @@ def class_def2(fname: str, composite_key_cols: (list, tuple), workspace: (str, N
                'enable_log=False, enable_transactions=enable_transactions, lazy_load=lazy_load'
                )
               )
-
     members.append(super_)
 
     # now add some regions - this are for pycharm
@@ -217,11 +243,42 @@ def class_def2(fname: str, composite_key_cols: (list, tuple), workspace: (str, N
         with _fuckit:
             init_args[init_args.index(v)] = '\n%s' % init_args[init_args.index(v)]
 
+    # finally build the whole definintion
     init_str = init_str.replace('#', ', '.join(init_args))
     memb_str = '\n\t\t'.join(members)
     hdr = class_dec + init_str + memb_str
 
     return hdr
+
+
+def class_field_list(fname: str, sort: bool = True) -> str:
+    """
+    Get Field definition to paste into class definitions.
+    This is necessary as I didnt implement the Field definition in class_def2 until many orm defs were created.
+
+    Also copies to clipboard
+
+    Args:
+        fname: fc/table
+        sort: sort fields first
+
+    Returns:
+        str
+
+    """
+    out = ['\tclass Fields(_Enum):']
+    if sort:
+        lst = sorted(_struct.fc_fields_get(fname))  # noqa
+    else:
+        lst = _struct.fc_fields_get(fname)
+
+    for i, s in enumerate(lst):
+        out += ['\t\t%s = %s' % (s, i)]
+    s = '\n'.join(out)
+    print(s)
+    _clip.copy(s)
+    print('Copied to clipboard')
+    return s
 
 
 def _is_key(fld) -> bool:
@@ -1005,9 +1062,6 @@ class ORM(_crud.CRUD):
         df = _pd.DataFrame.from_dict(dd, **kwargs)
         return df
 
-
-
-
     ###########
     # STATICS #
     ###########
@@ -1056,7 +1110,6 @@ class ORM(_crud.CRUD):
         # Both where and kwargs will filter yielded instances
         # raise NotImplementedError('read_multi is not implemented')
         pass
-
 
     @staticmethod
     def log_name_get(fname: str) -> str:

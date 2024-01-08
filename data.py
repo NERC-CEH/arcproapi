@@ -135,6 +135,30 @@ class Funcs(_MixinNameSpace, metaclass=_ABCMeta):
         return 1
 
     @staticmethod
+    def PickFirst(*args, default: (str, int, float) = 'Unspecified'):
+        """
+        Pick the firt value that evaluates to True.
+
+        Args:
+            *args: values
+            default: What to return if no field values evaluate to True
+
+        Returns:
+            The value of the first field to evaluate to true
+
+        Examples:
+
+            >>> Funcs.PickFirst('', '', 'hello', False)
+            'hello'
+
+            >>> Funcs.PickFirst(False, False, '', None, default=0)  # noqa
+            0
+        """
+        for s in args:
+            if s: return s
+        return default
+
+    @staticmethod
     def PickLong(*args):
         """
         Picks the value which is not -1, <null> or 0. Picks the first one if multiple are not -1/null/0
@@ -954,6 +978,7 @@ def table_as_pandas2(fname: str, cols: (str, list) = None, where: str = None, ex
     if isinstance(exclude_cols, str): exclude_cols = [exclude_cols]
     if isinstance(cols, str): cols = [cols]
     if exclude_cols is None: exclude_cols = tuple()
+
     def _filt(ss, col_list):
         return ss.lower() not in map(str.lower, col_list)
 
@@ -1884,7 +1909,7 @@ def features_copy(source: str, dest: str, workspace: str, where_clause: str = '*
 
 # Devnote - it is better to use copy_shape here, Python does not support "Shape@ =" as a kwarg (@ is invalid) and so using this design decision means the caller does not have to know the name of the shape field in "fname".
 def features_copy2(source: str, dest: str, where_clause: str = '*', fixed_values=None, copy_shape: bool = True,
-                   no_progress: bool = False, **kwargs) -> int:
+                   show_progress: bool = True, **kwargs) -> int:
     """Copy features from one table or featureclass to another. Has much faster performance than
      features copy, but fewer validation options and cannot be transactionalised
 
@@ -1904,7 +1929,7 @@ def features_copy2(source: str, dest: str, where_clause: str = '*', fixed_values
             the two.
 
         copy_shape (bool): set to false if working with a table, otherwise set this to true to transfer geometry
-        no_progress (bool): Suppress printing progress bar to the console
+        show_progress (bool): show progress
         kwargs (any): Keyword arguments, where key is field in dest, and value is field in src. E.g. dest_field='src_field'
 
     Returns:
@@ -1938,7 +1963,7 @@ def features_copy2(source: str, dest: str, where_clause: str = '*', fixed_values
         _warn('No records matched the where clause %s.\nIs this expected?' % where_clause)
         return 0
 
-    if not no_progress:
+    if not show_progress:
         PP = _iolib.PrintProgress(maximum=n * 2, init_msg='\nImporting rows to %s' % source)
 
     # Important thing here is that we are building the src and dest cols with matching indexes in the list
@@ -1964,18 +1989,18 @@ def features_copy2(source: str, dest: str, where_clause: str = '*', fixed_values
                 if fixed_values:
                     row += list(fixed_values.values())
                 insert_rows += [row]
-                if not no_progress: PP.increment()  # noqa
+                if not show_progress: PP.increment()  # noqa
     else:  # we only get here if no kwargs AND we havent asked to copy the geometry (copy_shape is False)
         for x in range(n):
             insert_rows += [list(fixed_values.values())]
-            if not no_progress: PP.increment()  # noqa
+            if not show_progress: PP.increment()  # noqa
 
     i = 0
     with _arcpy.da.InsertCursor(dest, dest_cols) as InsCur:
         for row in insert_rows:
             InsCur.insertRow(row)
             i += 1
-            if not no_progress: PP.increment()
+            if not show_progress: PP.increment()
 
     return i
 
@@ -2691,7 +2716,7 @@ class Validation:
 
                 is_near_fnames_tmp = [memory_lyr_get() for _ in is_near_fnames]
                 for i, lyr in is_near_fnames_tmp:
-                    features_copy2(is_near_fnames[i], is_near_fnames_tmp[i], is_near_filters[i], no_progress=not show_progress)
+                    features_copy2(is_near_fnames[i], is_near_fnames_tmp[i], is_near_filters[i], show_progress=not show_progress)
                 kwargs['near_features'] = is_near_fnames_tmp
             else:  # no filters, much easier!
                 kwargs['near_features'] = is_near_fnames
