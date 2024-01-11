@@ -1565,6 +1565,7 @@ def field_recalculate(fc: str, arg_cols: (str, list, tuple), col_to_update: str,
         PP = _iolib.PrintProgress(maximum=max_, init_msg='Applying func "%s" to column "%s" ...' % (func.__name__, col_to_update))  # noqa
 
     if isinstance(arg_cols, str): arg_cols = [arg_cols]
+    if isinstance(arg_cols, tuple): arg_cols = list(arg_cols)
     j = 0
     try:
         # Update cursor behaves differently the environment has a workspace set
