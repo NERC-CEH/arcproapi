@@ -86,7 +86,8 @@ class MetaBuilderBasic:
 
 
 def meta(datasource, mode="PREPEND", **args):  # noqa
-    """Read/write metadata of ArcGIS Feature Class, Raster Dataset, Table, etc.
+    """
+    Read-write metadata of ArcGIS Feature Class, Raster Dataset, Table, etc.
 
     Returns a dictionary of all accessible (if readonly) or all editted entries.
 
@@ -118,11 +119,12 @@ def meta(datasource, mode="PREPEND", **args):  # noqa
         abstract, string to use in Abstract
         If no keyword argument is specifed, metadata are read only, not edited.
 
-    Example:
-    >>> fc = 'c:\\foo\\bar.shp'
-    >>> meta(fc) # reads existing entries
-    >>> meta(fc, 'OVERWRITE', title="Bar") # updates title
-    >>> meta(fc, 'append', purpose='example', abstract='Column Spam means eggs')
+    Examples:
+
+        >>> fc = r'c:\\foo\\bar.shp'
+        >>> meta(fc) # reads existing entries
+        >>> meta(fc, 'OVERWRITE', title="Bar") # updates title
+        >>> meta(fc, 'append', purpose='example', abstract='Column Spam means eggs')
     """
     raise NotImplementedError
     # https://github.com/Esri/arcgis-pro-metadata-toolkit
@@ -135,7 +137,7 @@ def meta(datasource, mode="PREPEND", **args):  # noqa
 
     # checks
     if xslt is None:
-        template = 'Metadata\Stylesheets\gpTools\exact copy of.xslt'
+        template = 'Metadata/Stylesheets/gpTools/exact copy of.xslt'
         arcdir = _arcpy.GetInstallInfo()['InstallDir']
         xslt = _path.join(arcdir, template)
     if not _path.isfile(xslt):
