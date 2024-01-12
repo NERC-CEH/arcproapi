@@ -606,22 +606,38 @@ class CRUD:
         if fail_on_multi:
             if get_row_cnt(self._fname, where) > 1:  # noqa
                 raise _errors.UpdateCursorGotMultipleRecords(_errors.UpdateCursorGotMultipleRecords.__doc__)
-
+        # TODO: This is horrible, need to refine at some point, probably ditching
         if not force_add:
             exists = self.exists_by_compositekey(**search_dict)
             if exists:
                 if not kwargs or fail_on_exists:
                     raise _errors.UpsertExpectedInsertButHadMatchedRow(_errors.UpsertExpectedInsertButHadMatchedRow.__doc__)
 
-            with _da.UpdateCursor(self._fname, cols, where_clause=where) as Cur:
-                for row in Cur:
-                    for j in range(len(cols)):
-                        row[j] = values[j]
-                    try:
-                        Cur.updateRow(row)
-                    except RuntimeError as r:
-                        raise RuntimeError('Runtime errors in arcpy cursor operations are usually the result of incorrect column names, mismatched data types, '
-                                           'string truncation or locking issues.') from r
+                with _da.UpdateCursor(self._fname, cols, where_clause=where) as Cur:
+                    for row in Cur:
+                        for j in range(len(cols)):
+                            row[j] = values[j]
+                        try:
+                            Cur.updateRow(row)
+                        except RuntimeError as r:
+                            raise RuntimeError('Runtime errors in arcpy cursor operations are usually the result of incorrect column names, mismatched data types, '
+                                               'string truncation or locking issues.') from r
+            else:
+                try:
+                    if not kwargs:
+                        # caller was lazy and wanted a quick insert using search_dict only,
+                        # so  use the search cols/vals to add a new row
+                        Cur = _da.InsertCursor(self._fname, list(search_dict.keys()))
+                        i = Cur.insertRow(list(search_dict.values()))
+                    else:
+                        Cur = _da.InsertCursor(self._fname, cols)
+                        i = Cur.insertRow(values)
+                except RuntimeError as r:
+                    raise RuntimeError('Runtime errors in arcpy cursor operations are usually the result of incorrect column names, mismatched data types, '
+                                       'string truncation or locking issues.') from r
+                finally:
+                    with _fuckit:
+                        del Cur
         else:
             try:
                 if not kwargs:
