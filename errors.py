@@ -23,8 +23,10 @@ class FieldNotFound(Exception):
     """ Field not found"""
 
 class FeatureClassOrTableNotFound(Exception):
-    """ The fc or table was not found
-    """
+    """ The fc or table was not found """
+
+class ShapeNotSupported(Exception):
+    """shape not supported"""
 
 class LayerNotFound(Exception):
     """ The layer was not found - this is the ESRI layer entity and not the generic term

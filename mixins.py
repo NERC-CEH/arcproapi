@@ -234,6 +234,31 @@ class MixinEnumHelper:
         from arcproapi.structure import domains_assign  # import here, otherwise get circular import reference
         return domains_assign(fname, {cls.domain_name: flds}, error_on_failure=error_on_failure)
 
+    @classmethod
+    def as_text_as_dict(cls, value_text_order: bool = True) -> dict[(int, str): (int, str)]:
+        """
+        Get the enum as a dict.
+        The dict returned is either enum.value: enum.as_text .. or the reverse
+
+        Args:
+            value_text_order: determine what is the key and what is the value
+
+        Returns:
+            dict: A dictionary with key values based on the as_text and enum value attributes
+
+        Examples:
+
+            >>> cls.as_text_as_dict()  # noqa
+            {1: 'Number One', 2: 'Number Two', ...}
+
+            Now the other way
+            >>> cls.as_text_as_dict(False)  # noqa
+            {'Number One': 1, 'Number Two': 2, ...}
+        """
+        if value_text_order:
+            return {i.value: cls.as_text(i) for i in cls}  # noqa
+        return {cls.as_text(i): i.value for i in cls}  # noqa
+
 
     @_classproperty
     def text_values(cls) -> list[str]:  # noqa

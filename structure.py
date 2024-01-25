@@ -26,6 +26,7 @@ import arcpy as _arcpy
 import funclite.iolib as _iolib
 import funclite.baselib as _baselib
 import funclite.stringslib as _stringslib
+
 import docs.excel as _excel
 
 import arcproapi.common as _common
@@ -210,7 +211,7 @@ def field_oid(fname):
     return _arcpy.Describe(fname).OIDFieldName
 
 
-def field_shp(fname):
+def field_shp(fname) -> (str, None):
     """(str)->str
     Return name of the Shape (Geometry) field in feature class fname
 
@@ -219,10 +220,16 @@ def field_shp(fname):
 
     Returns:
          str: Name of the shape/geometry field
+         None: If fname is not a feature class
     """
     fname = _path.normpath(fname)
-    D = _arcpy.Describe(fname).shapeFieldName
+    try:
+        D = _arcpy.Describe(fname).shapeFieldName
+    except AttributeError:
+        return None
     return D
+
+field_shape = field_shp  # noqa
 
 
 def fields_delete_not_in(fname, not_in):
@@ -513,6 +520,9 @@ def fcs_delete(fnames, err_on_not_exists=False):
         except Exception as e:
             if err_on_not_exists:
                 raise e
+
+# aide memoir declaration
+domain_from_table = TableToDomain
 
 
 def domain_from_excel(geodb: str, domain_name: str, xl_workbook: str, xl_sheet: str = '', xl_table: str = '', xl_range: str = ''):

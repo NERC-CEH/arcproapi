@@ -5,7 +5,6 @@ import funclite.iolib as _iolib
 import arcproapi.data as _data
 import arcproapi.errors as _errors
 
-_errors.DataUnexpectedRowCount
 
 def points_translate(fname: str, where: str = '', x_offset: float = 0, y_offset: float = 0, expected_rows=0, show_progress: bool = False) -> int:
     """

@@ -898,6 +898,8 @@ def pandas_to_table2(df: _pd.DataFrame, workspace: str, tablename: str, overwrit
     and arcpys bug on importing pandas cols of type object - the default
     col type class for pandas string representations.
 
+    Read Notes for caveat with empty string/null handling
+
     Args:
         df (pandas.DataFrame): the pandas dataframe
         workspace (str): gdb
@@ -911,6 +913,12 @@ def pandas_to_table2(df: _pd.DataFrame, workspace: str, tablename: str, overwrit
         IOError: If the feature class to write exists and arcpy reports it as locked
 
     Returns: None
+
+    Notes:
+        Because this method first exports to csv, then it doesn't differentiate between empty strings and missing data.
+        This becomes an issue where fields in the underlying data are not nullable.
+        Blanket solutions would result in numeric fields being interpreted as string data types.
+        An untested workaround would be to write single quotes to string fields only i.e. ''.
 
     Examples:
         >>> df = _pd.DataFrame({'A':['a','aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa']})  # noqa
@@ -1910,7 +1918,7 @@ def features_copy(source: str, dest: str, workspace: str, where_clause: str = '*
 
 # Devnote - it is better to use copy_shape here, Python does not support "Shape@ =" as a kwarg (@ is invalid) and so using this design decision means the caller does not have to know the name of the shape field in "fname".
 def features_copy2(source: str, dest: str, where_clause: str = '*', fixed_values=None, copy_shape: bool = True,
-                   show_progress: bool = True, **kwargs) -> int:
+                   show_progress: bool = True, validate_cols: bool = False, **kwargs) -> int:
     """Copy features from one table or featureclass to another. Has much faster performance than
      features copy, but fewer validation options and cannot be transactionalised
 
@@ -1932,6 +1940,10 @@ def features_copy2(source: str, dest: str, where_clause: str = '*', fixed_values
         copy_shape (bool): set to false if working with a table, otherwise set this to true to transfer geometry
         show_progress (bool): show progress
         kwargs (any): Keyword arguments, where key is field in dest, and value is field in src. E.g. dest_field='src_field'
+        validate_cols: If True, then a pass is made over the cols defined, and a descriptive error is raise with invalid cols reported
+
+    Raises:
+        errors.FieldNotFound: If validate_cols was True, and invalid field args were passed.
 
     Returns:
         int: Number of records added to dest
@@ -1948,12 +1960,36 @@ def features_copy2(source: str, dest: str, where_clause: str = '*', fixed_values
         >>>    eu_country='world_country', population='population')
         33
     """
+    source = _path.normpath(source)
+    dest = _path.normpath(dest)
+
+    if copy_shape:
+        if not _struct.field_shape(dest) or not _struct.field_shape(source):
+            raise _errors.ShapeNotSupported('copy_shape was True, but the source "%s" or dest "%s" do not have a Shape field.\nPass copy_shape=False if this is expected.' % (source, dest))
+
+    if validate_cols:
+        if show_progress: print('\nValidating fields ...')
+        dest_cols_db = list(map(str.lower, _struct.fc_fields_get(dest)))
+        src_cols_db = list(map(str.lower, _struct.fc_fields_get(source)))
+
+
+        dest_cols_write = []
+        dest_cols_write += list(map(str.lower, fixed_values.keys()))
+        dest_cols_write += list(map(str.lower, kwargs.keys()))
+
+        src_cols_read = list(map(str.lower, kwargs.values()))
+
+        dest_bad = _baselib.list_not(dest_cols_write, dest_cols_db)
+        src_bad = _baselib.list_not(src_cols_read, src_cols_db)
+
+        if dest_bad or src_bad:
+            raise _errors.FieldNotFound('Field validation failed.\nFields not in source:%s\nFields not in dest:%s' % (src_bad, dest_bad))
+        else:
+            if show_progress: print('\nAll field arguments looking good ...')
 
     if 'where' in map(str.lower, kwargs.keys()):
         _warn('keyword "where" in kwargs.keys(), did you mean to set a where clause? If so, use where_clause=<MY QUERY>')
 
-    source = _path.normpath(source)
-    dest = _path.normpath(dest)
 
     if not kwargs and not fixed_values:
         _warn('Source columns (kwargs) and fixed values (fixed_values) not provided. No rows written to %s.\nIs this what you intended?' % dest)
