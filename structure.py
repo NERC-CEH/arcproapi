@@ -310,6 +310,7 @@ def fields_delete(fname, fields: (str, list[str], None) = None, where: (str, Non
     return good, bad
 
 
+
 def fc_fields_not_required(fname: str, full_name: bool = True) -> list[str]:
     """
     Get list of fields that are not required.

@@ -18,6 +18,8 @@ from arcproapi import mp as _mp  # arcpy.mapping/arcpy.mp
 class Project:
     """Class to work with projects
 
+    A work in progress!
+
     Args:
         aprx (str): fully qualified path to the arpx project file
 

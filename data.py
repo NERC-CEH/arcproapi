@@ -44,6 +44,7 @@ import arcproapi.orm as _orm
 import arcproapi.sql as _sql
 import arcproapi.decs as _decs
 import arcproapi.common as _common
+import arcproapi.geom as _geom
 
 #  More data-like functions, imported for convieniance
 from arcproapi.common import get_row_count2 as get_row_count2
@@ -62,6 +63,24 @@ class Funcs(_MixinNameSpace, metaclass=_ABCMeta):
     Methods:
         FidToOneZero: After a spatial operation, e.g. union, we get FID_<table_name> cols. This reduces those scenarios to a 1 or a 0. "0 = 0;  <Null> = 0;  -1 = 0;  > 0 = 1
     """
+
+    @staticmethod
+    def ShapeToHash(shape) -> str:
+        """
+        Takes the value in an arcpy Shape@ field (Shape@ should be used to specify the shape col),
+        and returns a unique hash value as a string.
+
+        Args:
+            shape: the shape returned by asking for Shape@, for example in a searchcursor loop
+
+        Returns:
+            The hashed value
+
+        Notes:
+            This method is defined in geom.py
+        """
+        return _geom.shape_hash(shape)
+
 
     @staticmethod
     def FloatToLong(v: float) -> int:
@@ -1606,6 +1625,61 @@ def field_recalculate(fc: str, arg_cols: (str, list, tuple), col_to_update: str,
 field_apply_func = field_recalculate  # noqa For convieniance. Original func left in to not break code
 
 
+def field_apply_and_add(fname: str, in_fields: (list[str], str), new_field: str, func, field_type: (str, None) = None, field_length: (int, None) = None, allow_edit: bool = False, show_progress: bool = True, **kwargs) -> int:
+    """ Add the square type based on sq_id.
+
+    Args:
+        fname (str): feature class/table name
+        in_fields (str): fields whose values are passed to func
+        new_field (str): name of field to add, or edit if allow_edit is True
+        func: The function to apply, should return a single value and take as many args as fields passed to in_fields
+        field_type: The field type, SHORT, LONG, TEXT etc. See ESRIs AddField method for options
+        field_length: length of field (for text fields
+        allow_edit (bool): Allow editing. i.e. use a field that currently exists.
+        show_progress (bool): Show progress
+        **kwargs: passed to ESRIs AddField
+
+    Raises:
+        ValueError: If allow_edit was False but new_field already exists
+        ValueError: If allow_edit was False and no field_type was specified
+        ValueError: If field_type not in ['TEXT', 'FLOAT', 'REAL', 'SHORT', 'LONG', 'DATE', 'DATETIME']
+
+    Returns:
+        int: Number of records edited
+
+    Notes:
+        Ultimately looks up if is a CS square from erammp.data.
+        If there are invalid sq_ids, a warning message will be printed ot the console
+
+
+    Examples:
+
+        Add a col
+
+        >>> field_apply_and_add('C:/my.gdb/squares')
+        300
+    """
+    if not field_type and not allow_edit:
+        raise ValueError('allow_edit was False and no field_type was specified')
+
+    if field_type and field_type.lower() not in ['text', 'float', 'short', 'date', 'datetime']:
+        raise ValueError("field_type only supports ['TEXT', 'FLOAT', 'REAL', 'SHORT', 'LONG', 'DATE', 'DATETIME'].")
+    fname = _path.normpath(fname)
+
+    if isinstance(in_fields, str): in_fields = [in_fields]
+
+    if allow_edit:
+        if not _struct.field_exists(fname, new_field):
+            _struct.AddField(fname, new_field, field_type, field_length=field_length, **kwargs)
+    else:
+        # Check first so can raise a known error rather than generic arcpy one
+        if _struct.field_exists(fname, new_field):
+            raise ValueError('Field "%s" already exists and allow_edit was False.' % new_field)
+        _struct.AddField(fname, new_field, field_type, field_length=field_length, **kwargs)
+    i = field_recalculate(fname, in_fields, new_field, func, show_progress=show_progress)
+    return i
+
+
 def memory_lyr_get(workspace='in_memory') -> str:
     """ Just get an 8 char string to use as name for temp layer.
 
@@ -2202,7 +2276,7 @@ class Spatial(_MixinNameSpace):  # noqa
             {'good':['FID_country',], 'bad':['FID_area']}
         """
 
-        srcs = list(map(_path.normpath, sources))
+        srcs = list(map(_path.normpath, sources))  # noqa
         dest = _path.normpath(dest)
         _arcpy.env.overwriteOutput = overwrite
         if isinstance(keep_cols, str): keep_cols = list[keep_cols]
@@ -2533,7 +2607,7 @@ class Spatial(_MixinNameSpace):  # noqa
     @staticmethod
     def intersect_not(in_feature: str, in_feature1: str, **kwargs) -> list[int]:
         """
-        Check if any features in our layer DO NOT intersect with in_feature.
+        Check if any features in in_feature DO NOT intersect with in_feature1.
 
         Returning a list of features which ** DO NOT ** intersect any in_feature.
 

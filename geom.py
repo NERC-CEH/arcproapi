@@ -1,7 +1,8 @@
 """
 Helper functions for working with geometries
 """
-import copy
+import hashlib as _hashlib
+import copy as _copy
 
 import arcpy as _arcpy
 
@@ -36,7 +37,7 @@ class Square:
         if isinstance(origin, (list, tuple)):
             self.pt_x1y1 = _arcpy.Point(*origin)
         else:
-            self.pt_x1y1 = copy.copy(origin)  # deepcopy fails (ESRI object doesnt support necessary interfaces), this just copies the pointer. We dont manipulate origin anyway
+            self.pt_x1y1 = _copy.copy(origin)  # deepcopy fails (ESRI object doesnt support necessary interfaces), this just copies the pointer. We dont manipulate origin anyway
 
         self.pt_x1y2 = _arcpy.Point(self.pt_x1y1.X, self.pt_x1y1.Y + side_length)
         self.pt_x2y2 = _arcpy.Point(self.pt_x1y1.X + side_length, self.pt_x1y1.Y + side_length)
@@ -83,6 +84,27 @@ class Square:
 ###################
 # General methods #
 ###################
+def shape_hash(shape: _arcpy.Polygon) -> str:
+    """
+    Given a polygon instance (as read from SearchCursor 'Shape@'), get the hash value
+    of the wkt representation of the shape.
+
+    This is useful if we want to get a unique text value of the shape for aggregate
+    operations, like Dissolve, which do not support Shape.
+
+    Args:
+        shape: Polygon instance
+
+    Returns:
+        The sha256 has of shape
+
+    Examples:
+
+        >>> row = arcpy.da.SearchCursor('C:/myshape.shp', config.GeoDatabaseLayersAndTables.ERAMMPCommon.sq, ['Shape@']).next()  # noqa
+        >>> shape_hash(row[0])
+        '773bd78d5d2c0bf243d0d773272be8e36c25b52fc282f79ebd96afd372e68e58'
+    """
+    return _hashlib.sha256(shape.WKT.encode('ASCII')).hexdigest()
 
 def polygon_from_list(lst: (list, tuple)) -> _arcpy.Polygon:
     """
