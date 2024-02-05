@@ -463,7 +463,7 @@ class ORM(_crud.CRUD):
         else:
             search_dict = self._members_as_dict(self._cols_as_list(EnumMembers.composite_key))  # noqa
 
-        kwargs = self.members_as_dict(EnumMembers.members.value + EnumMembers.composite_key.value, editable_only=True)
+        kwargs = self.members_as_dict(EnumMembers.members.value + EnumMembers.composite_key.value, editable_only=True)  # noqa
 
         try:
             if self._XX_enable_log:
@@ -512,7 +512,7 @@ class ORM(_crud.CRUD):
         # self.__dict__ = {**cp, **search_dict}
         # kwargs = self._members_as_dict(self._cols_as_list(EnumMembers.members, EnumMembers.composite_key), editable_only=True)
 
-        kwargs = self.members_as_dict(EnumMembers.members.value + EnumMembers.composite_key.value)
+        kwargs = self.members_as_dict(EnumMembers.members.value + EnumMembers.composite_key.value)  # noqa
 
         if tran_commit and self._XX_enable_transaction:
             self.tran_begin()  # tran_begin first commits if in a tran
@@ -856,7 +856,7 @@ class ORM(_crud.CRUD):
             for k, v in self.members_as_dict(EnumMembers.composite_key).items():
                 CurRow.__dict__[k] = v
 
-            for k in self.members_as_dict(EnumMembers.composite_key.value + EnumMembers.members.value):
+            for k in self.members_as_dict(EnumMembers.composite_key.value + EnumMembers.members.value):  # noqa
                 CurRow.__dict__[k] = None  # we want to load these existing values in
 
             CurRow.read()
