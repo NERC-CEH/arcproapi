@@ -1,9 +1,13 @@
 """Translations on shapes"""
+import random as _random
+
 import arcpy as _arcpy
 
-import funclite.iolib as _iolib
 import arcproapi.data as _data
 import arcproapi.errors as _errors
+import arcproapi.decs as _decs
+
+import funclite.iolib as _iolib
 
 
 def points_translate(fname: str, where: str = '', x_offset: float = 0, y_offset: float = 0, expected_rows=0, show_progress: bool = False) -> int:
@@ -51,7 +55,7 @@ def points_translate(fname: str, where: str = '', x_offset: float = 0, y_offset:
             cursor.updateRow([[row[0][0] + x_offset, row[0][1] + y_offset]])
             i += 1
             if show_progress:
-                PP.increment()
+                PP.increment()  # noqa
     return i
 
 
@@ -86,3 +90,61 @@ def point_move(fname: str, where: str, x: (float, int, None), y: (float, int, No
             x = x if x else row[0][0]
             y = y if y else row[0][1]
             cursor.updateRow([[x, y]])
+
+
+@_decs.environ_persist
+def points_disperse_in_poly(fcPoints: str, fcPolygon: str, poly_where: (str, None) = None, points_where: (str, None) = None):
+    """
+    Disperse points from a point layer, randomly within polygons in a  layer.
+
+    Args:
+
+        fcPoints: The points fc
+        fcPolygon: The polygon fc
+        poly_where: Prefilter the polygons
+        points_where: Prefilter the points
+
+    Returns:
+        None
+
+    Credits:
+        Adapted from https://support.esri.com/en-us/knowledge-base/how-to-disperse-geocoded-point-features-within-a-polygo-000031489
+    """
+    def _point_in_poly(poly_, x, y):
+        pg = _arcpy.PointGeometry(_arcpy.Point(x, y), poly_.spatialReference)
+        return poly_.contains(pg)
+
+    def _disperse_points(in_points, polygon):
+        lenx = polygon.extent.width
+        leny = polygon.extent.height
+        with _arcpy.da.UpdateCursor(in_points, "SHAPE@XY", where_clause=points_where) as points:
+            for p in points:
+                if _point_in_poly(polygon, p[0][0], p[0][1]):
+                    x = (_random.random() * lenx) + polygon.extent.XMin
+                    y = (_random.random() * leny) + polygon.extent.YMin
+                    inside = _point_in_poly(polygon, x, y)
+                    while not inside:
+                        x = (_random.random() * lenx) + polygon.extent.XMin
+                        y = (_random.random() * leny) + polygon.extent.YMin
+                        inside = _point_in_poly(polygon, x, y)
+                    points.updateRow([(x, y)])
+                else:
+                    pass
+
+    _arcpy.env.overwriteOutput = True
+
+    with _arcpy.da.SearchCursor(fcPolygon, ('SHAPE@',), where_clause=poly_where) as cursor:
+        for row in cursor:
+            poly = row[0]
+            _disperse_points(fcPoints, poly)
+
+
+
+
+
+
+
+
+
+if __name__ == '__main__':
+    pass
