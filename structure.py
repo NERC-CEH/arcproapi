@@ -68,9 +68,9 @@ class FieldsRemapper:
     Pass instances of FieldMap and feature classes/tables and remap the names of those fields.
 
     The field alternatives are ignored, i.e. no error is raised if no alternative are found
-    in any given fc/table. This is necessary to make the function flexiable.
+    in any given fc/table. This is necessary to make the function flexible.
 
-    But, a precheck is done to check that the fields to rename to do not exist.
+    But, a precheck is done to check that the fields to rename to, do not exist.
 
     Raises:
         errors.FeatureClassOrTableNotFound: If any fnames did not exist
@@ -173,6 +173,40 @@ class FieldsRemapper:
         """
 
 
+class RelationshipMapper:
+    def __init__(self, gdb: str, key_suffix='id'):
+        self.gdb = _path.normpath(gdb)
+        self._key_suffix = key_suffix
+        self._list_fk = [[], []]
+        self._list_pk = [[], []]
+        self._load()
+        self._create()
+    # TODO: Expand this - at the moment it does not for example cater for the use of OIDs as foreign keys, which is a common use case. Also support inclusions and exclusions, probably as a dict
+    def _load(self):
+        for fname in _baselib.list_flatten(list(gdb_tables_and_fcs_list(self.gdb, full_path=True))):
+            for fld in fields_get(fname):
+                if fld[len(fld) - len(self._key_suffix):].lower() == self._key_suffix.lower():
+                    if _path.basename(fname).lower() == fld[0: len(fld) - len(self._key_suffix)].lower():  # this is the pk field
+                        self._list_pk[0] += [fname]
+                        self._list_pk[1] += [fld.lower()]
+                    else:  # fk field candidate
+                        self._list_fk[0] += [fname]
+                        self._list_fk[1] += [fld.lower()]
+
+    def _create(self, show_progress=True):
+        if show_progress:
+            PP = _iolib.PrintProgress(iter_=zip(self._list_pk[0], self._list_pk[1]), init_msg='\nCreating relationships in %s ... ' % self.gdb)
+        for fname, fld in zip(self._list_pk[0], self._list_pk[1]):
+            for n, v in enumerate(zip(self._list_fk[0], self._list_fk[1])):
+                if v[1] == fld.lower():
+                    try:
+                        gdb_rel_one_to_many_create(fname, fld, v[0], v[1])
+                    except Exception as err:
+                        print('\nFailed to add relationship [%s,%s,%s,%s].\nThe error was:%s\n' % (fname, fld, v[0], v[1], getattr(err, 'message', repr(err))))
+            if show_progress:
+                PP.increment()  # noqa
+
+
 def memory_lyr_get(workspace='in_memory') -> str:
     """ Just get an 8 char string to use as name for temp layer.
 
@@ -228,6 +262,7 @@ def field_shp(fname) -> (str, None):
     except AttributeError:
         return None
     return D
+
 
 field_shape = field_shp  # noqa
 
@@ -315,7 +350,6 @@ def fields_delete(fname, fields: (str, list[str], None) = None, where: (str, Non
             PP.increment()  # noqa
 
     return good, bad
-
 
 
 def fc_fields_not_required(fname: str, full_name: bool = True) -> list[str]:
@@ -521,6 +555,7 @@ def fcs_delete(fnames, err_on_not_exists=False):
         except Exception as e:
             if err_on_not_exists:
                 raise e
+
 
 # aide memoir declaration
 domain_from_table = TableToDomain
@@ -1612,7 +1647,7 @@ def table_to_points(tbl, out_fc, xcol, ycol, sr, zcol='#', w='') -> str:
         >>> table_to_points(t, o, "XC", "YC", _arcpy.describe(tbl).spatialReference)  # noqa
     """
     lrnm = _common.tstamp('lr', '%m%d%H%M%S', '')
-    if type(sr) != _arcpy.SpatialReference:
+    if not isinstance(sr, _arcpy.SpatialReference):
         sr = _arcpy.SpatialReference(sr)
     lr = _arcpy.MakeXYEventLayer_management(tbl, xcol, ycol, lrnm, sr, zcol).getOutput(0)
     if str(w) not in ('', '*'):
@@ -2050,7 +2085,6 @@ class FieldsDescribe:
     def __getitem__(self, item: str) -> dict:
         return self._field_items()[item]
 
-
     def __iter__(self):
         """
         Iterate the the dictionary representation of each field.
@@ -2077,15 +2111,12 @@ class FieldsDescribe:
             lst += [str(v)]
         return '\n'.join(lst)
 
-
     def _field_items(self):
         """
         tuple if self.__dict__ which are actually fields with dicts
         Excludes self.Fields
         """
         return {k: v for k, v in self.__dict__.items() if k != 'Fields' and k[0] != '_' and isinstance(v, _baselib.DictAttributed)}
-
-
 
     def iterfields(self):
         """
@@ -2128,7 +2159,6 @@ class FieldsDescribe:
             return [k for k, v in self._field_items().items() if v['editable'] and not v['required']]
 
         return {k: v for k, v in self._field_items().items() if v['editable'] and not v['required']}
-
 
     def editable(self, as_fields: bool = False, names_only: bool = False) -> (dict[str:dict[str]], dict[str: _arcpy.Field]):
         """
@@ -2639,6 +2669,7 @@ def gdb_rel_one_to_many_create(fname1: str, col1: str, fname_many: str, col_many
 
     Returns:
         str: The fully qualified name of the relationship
+
         None: If the relationship already exists by name (no other checks are made)
 
     Notes:
@@ -2669,7 +2700,6 @@ def gdb_rel_one_to_many_create(fname1: str, col1: str, fname_many: str, col_many
             return  # noqa
         raise err
     return rel_name
-
 
 
 @_decs.environ_persist
@@ -2748,4 +2778,5 @@ if __name__ == '__main__':
     #  Quick debugging here
     #  example = fc_aliases_clear(r'\\nerctbctdb\shared\shared\SPECIAL-ACL\ERAMMP2 Survey Restricted\current\data\GIS\erammp_current.gdb\land_all_unionised')
     # rootm =
+    RelationshipMapper(r'S:\SPECIAL-ACL\ERAMMP2 Survey Restricted\common\data\GIS\nfs_aes_analysis.gdb')
     pass

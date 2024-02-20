@@ -15,7 +15,7 @@ import numpy as _np
 import arcpy as _arcpy
 
 from arcpy.conversion import TableToDBASE, TableToExcel, TableToGeodatabase, TableToSAS, TableToTable, ExcelToTable  # noqa
-from arcpy.management import MakeAggregationQueryLayer, MakeQueryLayer, MakeQueryTable, CalculateField, CalculateStatistics  # noqa   Expose here as useful inbult tools
+from arcpy.management import MakeAggregationQueryLayer, MakeQueryLayer, MakeQueryTable, CalculateField, CalculateStatistics, DeleteIdentical  # noqa   Expose here as useful inbult tools
 from arcpy.analysis import CountOverlappingFeatures, SummarizeNearby, SummarizeWithin  # noqa
 
 with _fuckit:
@@ -1786,6 +1786,40 @@ def del_rows(fname: str, cols: any, vals: any, where: str = None, show_progress:
     return j
 
 
+def del_rows_where(fname: str, where: str = None, show_progress: bool = True) -> int:
+    """
+    Delete rows based on a where. Tiny wrapper around del_rows
+
+    ** CARE ** - If no where is specified .. ALL ROWS WILL BE DELETED
+
+    Args:
+        fname (str): path to feature class/layer
+        where (str, None): where string to prefilter rows
+        show_progress (bool): Show progress bar, costs a bit of time to determine row count
+
+    Raises:
+        DataDeleteAllRowsWithNoWhere: If asked to delete all rows (vals='*') with no where specified
+
+    Returns:
+        int: Number of deleted rows
+
+    Notes:
+        Calls del_rows
+
+    Examples:
+        Use wildcard delete, we don't care about cols, so just use OBJECTID\n
+
+        >>> del_rows('c:/my.gdb/coutries', where='OBJECTID<10')
+        9
+
+        Delete everything!!!
+
+        >>> del_rows('c:/my.gdb/coutries')
+        999
+    """
+    return del_rows(fname, cols='*', vals='*', where=where, show_progress=show_progress, no_warn=True)
+
+
 # These are also in funclite.pandaslib, but reproduce them here.
 def pandas_join_multi(dfs: list, key: str) -> _pd.DataFrame:
     """
@@ -2074,7 +2108,7 @@ def features_copy2(source: str, dest: str, where_clause: str = '*', fixed_values
         _warn('No records matched the where clause %s.\nIs this expected?' % where_clause)
         return 0
 
-    if not show_progress:
+    if show_progress:
         PP = _iolib.PrintProgress(maximum=n * 2, init_msg='\nImporting rows to %s' % source)
 
     # Important thing here is that we are building the src and dest cols with matching indexes in the list
@@ -2100,18 +2134,18 @@ def features_copy2(source: str, dest: str, where_clause: str = '*', fixed_values
                 if fixed_values:
                     row += list(fixed_values.values())
                 insert_rows += [row]
-                if not show_progress: PP.increment()  # noqa
+                if show_progress: PP.increment()  # noqa
     else:  # we only get here if no kwargs AND we havent asked to copy the geometry (copy_shape is False)
         for x in range(n):
             insert_rows += [list(fixed_values.values())]
-            if not show_progress: PP.increment()  # noqa
+            if show_progress: PP.increment()  # noqa
 
     i = 0
     with _arcpy.da.InsertCursor(dest, dest_cols) as InsCur:
         for row in insert_rows:
             InsCur.insertRow(row)
             i += 1
-            if not show_progress: PP.increment()
+            if show_progress: PP.increment()
 
     return i
 
@@ -2997,6 +3031,13 @@ def vertext_add(fname, vertex_index: (int, str), x_field: str, y_field: str = 'y
 
 
 rows_delete = del_rows  # noqa. For conveniance, should of been called this in first place but don't break existing code
+rows_delete_where = del_rows_where  # noqa. For conveniance, should of been called this in first place but don't break existing code
+
+
+
+
+
+
 
 if __name__ == '__main__':
     # quick debugging
