@@ -173,14 +173,17 @@ class FieldsRemapper:
         """
 
 
+# Exposed as a class, as expect to expand functionality over time
 class RelationshipMapper:
-    def __init__(self, gdb: str, key_suffix='id'):
+    def __init__(self, gdb: str, key_suffix='id', ri_check: bool = True):
         self.gdb = _path.normpath(gdb)
         self._key_suffix = key_suffix
         self._list_fk = [[], []]
         self._list_pk = [[], []]
+        self._ri_check = ri_check
         self._load()
         self._create()
+
     # TODO: Expand this - at the moment it does not for example cater for the use of OIDs as foreign keys, which is a common use case. Also support inclusions and exclusions, probably as a dict
     def _load(self):
         for fname in _baselib.list_flatten(list(gdb_tables_and_fcs_list(self.gdb, full_path=True))):
@@ -200,7 +203,7 @@ class RelationshipMapper:
             for n, v in enumerate(zip(self._list_fk[0], self._list_fk[1])):
                 if v[1] == fld.lower():
                     try:
-                        gdb_rel_one_to_many_create(fname, fld, v[0], v[1])
+                        gdb_rel_one_to_many_create(fname, fld, v[0], v[1], ri_check=self._ri_check)
                     except Exception as err:
                         print('\nFailed to add relationship [%s,%s,%s,%s].\nThe error was:%s\n' % (fname, fld, v[0], v[1], getattr(err, 'message', repr(err))))
             if show_progress:
@@ -1806,8 +1809,8 @@ def field_rename(fname: str, col: str, newcol: str, skip_name_validation: bool =
     return newcol
 
 
-def fc_fields_rename_to_alias(fname: str, cols: (str, list, str) = 'ALL', skip_name_validation: bool = False, new_alias='ORIGINAL', show_progress: bool = False) -> (list[str], None):
-    """Rename column in table tbl and return the new name of the column.
+def fc_fields_rename_to_alias(fname: str, cols: (str, list, str) = 'ALL', skip_name_validation: bool = False, crop_to: int = 31, show_progress: bool = False) -> (list[str], None):
+    """Rename columns in table tbl to the alias. Aliases will be cleaned to be compatible by default
 
     Args:
         fname: table with the column to fname
@@ -1817,10 +1820,8 @@ def fc_fields_rename_to_alias(fname: str, cols: (str, list, str) = 'ALL', skip_n
             (tuple, list): A list/tuple of names.
             None: then we just return.
 
-        new_alias:
-            str: If "ORIGINAL" sets to original col name. If:"CLEAR", clears the alias
-
         skip_name_validation: Do not call arpy.ValidateFieldName to get a valid name. Useful as this can truncate perfectly valid names
+        crop_to: Crop fields to this. 31 is the maximum that is supported by fGDB layers
         show_progress: Show progress
 
     Returns:
@@ -1844,22 +1845,27 @@ def fc_fields_rename_to_alias(fname: str, cols: (str, list, str) = 'ALL', skip_n
 
     new_names = []
 
-    if show_progress: PP = _iolib.PrintProgress(iter_=cols, init_msg='Setting col names to their respective alias ...')
+    if show_progress: PP = _iolib.PrintProgress(iter_=cols, init_msg='Setting col names in "%s" to their respective alias ...' % fname)
     for col in cols:
-        #  Dont rename if alias and name same
-        if col.lower() == Flds[col][EnumFieldProperties.aliasName.name].lower():
+
+        # An alias name can be empty, skip of this is the case
+        if not Flds[col]['aliasName']:
             if show_progress: PP.increment()  # noqa
             continue
 
-        if col.lower() == Flds[col]['aliasname'].lower():
-            if show_progress: PP.increment()
+        #  Dont rename if alias and name same
+        if col.lower() == Flds[col]['aliasName'].lower():
+            if show_progress: PP.increment()  # noqa
             continue
-        if not skip_name_validation:
-            new_name = field_name_clean(Flds[col]['aliasname'])  # noqa
-        else:
-            new_name = Flds[col]['aliasname']  # noqa
 
-        AlterField(fname, col, new_name, new_field_alias=col if new_alias == 'ORIGINAL' else new_name)  # noqa
+        if not skip_name_validation:
+            new_name = field_name_clean(Flds[col]['aliasName'])  # noqa
+        else:
+            new_name = Flds[col]['aliasName']  # noqa
+        new_name = new_name[0:crop_to]
+
+
+        AlterField(fname, col, new_name, new_field_alias=new_name)  # noqa
         new_names += new_name
         if show_progress: PP.increment()  # noqa
 
@@ -2646,7 +2652,7 @@ def gdb_rel_list(gdb: str) -> dict[str:list[str, str]]:
 
 
 @_decs.environ_persist
-def gdb_rel_one_to_many_create(fname1: str, col1: str, fname_many: str, col_many: str, workspace: (str, None) = None, **kwargs) -> (str, None):
+def gdb_rel_one_to_many_create(fname1: str, col1: str, fname_many: str, col_many: str, workspace: (str, None) = None, ri_check: bool = False, **kwargs) -> (str, None, list):
     """
     Quickly create a one to many relationship. Conveniance function to standardise naming.
 
@@ -2654,6 +2660,8 @@ def gdb_rel_one_to_many_create(fname1: str, col1: str, fname_many: str, col_many
     then pass workspace and the relative paths of the layers within that workspace.
 
     If the relationship exists, no error will be raised.
+
+    *** As at Arcgispro 3.2, there is NO referential integrity enforcement when adding a relationship **
 
     Args:
         fname1 (str):
@@ -2663,6 +2671,8 @@ def gdb_rel_one_to_many_create(fname1: str, col1: str, fname_many: str, col_many
 
         workspace (str, None): If None, then the workspace is assumed to be a gdb and is extracted from fname.
         If a string, then this sets the workspace.
+
+        ri_check: Check RI between parent and child. No RI check is done by arcpy.
 
         **kwargs (keyword args): Passed to arcpy.management.CreateRelationshipClass.
             See https://pro.arcgis.com/en/pro-app/latest/tool-reference/data-management/create-relationship-class.htm
@@ -2690,6 +2700,12 @@ def gdb_rel_one_to_many_create(fname1: str, col1: str, fname_many: str, col_many
         workspace = _common.gdb_from_fname(fname1)
     _arcpy.env.workspace = workspace
     rel_name = _iolib.fixp(workspace, 'rel_%s_%s_%s_%s' % (_path.basename(fname1), col1, _path.basename(fname_many), col_many))
+
+    if ri_check:
+        from arcproapi.data import Validation  # dont declare at module level - circular ref
+        V = Validation(fname1)
+        V.referential_integrity(col1, fname_many, col_many, raise_exception=True)
+
     try:
         _arcpy.management.CreateRelationshipClass(fname1, fname_many, rel_name, "SIMPLE",
                                                   _path.basename(fname_many),

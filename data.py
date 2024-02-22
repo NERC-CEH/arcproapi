@@ -441,10 +441,7 @@ class ResultAsPandas(_mixins.MixinPandasHelper):
         errstr += 'Along with analysis.Near.\n\nThis will need fixing in code.'
 
         keys = dict(_inspect.signature(tool).parameters).keys()
-        if tool in [_arcpy.analysis.Near]:  # Near appends fields to in_features, so we have to hack it, there is probably a whole family of tools that follow this call pattern, expand  in filter as needed
-            _struct.ExportFeatures(in_features, self.result_memory_layer)
-            self.execution_result = tool(in_dataset=self.result_memory_layer, **kwargs)
-        elif 'in_dataset' in keys:
+        if 'in_dataset' in keys:
             self.execution_result = tool(in_dataset=in_features, out_dataset=self.result_memory_layer, **kwargs)
         elif 'in_features' in keys:
             if 'out_table' in keys:  # CheckGeometry
@@ -1335,12 +1332,14 @@ def fields_copy_by_join(fc_dest: str, fc_dest_key_col: str, fc_src: str, fc_src_
         fc_dest_key_col (str): Foreign key field name in destination
         fc_src (str): Table with source data
         fc_src_key_col (str): Primary key field name in source, matched with fc_dest_key_col
-        cols_to_copy (str, list, tuple): String or iterable of field names in src to copy to dest.
+        cols_to_copy (str, list, tuple): String or iterable of field names in src to copy to dest. Case insensitive.
 
-        rename_to (str, list, tuple, None): Rename cols_to_copy to this name or list of names.\n
-        If this argument is included, its length must match len(cols_to_copy)
+        rename_to (str, list, tuple, None):
+            Rename cols_to_copy to this name or list of names.
+            If this argument is included, its length must match len(cols_to_copy)
 
         error_if_dest_cols_exists: If True and any cols_to_copy already exists, then raises StructFieldExists
+
         ignore_type_on_lookup (bool): Some "clever" people mix types on pk-fk tables across data sources. This will do its best to ignore this kind of stupidity
         allow_duplicates_in_pk (bool): Ignore duplicates values in the column fc_dest.fc_dest_key_col. Takes the row value in this instance
         show_progress (bool): Show progress messages and indicator
@@ -1387,7 +1386,9 @@ def fields_copy_by_join(fc_dest: str, fc_dest_key_col: str, fc_src: str, fc_src_
     fc_src = _path.normpath(fc_src)
 
     if isinstance(cols_to_copy, str):
-        cols_to_copy = [cols_to_copy]
+        cols_to_copy = [cols_to_copy.lower()]
+    else:
+        cols_to_copy = list(map(str, cols_to_copy))
 
     if isinstance(rename_to, str):
         rename_to = [rename_to]
@@ -1401,10 +1402,10 @@ def fields_copy_by_join(fc_dest: str, fc_dest_key_col: str, fc_src: str, fc_src_
     if len(rename_to) != len(cols_to_copy):
         raise ValueError('If rename_to is passed, then assert len(cols_to_copy) == len(rename_to)')
 
-    if not _struct.field_exists(fc_src, fc_src_key_col, case_insensitive=False):
+    if not _struct.field_exists(fc_src, fc_src_key_col, case_insensitive=True):
         raise ValueError('The primary key field %s does not exist in source %s. This is case sensitive' % (fc_src_key_col, fc_src))
 
-    if not _struct.field_exists(fc_dest, fc_dest_key_col, case_insensitive=False):
+    if not _struct.field_exists(fc_dest, fc_dest_key_col, case_insensitive=True):
         raise ValueError('The foreign key field %s does not exist in destination %s. This is case sensitive' % (fc_dest_key_col, fc_dest))
 
     if error_if_dest_cols_exists:
@@ -1414,10 +1415,10 @@ def fields_copy_by_join(fc_dest: str, fc_dest_key_col: str, fc_src: str, fc_src_
 
     if not allow_duplicates_in_pk:
         if field_has_duplicates(fc_src, fc_src_key_col):
-            raise _errors.DataFieldValuesNotUnique('Field values in the data source field %s must be unique.' % fc_src_key_col)
+            raise _errors.DataFieldValuesNotUnique('Field values in "%s", field %s must be unique.' % (fc_src, fc_src_key_col))
 
     # join_list may now be out of order with rename_to
-    join_list_temp = [f for f in _arcpy.ListFields(fc_src) if f.name in cols_to_copy]
+    join_list_temp = [f for f in _arcpy.ListFields(fc_src) if f.name.lower() in map(str.lower, cols_to_copy)]
     if len(join_list_temp) != len(cols_to_copy):
         raise ValueError(
             'Expected %s fields in source, got %s. Check the names of the columns you have asked to copy. Field name comparisons are case sensitive here.' % (len(cols_to_copy), len(join_list_temp)))
@@ -1425,7 +1426,7 @@ def fields_copy_by_join(fc_dest: str, fc_dest_key_col: str, fc_src: str, fc_src_
     # create join_list, restoring order, so our source data cols match order of rename_to
     join_list = [None] * len(cols_to_copy)
     for f in join_list_temp:
-        join_list[cols_to_copy.index(f.name)] = f
+        join_list[cols_to_copy.index(f.name.lower())] = f
 
     # ######################################
     # Add fields to be copied to destination
@@ -2777,8 +2778,8 @@ class Validation:
             raise _errors.FeatureClassOrTableNotFound('Parent feature class or table "%s" not found.' % self.fname)
 
         exclude_cols = ('Shape',) if no_shapes else tuple()
-        self.df = table_as_pandas2(self.fname, exclude_cols=exclude_cols, cols_lower=True)
-        self.gx_df = _gx.from_pandas(self.df)
+        self.df: _pd.DataFrame = table_as_pandas2(self.fname, exclude_cols=exclude_cols, cols_lower=True)
+        self.gx_df: _gx.dataset.PandasDataset = _gx.from_pandas(self.df)  # noqa
 
     def near(self, is_near_fnames: (str, list[str]), threshhold: (float, int), is_near_filters: (str, list[str], None) = None, keep_cols: (tuple[str], None) = None, thresh_error_test='>=', raise_exception: bool = False, show_progress: bool = False, **kwargs) -> (_pd.DataFrame, None):
         """
@@ -2786,7 +2787,7 @@ class Validation:
 
         Columns are case insensitive and all set to lower case in the resulting pandas dataframes.
 
-        Can also be used for a "within" by setting an appropriate threshhold to
+        Can also be used for a "within" by setting an appropriate threshhold
 
         Args:
 
@@ -2860,8 +2861,9 @@ class Validation:
                     raise ValueError('len(is_near_filters) != len(is_near_fnames)')
 
                 is_near_fnames_tmp = [memory_lyr_get() for _ in is_near_fnames]
-                for i, lyr in is_near_fnames_tmp:
-                    features_copy2(is_near_fnames[i], is_near_fnames_tmp[i], is_near_filters[i], show_progress=not show_progress)
+                for i, lyr in enumerate(is_near_fnames_tmp):
+                    _arcpy.conversion.ExportFeatures(is_near_fnames[i], is_near_fnames_tmp[i], where_clause=is_near_filters[i])
+
                 kwargs['near_features'] = is_near_fnames_tmp
             else:  # no filters, much easier!
                 kwargs['near_features'] = is_near_fnames

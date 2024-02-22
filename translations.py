@@ -34,9 +34,14 @@ def points_translate(fname: str, where: str = '', x_offset: float = 0, y_offset:
         Credit to https://gis.stackexchange.com/questions/65959/moving-offsetting-point-locations-using-arcpy-or-modelbuilder
 
     Examples:
+
         Translate a point 100 map units east
+
         >>> points_translate('C:/my.gdb/centroids', where="centroid_name='here'", x=100)
-        \nUse the expected rows failsafe
+
+
+        Use the expected rows failsafe
+
         >>> points_translate('C:/my.gdb/centroids', where="centroid_name='matches_loads'", expected_rows=1, x=100)
         Traceback (most rec ...
         DataUnexpectedRowCount(...

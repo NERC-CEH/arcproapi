@@ -744,8 +744,8 @@ def field_name_clean(s: str, recursions: int = 100):
     Cleans a field name to reduce it to a lower case alpha-ASCII name delimited by underscores
 
     Args:
-        s:
-
+        s: the string
+        recursions: Defensive getout as their is a recursive-like call here
     Raises:
         RecursionError: If over "recursions" attempts are made to fix seperator character (i.e. "_") duplicates
 
@@ -763,11 +763,13 @@ def field_name_clean(s: str, recursions: int = 100):
     """
     if not s: return ''
     ss = s
+    ss = ss.replace("'", "")
+    ss = ss.replace('"', '')
     for ltr in _string.punctuation:
         ss = ss.replace(ltr, '_')
     ss = ss.lower()
-    ss = _stringslib.filter_alphanumeric1(ss, strict=True, include=('_',))
-
+    ss = _stringslib.filter_alphanumeric1(ss, strict=True, include=('_'))
+    ss = ss.replace(' ', '_')
     n = 0
     while True:
         if not ss: return ''
