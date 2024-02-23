@@ -441,7 +441,10 @@ class ResultAsPandas(_mixins.MixinPandasHelper):
         errstr += 'Along with analysis.Near.\n\nThis will need fixing in code.'
 
         keys = dict(_inspect.signature(tool).parameters).keys()
-        if 'in_dataset' in keys:
+        if tool == _arcpy.analysis.Near:
+            self.execution_result = tool(in_features=in_features, **kwargs)
+            _arcpy.conversion.ExportFeatures(self.execution_result, self.result_memory_layer)
+        elif 'in_dataset' in keys:
             self.execution_result = tool(in_dataset=in_features, out_dataset=self.result_memory_layer, **kwargs)
         elif 'in_features' in keys:
             if 'out_table' in keys:  # CheckGeometry
@@ -2834,6 +2837,23 @@ class Validation:
 
             None:
                 If no exceptions were found
+
+
+        Examples:
+
+            Are all countries within 10000 map units of continents. Yes
+
+            >>> Validation('my.gdb/country').near('my.gdb/continents', 10000)
+            None
+
+
+            Are all countries within 10000 map units of continents. No.
+
+            >>> Validation('my.gdb/country').near('my.gdb/continents', 100)
+            oid     near_fid    near_dist
+            1       5           230
+            3       6           101
+            ...
         """
         fname = self.fname
         if not thresh_error_test: thresh_error_test = '>='
@@ -2841,8 +2861,8 @@ class Validation:
         is_near_fnames = [_path.normpath(s) for s in is_near_fnames]
 
         oid_fname = _common.get_id_col(fname)
-        keep = [oid_fname]
-        keep += ['NEAR_FID', 'NEAR_DIST', 'NEAR_FC']
+        keep = ['OID']
+        keep += ['NEAR_FID', 'NEAR_DIST']
         keep += keep_cols if isinstance(keep_cols, (list, tuple)) else []
         keep = list(set(keep))
         keep = list(map(str.lower, keep))
@@ -2871,16 +2891,17 @@ class Validation:
             Nr = ResultAsPandas(_arcpy.analysis.Near, in_features=fname, **kwargs)
 
             Nr.df_lower: _pd.DataFrame  # noqa for pycharm autocomplete
-            Nr.df_lower = Nr.df_lower[keep]
-
-            Nr.df_lower.query('NEAR_DIST %s @threshhold' % thresh_error_test, inplace=True)
-            if len(Nr.df_lower) > 0 and raise_exception:
-                raise UserWarning('Layer %s had features outside of threshold distance condition "%s %s" with features %s' % (fname, thresh_error_test, threshhold, is_near_fnames))
+            df = Nr.df_lower[keep].query('near_dist %s @threshhold' % thresh_error_test, inplace=False)
+            if len(df) > 0 and raise_exception:
+                raise UserWarning('Layer "%s" had features outside of threshold distance condition "%s %s" with features in "%s".\n\nOIDs in %s were:\n%s.' % (_path.basename(fname), thresh_error_test, threshhold, is_near_fnames, _path.basename(fname), df['OID'].to_list()))
         finally:
             with _fuckit:
                 [_struct.Delete(s) for s in is_near_fnames_tmp]
 
-        return Nr.df_lower if len(Nr.df_lower) > 0 else None
+        if isinstance(df, _pd.DataFrame):
+            return df if len(df) > 0 else None
+        return None
+
 
     def referential_integrity(self, parent_field, child, child_field, in_parent_only_is_error: bool = False, as_oids=False, raise_exception: bool = False) -> (dict[str:list], None):
         """

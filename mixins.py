@@ -6,6 +6,8 @@ import string as _string
 import numpy as _np
 import fuckit as _fuckit
 import dateutil as _dateutil
+import datetime as _datetime
+from dateutil.parser import parse as _parse
 
 import arcpy as _arcpy
 import bs4 as _bs4
@@ -13,6 +15,7 @@ import pandas as _pd
 import xlwings as _xlwings
 
 import arcproapi.conversion as conversion  # noqa - for convieniance
+import arcproapi.common as _common
 
 from funclite import pandaslib as pandaslib
 import funclite.baselib as _baselib
@@ -71,9 +74,196 @@ class MetadataBaseInfo:
             return return_on_error
 
 
+class MixinRangeEnumHelper:
+    """
+    Mixin methods extender for enums, specifically for Range Domains
+
+    Inheriting class should define a max and min
+
+
+    Methods:
+
+    Raises:
+        NotImplementedError: If the inheriting class does not define class attributes domain_name, min_value and max_value.
+
+    Class Properties and Class Members:
+        code_description_dict:
+            Define a dictionary to use to create code descriptions for coded values
+            For example,
+
+            @_classproperty
+            def code_description_dict(cls) -> dict[str:str]:  # noqa
+                return {cls.as_text(cls.A): 'The letter A', cls.as_text(cls.B): 'The letter B'}
+    """
+    domain_name = None
+    domain_description = None
+
+    @classmethod
+    def domain_create(cls, geodb, **kwargs):
+        """
+        Create the enum as a range domain in the geodatabase gdb
+
+        Args:
+            geodb (str): The geodatabase
+
+            kwargs:
+                Passed to arcpy.management.CreateDomain.
+                See https://pro.arcgis.com/en/pro-app/latest/tool-reference/data-management/create-domain.htm#
+
+        Returns:
+            None
+        """
+        try:
+            x = cls.domain_name  # noqa
+        except:
+            raise NotImplementedError('Cannot create domain.\nClass does not define domain_name. Define this for the inheriting class.')
+
+        try:
+            domain_desc = cls.domain_description  # noqa
+        except:
+            domain_desc = 'Range domain %s' % cls.domain_name  # noqa
+
+        try:
+            _ = cls.max_value  # noqa
+            _ = cls.min_value  # noqa
+        except:
+            raise NotImplementedError('Cannot create range domain "%s".\nClass does not define "max_value" or "min_value". Define these for the inheriting class.' % cls.domain_name)
+
+        geodb = _path.normpath(geodb)
+        min_max = (cls.min_value, cls.max_value)  # noqa
+        isint = all([_baselib.is_int(x) for x in min_max])
+        isfloat = all([_baselib.is_float(x) for x in min_max])
+
+        def _isdate(s):
+            try:
+                _parse(s, fuzzy=True)
+                return True
+            except:
+                return False
+
+        isdate = all([_isdate(s) for s in min_max])
+
+        if not (isint and isfloat and isdate):
+            raise ValueError('Cannot create range domain "%s".\nInheriting class "max_value" or "min_value" class attributes should be floats and/or ints.' % cls.domain_name)
+
+        if isint:
+            ft = 'LONG'
+        elif isfloat:
+            ft = 'FLOAT'
+        else:
+            ft = 'DATE'
+
+
+        with _fuckit:
+            _arcpy.management.DeleteDomain(geodb, cls.domain_name)  # noqa
+
+        # domain description is at the domain level and NOT the values for the domain
+        _arcpy.management.CreateDomain(in_workspace=geodb, domain_name=cls.domain_name, domain_description=domain_desc,  # noqa
+                                       field_type=ft,
+                                       domain_type="RANGE",
+                                       split_policy=kwargs['split_policy'] if kwargs.get('split_policy') else 'DEFAULT',
+                                       merge_policy=kwargs['merge_policy'] if kwargs.get('merge_policy') else 'DEFAULT'
+                                       )
+        _arcpy.management.SetValueForRangeDomain(geodb, cls.domain_name, cls.min_value, cls.max_value)  # noqa
+
+
+    @classmethod
+    def domain_assign(cls, fname: str, flds: (str, list[str]), error_on_failure: bool = True) -> dict[str:list[str]]:
+        """
+        Assign a domain.
+        Now creates the domain in the workspace if it does not already exist.
+
+        This call can be a little slow because it first checks if the domain exists in the gdb
+
+        Returns:
+               dict[str:list[str]]: A dictionary of successes and failues {'success':[...], 'fail':[...]}
+               Dont let the colon in the return lists confuse you - it isnt a dict of dicts but a dict of lists.
+
+        Examples:
+
+            Assign domain to a single field in layer
+
+            >>> MixinRangeEnumHelper.domain_assign('C:/my.gdb/lyr', 'population')
+            {'success': ['EnumMyDomainEnum:population'], 'fail':[]}
+
+
+            Couple of fields
+
+            >>> MixinRangeEnumHelper.domain_assign('C:/my.gdb/lyr', ['population_female', 'population_male'])
+            {'success': 'EnumMyDomainEnum:population_female', 'EnumMyDomainEnum:population_male', 'fail': []}
+        """
+
+        # first try and create the domain if it does not exist
+        from arcproapi.common import gdb_from_fname as _get_gdb  # dont risk circular import
+        from arcproapi.structure import gdb_domain_exists as _chkdom
+        if isinstance(flds, str): flds = [flds]
+        gdb = _get_gdb(fname)
+        if not _chkdom(gdb, cls.domain_name):  # noqa
+            cls.domain_create(gdb)  # noqa
+        from arcproapi.structure import domains_assign  # import here, otherwise get circular import reference
+        return domains_assign(fname, {cls.domain_name: flds}, error_on_failure=error_on_failure)  # noqa
+
+
+    @_classproperty
+    def validate(cls, fname: str, field: str, time_parse: str = '%H:%M') -> tuple[bool, (None, list[list])]:  # noqa
+        """sets the flag field to 0 if at least 1 field value is not in the field's domain, else 1
+
+        Currently only works with text value domains.
+
+        Args:
+            fname: path to the feature class or table
+            field: the fields to check against the domain (doesnt require the domain to be set against the given field)
+            time_parse: used to convert the enum values to a datetime time instance, if our underlying domain type is 'timeonly' .. unlikely!
+
+        Raises:
+            ValueError: If the domain type is unknown as read from the matching domain object in the gdb. See https://pro.arcgis.com/en/pro-app/latest/tool-reference/data-management/create-domain.htm
+
+        Returns:
+            True, None: If validation passed and all values in field are in the domain
+
+            False, list[list[int,any]]:
+                If validation failed. The list is nested, with oid and value pairs for the values that failed.
+
+        Examples:
+
+            All values in field "name" are in defined by the domain our Enum represents
+
+            >>> MixinEnumHelper.validate('my.gdb/countries', 'name')
+            True, None
+
+
+            Bad values in field "name" as defined by the domain our Enum represents
+
+            >>> MixinEnumHelper.validate('my.gdb/countries', 'name')
+            False, [[1, 'Ingurland'], [10, 'Whales']]
+
+
+        """
+        fname = _path.normpath(fname)
+        database = _common.gdb_from_fname(fname)
+
+        try:
+            domain = tuple(filter(lambda d: d.name.lower() == cls.domain_name.lower(), _arcpy.da.ListDomains(database)))[0]  # noqa
+        except:
+            print('Warning: The domain "%s" does not appear to be in the database. I will try to create the domain in "%s".\nValidation will still continue.' % (cls.domain_name, database))  # noqa
+            with _fuckit:
+                cls.domain_create(database)
+
+        has_bad = False
+        bad = list()
+        with _arcpy.da.SearchCursor(fname, ['OID@', field]) as C:
+            for row in C:
+                if cls.min_value <= row[1] <= cls.max_value:  # noqa
+                    has_bad = True
+                    bad += [[row[0], row[1]]]
+        if has_bad:
+            return False, bad
+        return True, None
+
+
 class MixinEnumHelper:
     """
-    Mixin property for enums declared in this module.
+    Mixin property for enums.
     Primarily to retreive a list of the texts retreived from as_text
     which is written to backend spatial dbs.
 
@@ -198,7 +388,6 @@ class MixinEnumHelper:
         for v in vals:
             _arcpy.management.AddCodedValueToDomain(geodb, cls.domain_name, v, cls.code_description_dict.get(v, v))
 
-
     @classmethod
     def domain_assign(cls, fname: str, flds: (str, list[str]), error_on_failure: bool = True) -> dict[str:list[str]]:
         """
@@ -229,7 +418,7 @@ class MixinEnumHelper:
         from arcproapi.structure import gdb_domain_exists as _chkdom
         if isinstance(flds, str): flds = [flds]
         gdb = _get_gdb(fname)
-        if not _chkdom(gdb, cls.domain_name): # noqa
+        if not _chkdom(gdb, cls.domain_name):  # noqa
             cls.domain_create2(gdb)  # noqa
         from arcproapi.structure import domains_assign  # import here, otherwise get circular import reference
         return domains_assign(fname, {cls.domain_name: flds}, error_on_failure=error_on_failure)
@@ -259,7 +448,6 @@ class MixinEnumHelper:
             return {i.value: cls.as_text(i) for i in cls}  # noqa
         return {cls.as_text(i): i.value for i in cls}  # noqa
 
-
     @_classproperty
     def text_values(cls) -> list[str]:  # noqa
         """
@@ -273,7 +461,6 @@ class MixinEnumHelper:
         lst.sort()
         return lst  # noqa
 
-
     @_classproperty
     def text_values_for_domain(cls) -> list[str]:  # noqa
         """
@@ -286,10 +473,72 @@ class MixinEnumHelper:
         Notes:
             Domain values cannot be created from Nones and empty strings, hence this property is provided.
         """
-        lst = [cls.as_text(e) for e in cls if  cls.as_text(e) not in (None, '')]  # noqa
+        lst = [cls.as_text(e) for e in cls if cls.as_text(e) not in (None, '')]  # noqa
         lst.sort()
         return lst  # noqa
 
+    @_classproperty
+    def validate(cls, fname: str, field: str, time_parse: str = '%H:%M') -> tuple[bool, (None, list[list])]:  # noqa
+        """sets the flag field to 0 if at least 1 field value is not in the field's domain, else 1
+
+        Currently only works with text value domains.
+
+        Args:
+            fname: path to the feature class or table
+            field: the fields to check against the domain (doesnt require the domain to be set against the given field)
+            time_parse: used to convert the enum values to a datetime time instance, if our underlying domain type is 'timeonly' .. unlikely!
+
+        Raises:
+            ValueError: If the domain type is unknown as read from the matching domain object in the gdb. See https://pro.arcgis.com/en/pro-app/latest/tool-reference/data-management/create-domain.htm
+
+        Returns:
+            True, None: If validation passed and all values in field are in the domain
+
+            False, list[list[int,any]]:
+                If validation failed. The list is nested, with oid and value pairs for the values that failed.
+
+        Examples:
+
+            All values in field "name" are in defined by the domain our Enum represents
+
+            >>> MixinEnumHelper.validate('my.gdb/countries', 'name')
+            True, None
+
+
+            Bad values in field "name" as defined by the domain our Enum represents
+
+            >>> MixinEnumHelper.validate('my.gdb/countries', 'name')
+            False, [[1, 'Ingurland'], [10, 'Whales']]
+
+
+        """
+        fname = _path.normpath(fname)
+        database = _common.gdb_from_fname(fname)
+
+        domain = tuple(filter(lambda d: d.name.lower() == cls.domain_name.lower(), _arcpy.da.ListDomains(database)))[0]
+        if domain.type == 'Text':
+            domain_values = cls.text_values_for_domain
+        elif domain.type.lower() in ('short', 'long', 'biginteger'):
+            domain_values = list(map(int, cls.text_values_for_domain))
+        elif domain.type.lower() in ('float', 'double'):
+            domain_values = list(map(float, cls.text_values_for_domain))
+        elif domain.type.lower() in ('date', 'dateonly'):
+            domain_values = list(map(lambda d: _parse(d, dayfirst=True), cls.text_values_for_domain))
+        elif domain.type.lower() == 'timeonly':
+            domain_values = list(map(lambda t: _datetime.datetime.strptime(t, time_parse), cls.text_values_for_domain))
+        else:
+            raise ValueError('Unknown domain value type %s' % domain.type)
+
+        has_bad = False
+        bad = list()
+        with _arcpy.da.SearchCursor(fname, ['OID@', field]) as C:
+            for row in C:
+                if row[1] not in domain_values:
+                    has_bad = True
+                    bad += [[row[0], row[1]]]
+        if has_bad:
+            return False, bad
+        return True, None
 
     @_classproperty
     def code_description_dict(cls) -> dict[str:str]:  # noqa
@@ -322,7 +571,6 @@ class MixinEnumHelper:
             >>> MyDomain.domain_create2('c:/my.gdb')
         """
         return {v: v for v in cls.text_values_for_domain}
-
 
     @_classproperty
     def names(cls) -> list[str]:  # noqa
@@ -368,6 +616,7 @@ class MixinPandasHelper:
 
     For an rather complicated example of use, see data.ResultsAsPandas.
     """
+
     def __init__(self, *args, **kwargs):
         self.df = None
         self.df_lower = None
@@ -403,7 +652,6 @@ class MixinPandasHelper:
         valueflds = list(map(str.lower, valueflds))
 
         return pandaslib.GroupBy(self.df_lower, groupflds=groupflds, valueflds=valueflds, *funcs, **kwargs).result  # noqa
-
 
     def export(self, fname_xlsx: str, silent: bool = False, **kwargs) -> str:
         """
@@ -464,7 +712,6 @@ class MixinPandasHelper:
         if not silent: print('Exported dataframe to %s' % fname_xlsx)
 
         return out
-
 
     def view(self) -> None:
         """Open self.df in excel"""
