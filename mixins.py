@@ -97,6 +97,8 @@ class MixinRangeEnumHelper:
     """
     domain_name = None
     domain_description = None
+    min_value = None
+    max_value = None
 
     @classmethod
     def domain_create(cls, geodb, **kwargs):
@@ -113,20 +115,13 @@ class MixinRangeEnumHelper:
         Returns:
             None
         """
-        try:
-            x = cls.domain_name  # noqa
-        except:
+
+        if not cls.domain_name:
             raise NotImplementedError('Cannot create domain.\nClass does not define domain_name. Define this for the inheriting class.')
 
-        try:
-            domain_desc = cls.domain_description  # noqa
-        except:
-            domain_desc = 'Range domain %s' % cls.domain_name  # noqa
+        domain_desc = cls.domain_description if cls.domain_description else 'Range domain %s' % cls.domain_name
 
-        try:
-            _ = cls.max_value  # noqa
-            _ = cls.min_value  # noqa
-        except:
+        if cls.max_value is None or cls.min_value is None:
             raise NotImplementedError('Cannot create range domain "%s".\nClass does not define "max_value" or "min_value". Define these for the inheriting class.' % cls.domain_name)
 
         geodb = _path.normpath(geodb)
@@ -143,7 +138,7 @@ class MixinRangeEnumHelper:
 
         isdate = all([_isdate(s) for s in min_max])
 
-        if not (isint and isfloat and isdate):
+        if not any([isint, isfloat, isdate]):
             raise ValueError('Cannot create range domain "%s".\nInheriting class "max_value" or "min_value" class attributes should be floats and/or ints.' % cls.domain_name)
 
         if isint:
@@ -204,8 +199,8 @@ class MixinRangeEnumHelper:
         return domains_assign(fname, {cls.domain_name: flds}, error_on_failure=error_on_failure)  # noqa
 
 
-    @_classproperty
-    def validate(cls, fname: str, field: str, time_parse: str = '%H:%M') -> tuple[bool, (None, list[list])]:  # noqa
+    @classmethod
+    def validate(cls, fname: str, field: str) -> tuple[bool, (None, list[list])]:  # noqa
         """sets the flag field to 0 if at least 1 field value is not in the field's domain, else 1
 
         Currently only works with text value domains.
@@ -213,7 +208,6 @@ class MixinRangeEnumHelper:
         Args:
             fname: path to the feature class or table
             field: the fields to check against the domain (doesnt require the domain to be set against the given field)
-            time_parse: used to convert the enum values to a datetime time instance, if our underlying domain type is 'timeonly' .. unlikely!
 
         Raises:
             ValueError: If the domain type is unknown as read from the matching domain object in the gdb. See https://pro.arcgis.com/en/pro-app/latest/tool-reference/data-management/create-domain.htm
@@ -253,7 +247,8 @@ class MixinRangeEnumHelper:
         bad = list()
         with _arcpy.da.SearchCursor(fname, ['OID@', field]) as C:
             for row in C:
-                if cls.min_value <= row[1] <= cls.max_value:  # noqa
+                # TODO: Will need a test with dates, iirc SearchCursor date types are loaded into row as a datetime so this should work
+                if not cls.min_value <= row[1] <= cls.max_value:  # noqa
                     has_bad = True
                     bad += [[row[0], row[1]]]
         if has_bad:

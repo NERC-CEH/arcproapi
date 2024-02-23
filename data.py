@@ -17,6 +17,7 @@ import arcpy as _arcpy
 from arcpy.conversion import TableToDBASE, TableToExcel, TableToGeodatabase, TableToSAS, TableToTable, ExcelToTable  # noqa
 from arcpy.management import MakeAggregationQueryLayer, MakeQueryLayer, MakeQueryTable, CalculateField, CalculateStatistics, DeleteIdentical  # noqa   Expose here as useful inbult tools
 from arcpy.analysis import CountOverlappingFeatures, SummarizeNearby, SummarizeWithin  # noqa
+from arcpy.da import Describe
 
 with _fuckit:
     from arcproapi.common import release
@@ -2730,6 +2731,18 @@ class Validation:
 
     Loads tables and feature classes into dataframes, optionally excluding shape files for efficiency
 
+    Don't forget that pandas dataframes expose easy plotting functions.
+
+    Example:
+        import matplotlib.pyplot as plt
+        Validation('my.gdb/country').df.plot(x='country', y='population')
+        plt.show()
+
+        Also see pandas.plotting
+
+        Also see https://pandas.pydata.org/pandas-docs/stable/user_guide/visualization.html
+
+
     Methods:
 
     Fields:
@@ -2777,6 +2790,10 @@ class Validation:
         self.fname = _path.normpath(parent)
         self.gdb = _common.gdb_from_fname(self.fname)
         self.fname_base = _path.basename(self.fname)
+        self.describe_dict = Describe(self.fname)
+        self.is_table = self.describe_dict['datasetType'] == 'Table'
+
+
         if not _struct.Exists(self.fname):
             raise _errors.FeatureClassOrTableNotFound('Parent feature class or table "%s" not found.' % self.fname)
 
@@ -2784,7 +2801,7 @@ class Validation:
         self.df: _pd.DataFrame = table_as_pandas2(self.fname, exclude_cols=exclude_cols, cols_lower=True)
         self.gx_df: _gx.dataset.PandasDataset = _gx.from_pandas(self.df)  # noqa
 
-    def near(self, is_near_fnames: (str, list[str]), threshhold: (float, int), is_near_filters: (str, list[str], None) = None, keep_cols: (tuple[str], None) = None, thresh_error_test='>=', raise_exception: bool = False, show_progress: bool = False, **kwargs) -> (_pd.DataFrame, None):
+    def near(self, is_near_fnames: (str, list[str]), threshhold: (float, int), is_near_filters: (str, list[str], None) = None, keep_cols: (tuple[str], None) = None, thresh_error_test='>=', raise_exception: bool = False, **kwargs) -> (_pd.DataFrame, None):
         """
         Get
 
@@ -2819,8 +2836,6 @@ class Validation:
             raise_exception:
                 If True, will raise an exception if any records above threshhold are found.
                 This is useful for processing pipelines, where we want execution to halt if anything is suspect.
-
-            show_progress: show progress
 
             kwargs:
                 Keyword arguments passed to arcpy.analysis.Near.
@@ -2860,7 +2875,6 @@ class Validation:
         if isinstance(is_near_fnames, str): is_near_fnames = [is_near_fnames]
         is_near_fnames = [_path.normpath(s) for s in is_near_fnames]
 
-        oid_fname = _common.get_id_col(fname)
         keep = ['OID']
         keep += ['NEAR_FID', 'NEAR_DIST']
         keep += keep_cols if isinstance(keep_cols, (list, tuple)) else []
@@ -2893,7 +2907,7 @@ class Validation:
             Nr.df_lower: _pd.DataFrame  # noqa for pycharm autocomplete
             df = Nr.df_lower[keep].query('near_dist %s @threshhold' % thresh_error_test, inplace=False)
             if len(df) > 0 and raise_exception:
-                raise UserWarning('Layer "%s" had features outside of threshold distance condition "%s %s" with features in "%s".\n\nOIDs in %s were:\n%s.' % (_path.basename(fname), thresh_error_test, threshhold, is_near_fnames, _path.basename(fname), df['OID'].to_list()))
+                raise UserWarning('Layer "%s" had features outside of threshold distance condition "%s %s" with features in "%s".\n\nOIDs in %s were:\n%s.' % (_path.basename(fname), thresh_error_test, threshhold, is_near_fnames, _path.basename(fname), df['oid'].to_list()))
         finally:
             with _fuckit:
                 [_struct.Delete(s) for s in is_near_fnames_tmp]
@@ -2987,6 +3001,73 @@ class Validation:
         out = Spatial.intersect_not(self.fname, in_feature, **kwargs)
         if not out: return None
         return out  # noqa
+
+
+    def field_apply_test(self, arg_cols: (list, str), bool_func, where_clause: str = None) -> tuple[bool, (list[list], None)]:
+        """
+        Apply a function to arg_cols. Can be a single col, passed as a string.
+
+        Idea is our bool_func is applied to every row, returning True if the "test" is passed, and False if not.
+
+        *** for bool_func - True is a pass, False is a fail ***
+
+        Args:
+            arg_cols: rows with values passed to bool_fun
+            bool_func: the function to apply, must support len(arg_cols) number of arguments
+            where_clause: use to filter rows to ignore
+
+        Returns:
+
+            False, list:
+                False, list of records that failed the test, along with the oid and the row values for the failed row.
+                Order is OID, *arg_cols
+
+            True, None:
+                All rows passed the apply test
+
+        Examples:
+
+            Simple example, population is between 10k and 10 million. In this case, we had some failures
+
+            >>> Validation('my.gdb/countries').field_apply_test('population', lambda v: 10000 < v < 1e7)
+            False, [[12, 2345], [24, 123456789]]
+
+
+            Are any population values outside of 3 standard deviations?
+            Only testing on African continent.
+            All rows within 3 standard deviations of the mean.
+
+            >>> V = Validation('my.gdb/countries')
+            >>> test_func = lambda v: self.df.population.mean() - 3 * self.df.population.std < v < self.df.population.mean() + 3 * self.df.population.std
+            >>> V.field_apply_test('population', test_func, where_clause="continent='Africa'")
+            True, None
+        """
+        if isinstance(arg_cols, str):
+            arg_cols = [arg_cols]
+
+        # Easier to just do this all in a temp table
+        tmplyr = memory_lyr_get()
+        _struct.ExportFeatures(self.fname, tmplyr, where_clause=where_clause)
+        tmpcol = _stringslib.rndstr(from_=_string.ascii_lowercase)
+        _struct.AddField(tmplyr, tmpcol, 'SHORT')
+        field_apply_func(tmplyr, arg_cols, tmpcol, bool_func, show_progress=True)  # noqa
+
+        bad = list()
+        has_bad = False
+        cols = ['OID@']
+        cols += arg_cols
+        cols += [tmpcol]
+        with _arcpy.da.SearchCursor(tmplyr, cols) as C:
+            for row in C:
+                if row[1] == 0:
+                    has_bad = True
+                    bad += row[0:len(cols)-2]
+
+        if has_bad:
+            return False, bad
+        return True, None
+
+
 
 
 
