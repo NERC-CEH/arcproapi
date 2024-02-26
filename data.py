@@ -57,6 +57,7 @@ from arcproapi.export import excel_sheets_to_gdb as excel_import_sheets, csv_to_
 
 _sort_list_set = lambda lst: sorted(list(set(lst)))
 
+
 class Funcs(_MixinNameSpace, metaclass=_ABCMeta):
     """
     Defines some commonly used functions to use in the various field_apply/recalculate methods in this module.
@@ -81,7 +82,6 @@ class Funcs(_MixinNameSpace, metaclass=_ABCMeta):
             This method is defined in geom.py
         """
         return _geom.shape_hash(shape)
-
 
     @staticmethod
     def FloatToLong(v: float) -> int:
@@ -727,7 +727,7 @@ def field_get_dup_values(fname: str, col: str, value_list_only: bool = False, f:
     return res
 
 
-def fields_get_dup_values(fname: str, cols: list, value_list_only: bool = False, sep: str = _stringslib.Characters.Language.emdash,  f: any = lambda v: v):
+def fields_get_dup_values(fname: str, cols: list, value_list_only: bool = False, sep: str = _stringslib.Characters.Language.emdash, f: any = lambda v: v):
     """
     Check a set of columns for duplicate values across those columns.
     i.e. Treat the columns as being a compound key
@@ -772,7 +772,6 @@ def fields_get_dup_values(fname: str, cols: list, value_list_only: bool = False,
 
     if not dups: return {}
     return {_rep(k): v for k, v in dups.items()}
-
 
 
 def key_info(parent: str, parent_field: str, child: str, child_field: str, as_oids: bool = False) -> dict:
@@ -1638,7 +1637,8 @@ def field_recalculate(fc: str, arg_cols: (str, list, tuple), col_to_update: str,
 field_apply_func = field_recalculate  # noqa For convieniance. Original func left in to not break code
 
 
-def field_apply_and_add(fname: str, in_fields: (list[str], str), new_field: str, func, field_type: (str, None) = None, field_length: (int, None) = None, allow_edit: bool = False, show_progress: bool = True, **kwargs) -> int:
+def field_apply_and_add(fname: str, in_fields: (list[str], str), new_field: str, func, field_type: (str, None) = None, field_length: (int, None) = None, allow_edit: bool = False,
+                        show_progress: bool = True, **kwargs) -> int:
     """ Add the square type based on sq_id.
 
     Args:
@@ -2085,7 +2085,6 @@ def features_copy2(source: str, dest: str, where_clause: str = '*', fixed_values
         dest_cols_db = list(map(str.lower, _struct.fc_fields_get(dest)))
         src_cols_db = list(map(str.lower, _struct.fc_fields_get(source)))
 
-
         dest_cols_write = []
         dest_cols_write += list(map(str.lower, fixed_values.keys()))
         dest_cols_write += list(map(str.lower, kwargs.keys()))
@@ -2102,7 +2101,6 @@ def features_copy2(source: str, dest: str, where_clause: str = '*', fixed_values
 
     if 'where' in map(str.lower, kwargs.keys()):
         _warn('keyword "where" in kwargs.keys(), did you mean to set a where clause? If so, use where_clause=<MY QUERY>')
-
 
     if not kwargs and not fixed_values:
         _warn('Source columns (kwargs) and fixed values (fixed_values) not provided. No rows written to %s.\nIs this what you intended?' % dest)
@@ -2678,7 +2676,6 @@ class Spatial(_MixinNameSpace):  # noqa
         if len(counts) == 1: return counts[0]
         return sum(_more_itertools.difference(counts, func=lambda x, y: (x - y) * -1, initial=1))
 
-
     @staticmethod
     def intersect_not(in_feature: str, in_feature1: str, **kwargs) -> list[int]:
         """
@@ -2708,7 +2705,6 @@ class Spatial(_MixinNameSpace):  # noqa
         """
         in_feature = _path.normpath(in_feature)
         in_feature1 = _path.normpath(in_feature1)
-
 
         RAP = ResultAsPandas(_arcpy.analysis.Intersect,
                              in_features=[in_feature, in_feature1],
@@ -2744,6 +2740,19 @@ class Validation:
 
 
     Methods:
+        field_apply_test:
+            Use to validate individual values for a given column in a table or feature class.
+            For example, do all percentage values lie betweeo 0 and 100
+
+        intersects_all:
+            Check if all shapes in one layer
+
+        near:
+            Do all shapes in the shape layer lie within a specified distance of another shape layer
+
+        referential_integrity:
+            Check referential integrity between a "primary key"  and related "foreign key" table
+
 
     Fields:
         fname: The original feature class name
@@ -2758,6 +2767,12 @@ class Validation:
 
     Raises:
         errors.FeatureClassOrTableNotFound: If parent or child table or feature class does not exist
+
+
+    Notes:
+        Most tests should return tuple of (bool, <result>).
+        The boolean being True being "passed" and False being "failure"
+        And the result being dependent on the function, but containing information as to what failed for further investigation.
 
     Examples:
 
@@ -2786,13 +2801,40 @@ class Validation:
 
     """
 
+    @classmethod
+    @_decs.environ_persist
+    def stats_gdb(cls, gdb: str, to_excel: str, to_tables: bool = True, allow_overwrite: bool = False) -> list[_pd.DataFrame]:
+        """
+        Export stats for all fcs/tables in a gdb
+
+        Args:
+            gdb: The gdb
+            to_excel: export to this excel file. Appends multiple sheets
+            to_tables: export all stats tables to the gdb
+            allow_overwrite: allow overwriting of existing stats tables (or others that just happen to have the same name!)
+
+        Returns:
+
+        """
+        _arcpy.env.overwriteOutput = allow_overwrite
+        from arcproapi.structure import gdb_tables_and_fcs_list
+        m, n = gdb_tables_and_fcs_list(gdb)
+
+        out = []
+        for fname in m + n:
+            to_table = None
+            if to_tables:
+                to_table = True
+            out += [Validation(fname).stats(to_excel=to_excel, to_table=to_table)]
+
+        return out
+
     def __init__(self, parent: str, no_shapes: bool = False):
         self.fname = _path.normpath(parent)
         self.gdb = _common.gdb_from_fname(self.fname)
         self.fname_base = _path.basename(self.fname)
-        self.describe_dict = Describe(self.fname)
+        self.describe_dict = Describe(self.fname)  # this is the dictionary representation of arcpy's Describe
         self.is_table = self.describe_dict['datasetType'] == 'Table'
-
 
         if not _struct.Exists(self.fname):
             raise _errors.FeatureClassOrTableNotFound('Parent feature class or table "%s" not found.' % self.fname)
@@ -2801,9 +2843,57 @@ class Validation:
         self.df: _pd.DataFrame = table_as_pandas2(self.fname, exclude_cols=exclude_cols, cols_lower=True)
         self.gx_df: _gx.dataset.PandasDataset = _gx.from_pandas(self.df)  # noqa
 
-    def near(self, is_near_fnames: (str, list[str]), threshhold: (float, int), is_near_filters: (str, list[str], None) = None, keep_cols: (tuple[str], None) = None, thresh_error_test='>=', raise_exception: bool = False, **kwargs) -> (_pd.DataFrame, None):
+    def stats(self, to_excel: str = None, to_table: bool = False) -> _pd.DataFrame:
         """
-        Get
+        Export stats to excel for all numerical fields that are not read only in the given fc/table
+
+        Args:
+            to_excel:
+            to_table: Export to this gdb table
+
+        Returns:
+
+        """
+        tmplyr = memory_lyr_get()
+
+        from arcproapi.structure import fc_fields_get, fc_fields_not_editable, ExportFeatures
+        exclude = fc_fields_not_editable(self.fname, full_name=False)
+        flds = []
+
+        def _f(ftype: str):
+            f = fc_fields_get(self.fname, field_type=ftype)
+            if not f:
+                return []
+            return [s for s in f if s.lower() not in map(str.lower, exclude)]  # map shouldnt be necessary, but easier to just shove it in
+
+        for ft in ('Double', 'Integer', 'Single', 'SmallInteger'):
+            flds += _f(ft)
+
+        _arcpy.management.FieldStatisticsToTable(
+            in_table=self.fname,
+            in_fields=';'.join(flds),
+            out_location=tmplyr,
+            out_tables="NUMERIC _stats_observation_header",
+            group_by_field=None,
+            out_statistics="FIELDNAME FieldName;ALIAS Alias;FIELDTYPE FieldType;MINIMUM Minimum;MAXIMUM Maximum;MEAN Mean;STANDARDDEVIATION StandardDeviation;MEDIAN Median;COUNT Count;NUMBEROFUNIQUEVALUES NumberofUniqueValues;MODE Mode;LEASTCOMMON LeastCommon;OUTLIERS Outliers;SUM Sum;RANGE Range;INTERQUARTILERANGE InterquartileRange;FIRSTQUARTILE FirstQuartile;THIRDQUARTILE ThirdQuartile;COEFFICIENTOFVARIATION CoefficientofVariation;SKEWNESS Skewness;KURTOSIS Kurtosis"
+        )
+
+        df = table_as_pandas2(tmplyr)
+        if to_table:
+            to_table_fname = '%s/_st_%s' % (_common.gdb_from_fname(self.fname), _path.basename(self.fname))
+            ExportFeatures(tmplyr, _path.normpath(to_table_fname))
+            print('\nExported stats to table %s' % to_table)
+
+        if to_excel:
+            _pandaslib.df_to_excel_append(to_excel, df, _path.basename(self.fname))
+            print('\nExported stats to %s' % to_excel)
+
+        return df
+
+    def near(self, is_near_fnames: (str, list[str]), threshhold: (float, int), is_near_filters: (str, list[str], None) = None, keep_cols: (tuple[str], None) = None, thresh_error_test='>=',
+             raise_exception: bool = False, **kwargs) -> tuple[bool, (_pd.DataFrame, None)]:
+        """
+        Check if shapes are within "threshold" of any shapes in "is_near_frames".
 
         Columns are case insensitive and all set to lower case in the resulting pandas dataframes.
 
@@ -2831,7 +2921,8 @@ class Validation:
 
             keep_cols:
                 List of cols to keep from fname.
-                The output result cols  'NEAR_FID', 'NEAR_DIST', 'NEAR_FC' and the OID of fname are always retained
+                The output result cols  'NEAR_FID', 'NEAR_DIST', 'NEAR_FC' and the OID of fname are always retained.
+                Useful for reporting and evaluating errors quickly.
 
             raise_exception:
                 If True, will raise an exception if any records above threshhold are found.
@@ -2843,12 +2934,15 @@ class Validation:
                 See https://pro.arcgis.com/en/pro-app/latest/tool-reference/analysis/near.htm
 
         Raises:
-            UserWarning: If raise_exception is True and suspect records (above threshhold distance) are found
+            UserWarning: If raise_exception is True and suspect records (above threshhold distance) are found and "raise_exception" is True
+
 
         Returns:
+            True, None:
+                If all shapes in is_near_frames are within "threshhold" distance of "is_near_filters"
 
-            pandas.DataFrame:
-                A dataframe of features in fname which are greater than threshold distance from is_near_fnames if there were exceptions
+            False, pandas.DataFrame:
+                If one or more shapes are not  within "threshhold" distance of "is_near_filters", and a a dataframe of features in fname which are greater than threshold distance from is_near_fnames if there were exceptions
 
             None:
                 If no exceptions were found
@@ -2859,12 +2953,15 @@ class Validation:
             Are all countries within 10000 map units of continents. Yes
 
             >>> Validation('my.gdb/country').near('my.gdb/continents', 10000)
-            None
+            True, None
 
 
             Are all countries within 10000 map units of continents. No.
 
-            >>> Validation('my.gdb/country').near('my.gdb/continents', 100)
+            >>> success, df = Validation('my.gdb/country').near('my.gdb/continents', 100)  # noqa
+            >>> success
+            False
+            >>> df
             oid     near_fid    near_dist
             1       5           230
             3       6           101
@@ -2907,17 +3004,18 @@ class Validation:
             Nr.df_lower: _pd.DataFrame  # noqa for pycharm autocomplete
             df = Nr.df_lower[keep].query('near_dist %s @threshhold' % thresh_error_test, inplace=False)
             if len(df) > 0 and raise_exception:
-                raise UserWarning('Layer "%s" had features outside of threshold distance condition "%s %s" with features in "%s".\n\nOIDs in %s were:\n%s.' % (_path.basename(fname), thresh_error_test, threshhold, is_near_fnames, _path.basename(fname), df['oid'].to_list()))
+                raise UserWarning('Layer "%s" had features outside of threshold distance condition "%s %s" with features in "%s".\n\nOIDs in %s were:\n%s.' % (
+                    _path.basename(fname), thresh_error_test, threshhold, is_near_fnames, _path.basename(fname), df['oid'].to_list()))
         finally:
             with _fuckit:
                 [_struct.Delete(s) for s in is_near_fnames_tmp]
 
         if isinstance(df, _pd.DataFrame):
-            return df if len(df) > 0 else None
-        return None
+            if len(df) > 0:
+                return False, df
+        return True, None
 
-
-    def referential_integrity(self, parent_field, child, child_field, in_parent_only_is_error: bool = False, as_oids=False, raise_exception: bool = False) -> (dict[str:list], None):
+    def referential_integrity(self, parent_field, child, child_field, in_parent_only_is_error: bool = False, as_oids=False, raise_exception: bool = False) -> tuple[bool, (dict[str:list], None)]:
         """
         Wrapper around key_info. Exposed here as key_info is primarily a data validation check.
         So more obvious here, but no need to refactor.
@@ -2933,8 +3031,10 @@ class Validation:
                 If True, will raise an exception referential integrity is broken.
                 This is useful for processing pipelines, where we want execution to halt if anything is suspect.
 
-        Returns:
+        Raises:
+            UserWarning: if raise_exception True and the RI check fails.
 
+        Returns:
             dict[str:list]:
                 dictionary key errors, with keys "parent_only" and "child_only" if key errors were found
                 dict{'parent_only': [..], 'both': [..], 'child_only': [..]
@@ -2944,9 +3044,7 @@ class Validation:
         Notes:
             The OIDs can be used for futher processing ...
 
-
         Examples:
-
 
             Single line RI check
 
@@ -2968,10 +3066,11 @@ class Validation:
         if in_parent_only_is_error and res['parent_only']:
             out_dict['parent_only'] = res['parent_only']
 
-        return out_dict if out_dict else None
+        if out_dict:
+            return False, True
+        return True, None
 
-
-    def intersects_all(self, in_feature: str, **kwargs) -> (list[int], None):
+    def intersects_all(self, in_feature: str, raise_exception: bool = False, **kwargs) -> tuple[bool, (list[int], None)]:
         """
         Check that no features in our layer are fully outside of in_feature.
 
@@ -2979,31 +3078,39 @@ class Validation:
 
         Args:
             in_feature: Feature to check against
+            raise_exception: Raise a UserWarning if test failed
             **kwargs: passed to arcpy.analysis.Intersect
+
+        Raises:
+            UserWarning: If raise_exception was True and some shapes did not intersect shapes in "in_feature"
 
         Returns:
             None: If there were no issues, i.e. all features in our layer (self.fname) intersected with at least one feature in fc in_feature
             list[int]: List of OIDs in self.fname that had no intersect with in_Feature
 
+        Notes:
+            Also see method "near".
 
         Examples:
 
             Check passed, all lpis polygons lie within sample_squares
 
             >>> Validation('C:/my.gdb/lpis').intersects_all('C:/my.gdb/sample_squares')
-            None
+            True, None
 
             Check failed, some lpis polygons are outside of our sample_squares
 
             >>> Validation('C:/my.gdb/lpis').intersects_all('C:/my.gdb/sample_squares')
-            [12, 33, 55]
+            False, [12, 33, 55]
         """
         out = Spatial.intersect_not(self.fname, in_feature, **kwargs)
-        if not out: return None
-        return out  # noqa
+        if out and raise_exception:
+            raise UserWarning('%s had shapes that did not intersect %s.\n\nOIDs in %s were:\n%s' % (self.fname, in_feature, _path.basename(self.fname), out))
+        if not out:
+            return True, None
+        return False, out  # noqa
 
-
-    def field_apply_test(self, arg_cols: (list, str), bool_func, where_clause: str = None) -> tuple[bool, (list[list], None)]:
+    def field_apply_test(self, arg_cols: (list, str), bool_func, where_clause: str = None, raise_exception: bool = False) -> tuple[bool, (list[list], None)]:
         """
         Apply a function to arg_cols. Can be a single col, passed as a string.
 
@@ -3015,6 +3122,10 @@ class Validation:
             arg_cols: rows with values passed to bool_fun
             bool_func: the function to apply, must support len(arg_cols) number of arguments
             where_clause: use to filter rows to ignore
+            raise_exception: If True, and any rows fail the apply test, then raise an error
+
+        Raises:
+            UserWarning: If raise_exception is True and the test failed.
 
         Returns:
 
@@ -3061,16 +3172,13 @@ class Validation:
             for row in C:
                 if row[1] == 0:
                     has_bad = True
-                    bad += row[0:len(cols)-2]
+                    bad += row[0:len(cols) - 2]
 
         if has_bad:
+            if raise_exception:
+                raise UserWarning('"%s" contains values which failed the apply test "%s".\nOID/Failed Value pairs are:\n%s' % (self.fname, bool_func.__name__, bad))
             return False, bad
         return True, None
-
-
-
-
-
 
 
 def vertext_add(fname, vertex_index: (int, str), x_field: str, y_field: str = 'y', field_type='DOUBLE', where_clause: (str, None) = '*', fail_on_exists: bool = True,
@@ -3136,12 +3244,6 @@ def vertext_add(fname, vertex_index: (int, str), x_field: str, y_field: str = 'y
 
 rows_delete = del_rows  # noqa. For conveniance, should of been called this in first place but don't break existing code
 rows_delete_where = del_rows_where  # noqa. For conveniance, should of been called this in first place but don't break existing code
-
-
-
-
-
-
 
 if __name__ == '__main__':
     # quick debugging

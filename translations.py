@@ -1,5 +1,6 @@
 """Translations on shapes"""
 import random as _random
+import os.path as _path
 
 import arcpy as _arcpy
 
@@ -17,10 +18,10 @@ def points_translate(fname: str, where: str = '', x_offset: float = 0, y_offset:
 
     Args:
 
-        fname ():
-        where ():
-        x_offset ():
-        y_offset ():
+        fname:
+        where:
+        x_offset:
+        y_offset:
         expected_rows (int): If > 0, then first check that the where matches expected rows, e.g. expected_rows=1 if we expect only 1 match.
         show_progress (bool): show progress
 
@@ -64,6 +65,31 @@ def points_translate(fname: str, where: str = '', x_offset: float = 0, y_offset:
     return i
 
 
+def move(fname: str, where: str, x_centroid: float, y_centroid: float):
+    """
+    Move a shape or shapes.
+
+    *** USE WITH CAUTION - NO UNDO HERE ***
+
+    Args:
+        fname: feature class
+        where: sql filter to identify the records to move
+        x_centroid: x-centroid to move to
+        y_centroid: y-centroid to move to
+
+    Returns:
+        None
+
+    Credit:
+        Adapted from https://arcpy.wordpress.com/2012/11/15/shifting-features/
+    """
+    # TODO: test this, i'm not convived that shifting by changing the centroid is supported
+    fname = _path.normpath(fname)
+    with _arcpy.da.UpdateCursor(fname, ['SHAPE@XY'], where_clause=where) as cursor:
+        for row in cursor:
+            cursor.updateRow([[x_centroid, y_centroid]])
+
+
 def point_move(fname: str, where: str, x: (float, int, None), y: (float, int, None)):
     """
     Move a point. The where must specify a single point, otherwise DataUnexpectedRowCount is rasied
@@ -95,6 +121,7 @@ def point_move(fname: str, where: str, x: (float, int, None), y: (float, int, No
             x = x if x else row[0][0]
             y = y if y else row[0][1]
             cursor.updateRow([[x, y]])
+
 
 
 @_decs.environ_persist
