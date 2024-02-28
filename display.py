@@ -581,7 +581,7 @@ class Map:
                         ret.append(row[0])
         except Exception as e:
             if 'returned NULL without setting an error' in str(e):
-                raise ValueError('It is likely that that arpx project refers to a layer that no longer exists. Check your project.') from e
+                raise ValueError('It is likely that the arpx project refers to a layer that no longer exists or has been otherwise flagged as invalid. Open the arpx and check.') from e
             elif 'Cannot find field ' in str(e):
                 raise ValueError('A field was not found. If referring to a joined table or feature class, then check you are using the fully qualified name, eg sq.sq_id') from e
             raise e

@@ -16,12 +16,12 @@ import xlwings as _xlwings
 
 import arcproapi.conversion as conversion  # noqa - for convieniance
 import arcproapi.common as _common
+import arcproapi.errors as _errors
 
-from funclite import pandaslib as pandaslib
 import funclite.baselib as _baselib
-from funclite.baselib import classproperty as _classproperty
 import funclite.stringslib as _stringslib
 import funclite.iolib as _iolib
+from funclite.baselib import classproperty as _classproperty
 
 
 class MetadataBaseInfo:
@@ -417,6 +417,38 @@ class MixinEnumHelper:
             cls.domain_create2(gdb)  # noqa
         from arcproapi.structure import domains_assign  # import here, otherwise get circular import reference
         return domains_assign(fname, {cls.domain_name: flds}, error_on_failure=error_on_failure)
+
+
+    @classmethod
+    def lookup_col_add(cls, fname: str, enum_value_col: str, new_col: str, allow_overwrite: bool = False) -> int:
+        """
+        Add a new column with the as_text values given a column which contains the coded values.
+        Where the coded values are represented by the enum values for a given member.
+
+        e.g. class EnumColours:red=1;blue=2;green=3
+        The method would add a new col with red, blue, green set for each row matching the numerical lookup values 1,2,3
+
+        Args:
+            fname: fname
+            enum_value_col: Col with the lookup values (typically an integer)
+            new_col: The new col to recreate, or to update if allow_overwrite is True
+            allow_overwrite: Do an update if the col already exists
+
+        Returns:
+            Number of rows affected
+        """
+        fname = _path.normpath(fname)
+        import arcproapi.structure as structure
+        fld_exists = structure.field_exists(fname)
+        if fld_exists and not allow_overwrite:
+            raise _errors.FieldExists('field %s exists in %s and allow_overwrite was False' % (new_col, fname))
+
+        if not fld_exists:
+            structure.AddField(fname, new_col, 'TEXT', field_length=max([len(s) + 10 for s in cls.text_values]))  # +10 - random bit of overhead
+
+        import arcproapi.data as data
+        cls.as_text_as_dict()
+
 
     @classmethod
     def as_text_as_dict(cls, value_text_order: bool = True) -> dict[(int, str): (int, str)]:
