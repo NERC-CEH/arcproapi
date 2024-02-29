@@ -259,7 +259,7 @@ class InsertCursor(_da.InsertCursor):
         if not all(x == len(lst) for lst in kwargs.values()):
             raise ValueError('All the iterables in kwargs.values() must be of equal length')
         self._n = x
-        super().__init__(fname, self._kwargs.keys())
+        super().__init__(fname, tuple(self._kwargs.keys()))
         self._insertRows()
 
     def __repr__(self):

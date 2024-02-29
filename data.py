@@ -2194,6 +2194,78 @@ def table_summary_as_pandas(fname: str, statistics_fields: (str, list[list[str]]
 
 
 class Spatial(_MixinNameSpace):  # noqa
+    """ Methods largely to do with various spatial operations on data
+    """
+    @staticmethod
+    def polyline_to_polygon(source: str, dest: str) -> None:
+        """
+        Converts a polyline layer to polygons.
+        Completes the polyline to the polygon, by appending startpoint to endpoint.
+
+        Strongly advise validing output in seperate operation.
+
+        Args:
+            source: source fc
+            dest: output fc
+
+        Returns:
+            None
+        """
+        poly_tmp = memory_lyr_get()
+        source = _path.normpath(source)
+        dest = _path.normpath(dest)
+        src_oid = _struct.field_oid(source)
+        src_oid_tmp = _stringslib.get_random_string(from_=_string.ascii_lowercase)
+
+        # create a tmp feature class to create the polys and write the oid to src_oid
+        print('\nSetting up temporary layer ...')
+        _struct.CreateFeatureclass(_common.gdb_from_fname(poly_tmp), _path.basename(poly_tmp), geometry_type='POLYGON', spatial_reference=_arcpy.Describe(source).spatialReference)
+        _struct.AddField(poly_tmp, src_oid_tmp, 'LONG', field_is_nullable=False)
+
+        ins_rows = []
+        with _crud.SearchCursor(source, [src_oid]) as SC:
+            for row in SC:
+                ins_rows += [row[0]]
+
+        kk = {src_oid: ins_rows}
+        Cur = _crud.InsertCursor(poly_tmp, show_progress=True, **kk)
+
+        # now fix the polylines in source to polygons in temp layer
+        print('\nConverting polyline to polygons ...')
+        with _crud.UpdateCursor(poly_tmp, [src_oid_tmp], load_shape=True) as UpdCur:
+            for R in UpdCur:
+                with _crud.SearchCursor(source, [src_oid], load_shape=True, where_clause="%s='%s'" % (src_oid, R[src_oid_tmp])) as SrcCur:
+                    for sRow in SrcCur:
+                        poly = _geom.polyline_to_polygon(sRow.Shape)
+                        break
+                R['SHAPE@'] = poly
+                UpdCur.updateRow(R)
+
+        # copy all the date in ediable fields
+        flds_to_transfer = _struct.fc_fields_editable(source, full_name=False, exclude_shape=True)
+        fields_copy_by_join(poly_tmp, src_oid_tmp, source, src_oid, flds_to_transfer, show_progress=True)
+
+        # finally clear up this field
+        _struct.DeleteField(poly_tmp, src_oid_tmp)
+
+        # final export
+        print('\nExporting from tmp to %s' % dest)
+        _struct.ExportFeatures(poly_tmp, dest)
+
+
+
+
+
+        # Didnt get around to this
+        # Pattern is:
+        # create temp
+        # Export polyline fc to table
+        # Create a polygon feature class with same spatial ref of polyline, add custom oidcol
+        # Add rows to new polygon feature class, writing in the duplicate oidfield  and a null shape
+        # Update cursor over new polygon class, with nested search cursor on original polyline - create polygon using geom.polyline_to_polygon
+        # use data.fields_copy_by_join to copy all dat
+        # delete the temporary oidfield from the original polyline table
+
 
     @staticmethod
     @_decs.environ_persist

@@ -4,6 +4,7 @@ Helper functions for working with geometries
 import hashlib as _hashlib
 import copy as _copy
 
+import arcpy
 import arcpy as _arcpy
 
 import arcproapi.errors as _errors  # noqa
@@ -132,6 +133,8 @@ def polygon_from_list(lst: (list, tuple)) -> _arcpy.Polygon:
     poly = _arcpy.Polygon(pts)
     return poly
 
+
+
 def polygon_from_extent(ext: _arcpy.Extent):
     """Make an arcpy polygon object from an input extent object.
 
@@ -183,6 +186,39 @@ def polyline_from_list(lst: (list[list[(int, float)]])) -> _arcpy.Polyline:
     pts = _arcpy.Array([_arcpy.Point(*pt) for pt in lst])
     poly = _arcpy.Polyline(pts)
     return poly
+
+
+def polyline_to_polygon(polyline: arcpy.Polyline) -> (arcpy.Polygon, None, tuple[arcpy.Polygon]):
+    """
+    Given a polyline, create a polygon.
+    Takes the last point of polyline and adds a final point at the start point of polyline
+
+    Supports multipart features, but returns them as a tuple of polygons
+
+    Args:
+        polyline: a polyline
+
+    Returns:
+        None: If polyline had no points or no polygon could be generated from the line(s)
+        arcpy.Polygon: Polygon instance, if polyline was a single polyline feature
+        tuple[arcpy.Polygon]: If the polyline was a multipart feature, i.e. breaks multipart polylines into individual polygons
+
+    """
+    line: _arcpy.Array
+    out = []
+    for line in polyline:
+        out += arcpy.Polygon(line.add(line[0]))
+    if not out:
+        return None
+
+    if len(out) == 1:
+        return out[0]
+
+    return out
+
+
+
+
 
 
 def point_from_list(lst) -> _arcpy.Point:

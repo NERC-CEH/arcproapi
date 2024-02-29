@@ -147,6 +147,18 @@ def epsg(epsgcode, format_: str = 'esriwkt'):
     return srsstr
 
 
+def spatial_ref_from_fc(fname:str):
+    """
+    Get spatial ref object from an fc
+    Args:
+        fname:
+
+    Returns:
+
+    """
+    return _arcpy.Describe(_path.normpath(fname)).spatialReference
+
+
 def project_coordinates(xys: list[tuple[float, float]], in_sr: int, out_sr: int, datum_transformation: str = None):
     """
     Project list of coordinate pairs (or triplets).

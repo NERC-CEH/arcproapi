@@ -412,13 +412,14 @@ def fc_fields_not_editable(fname: str, full_name: bool = True) -> list[str]:
     return [_f(fld.name) for fld in _arcpy.da.Describe(fname)['fields'] if not fld.editable]
 
 
-def fc_fields_editable(fname: str, full_name: bool = True) -> list[str]:
+def fc_fields_editable(fname: str, full_name: bool = True, exclude_shape: bool = False) -> list[str]:
     """
     Get list of fields that are required.
 
     Args:
         fname (str): fc
         full_name (bool): Get the fully qualified name, otherwise just gets the basenames
+        exclude_shape: Shape@ are editable, optionally exclude the shape field
 
     Returns:
         list[str]: list of fields that are  required, i.e. field.required is True
@@ -428,6 +429,8 @@ def fc_fields_editable(fname: str, full_name: bool = True) -> list[str]:
         return _iolib.fixp(fname, s) if full_name else s
 
     fname = _path.normpath(fname)
+    if exclude_shape:
+        return [_f(fld.name) for fld in _arcpy.da.Describe(fname)['fields'] if fld.editable and fld.name.lower() != field_shape(fname).lower()]
     return [_f(fld.name) for fld in _arcpy.da.Describe(fname)['fields'] if fld.editable]
 
 
