@@ -34,6 +34,9 @@ class SearchCursor(_da.SearchCursor):
     which supports accessing values as a property of the Row instance or using indexing
     on column name.
 
+    OID is always loaded, so dont need to specify it.
+    OID is accessed using row.OID
+
     Args:
         fname (str): Name of feature class or table
 
@@ -66,6 +69,7 @@ class SearchCursor(_da.SearchCursor):
         # no comments here, otherwise it breaks pycharms ctrl-Q documentation
         fname = _path.normpath(fname)
         self.OIDField: str = _struct.field_oid(fname)
+
         if kwargs.get('where_clause') and '"' in kwargs['where_clause']:
             # It is likely that different ESRI feature classes will use double quotes for strings in the where
             # But this works for geodatabases and shapefiles ...
@@ -75,20 +79,22 @@ class SearchCursor(_da.SearchCursor):
         self._load_shape = load_shape
         self._rowcount = None
         if field_names is None or not field_names:
-            field_names = _struct.fields_get(fname)
+            fn_cpy = _struct.fields_get(fname)
         else:
             if isinstance(field_names, str):
-                field_names = [field_names]
+                fn_cpy = [field_names]
+            else:
+                fn_cpy = list(field_names)
 
-        if load_shape and 'SHAPE@' not in field_names:
-            field_names.append('SHAPE@')  # noqa
+        if load_shape and 'SHAPE@' not in fn_cpy:
+            fn_cpy.append('SHAPE@')  # noqa
 
-        fn = field_names
+        fn = list(fn_cpy)
         fn += ['OID@']
         if self.OIDField.lower() not in map(str.lower, fn):
-            field_names += [self.OIDField]
+            fn_cpy += [self.OIDField]
 
-        super().__init__(fname, field_names, **kwargs)
+        super().__init__(fname, fn_cpy, **kwargs)
 
     def __enter__(self):
         """enter"""
@@ -275,7 +281,7 @@ class InsertCursor(_da.InsertCursor):
         if self._show_progress:
             PP = _iolib.PrintProgress(maximum=self._n)
         i = 0
-        for row in zip(self._kwargs.items()):
+        for row in zip(*self._kwargs.values()):
             super().insertRow(row)
             i += 1
             if self._show_progress: PP.increment()  # noqa

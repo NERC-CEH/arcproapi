@@ -1176,6 +1176,105 @@ def table_dump_from_sde_to_excel(sde_file: str, lyr, xlsx_root_folder: str, **kw
     return dest_xlsx
 
 
+def duplicate_rows(src: str, dest: str, cols_for_func: (str, list[str]), func, key_field, where: (str, None) = None, allow_overwrite: bool = False) -> list[any]:
+    """
+    duplicate rows in fname
+
+    Final number of rows to have in place, is derived from cols_func (i.e. the cols in each row), whose
+    values for the row are passed to func. Very similiar to the field_apply_func method in this module.
+
+    **Currently only the values for editable fields** are set in the duplicate rows. Could lose guid and tracking info, so use with care
+
+    NB:
+        The function returns the number of duplicates to create.
+        So, cols_func = csv_values. An example value is 1,2,3
+
+        If we pass lambda s: len(s.split(','))  -  we *probably* want 2 duplicates. i.e. A total of 3 rows to exist after duplicate is called.
+
+        So, in this case, the correct function to pass is: lambda s: len(s.split(',')) - 1
+
+
+    Args:
+        src: source fname
+        dest: dest fname
+        cols_for_func: cols passed to function "func"
+        func: Funtion which returns none or an integer. The integer is the number of duplicates to create
+
+        key_field:
+            It is critical to have a unique key, that is not OID@ if any further processing is required on the duplicated records.
+            This enables the created duplicates to be identified. Pass this to check if you candidate unique field is unique.
+            Pass the OID if don't care.
+
+        where: where to apply
+
+        allow_overwrite: allow overwriting of dest
+
+    Raises:
+        DataFieldValuesNotUnique: If key_field was passed and the key_field had duplicate values.
+
+    Returns:
+        list[any]: A list of the unique values for which duplicate rows were created
+    """
+    src = _path.normpath(src)
+    oid_src = _struct.field_oid(src)
+    dest = _path.normpath(dest)
+    tmp_lyr = memory_lyr_get()
+
+    if isinstance(cols_for_func, str): cols_for_func = [cols_for_func]
+
+    if field_get_dup_values(src, key_field, value_list_only=True):
+        raise _errors.DataFieldValuesNotUnique('Field %s had non-unique values. Pass an OID field name if you dont care.' % cols_for_func)
+    print('\nCreating a copy of src features for processing ...')
+    _struct.ExportFeatures(src, tmp_lyr)
+
+    out = []
+    rows_to_dup = []
+    rows_to_write = []
+
+    editable = _struct.fc_fields_editable(src, full_name=False, exclude_shape=True)
+
+    # If we pass 'Shape' as a field, arcpy does not interpret that as asking for the polygon (it gets the xy). So make sure we ask for Shape@ - which gets the proper shape representation
+    shape_fld_src = _struct.field_shape(src)
+    if shape_fld_src:
+        editable += ['Shape@']
+
+    cols = cols_for_func + [_struct.field_oid(tmp_lyr), key_field]
+
+    # lets populate first - we want to ensure row is
+    PP = _iolib.PrintProgress(maximum=get_row_count2(tmp_lyr, where=where), init_msg='Calculating which rows require duplication ...')
+    with _crud.SearchCursor(tmp_lyr, cols, where_clause=where) as SC:
+        for row in SC:
+            n = int(func(*list(row)[0:len(cols_for_func)]))
+            if n and n > 0:
+                rows_to_dup += [[row[-2], row[-1], n]] # oid, keyfield, dups
+                out += [list(row)[-1]]
+
+                # Now read the data row, for insertion later - index matches with "out". Getting from src, as I don't trust nested SearchCursors on same source.
+                with _arcpy.da.SearchCursor(src, editable, where_clause='%s=%s' % (oid_src, row[-2])) as SCsrc:
+                    for rows_src in SCsrc:
+                        rows_to_write += [rows_src]
+                        break
+
+            PP.increment()
+
+
+    PP = _iolib.PrintProgress(iter_=rows_to_dup, init_msg='Creating duplicate rows ...')
+    with _arcpy.da.InsertCursor(tmp_lyr, editable) as IC:
+        for i, row in enumerate(rows_to_dup):
+            for j in range(0, row[-1]):
+                IC.insertRow(rows_to_write[i])
+            PP.increment()
+
+    print('\nExporting features to %s ...' % dest)
+    if allow_overwrite:
+        with _fuckit:
+            _struct.Delete(dest)
+    _struct.ExportFeatures(tmp_lyr, dest)
+    return out
+
+
+
+
 def field_update_from_dict_addnew(fname: str, dict_: dict, col_to_update: str, key_col: str,
                                   where: str = '', na: any = (1, 1),
                                   field_length: int = 50, show_progress=False, init_msg: str = ''):
@@ -2197,16 +2296,19 @@ class Spatial(_MixinNameSpace):  # noqa
     """ Methods largely to do with various spatial operations on data
     """
     @staticmethod
-    def polyline_to_polygon(source: str, dest: str) -> None:
+    def polyline_to_polygon(source: str, dest: str, repair_geometry: bool = True) -> None:
         """
         Converts a polyline layer to polygons.
         Completes the polyline to the polygon, by appending startpoint to endpoint.
+
+        Multipart polylines will result in exploded (single-part) polygons.
 
         Strongly advise validing output in seperate operation.
 
         Args:
             source: source fc
             dest: output fc
+            repair_geometry: Repair geometry
 
         Returns:
             None
@@ -2214,43 +2316,58 @@ class Spatial(_MixinNameSpace):  # noqa
         poly_tmp = memory_lyr_get()
         source = _path.normpath(source)
         dest = _path.normpath(dest)
-        src_oid = _struct.field_oid(source)
+
         src_oid_tmp = _stringslib.get_random_string(from_=_string.ascii_lowercase)
+
+        source_exploded = memory_lyr_get()
+        print('\nExploding %s ...' % source)
+        _arcpy.management.MultipartToSinglepart(source, source_exploded)
+        src_oid_exploded = _struct.field_oid(source_exploded)
 
         # create a tmp feature class to create the polys and write the oid to src_oid
         print('\nSetting up temporary layer ...')
-        _struct.CreateFeatureclass(_common.gdb_from_fname(poly_tmp), _path.basename(poly_tmp), geometry_type='POLYGON', spatial_reference=_arcpy.Describe(source).spatialReference)
-        _struct.AddField(poly_tmp, src_oid_tmp, 'LONG', field_is_nullable=False)
+        try:
+            _struct.CreateFeatureclass(_common.gdb_from_fname(poly_tmp), _path.basename(poly_tmp), geometry_type='POLYGON', spatial_reference=_arcpy.Describe(source).spatialReference)
+            _struct.AddField(poly_tmp, src_oid_tmp, 'LONG', field_is_nullable=False)
 
-        ins_rows = []
-        with _crud.SearchCursor(source, [src_oid]) as SC:
-            for row in SC:
-                ins_rows += [row[0]]
+            ins_rows = []
+            with _crud.SearchCursor(source_exploded, [src_oid_exploded]) as SC:
+                for row in SC:
+                    ins_rows += [row[0]]
 
-        kk = {src_oid: ins_rows}
-        Cur = _crud.InsertCursor(poly_tmp, show_progress=True, **kk)
+            kk = {src_oid_tmp: ins_rows}
+            _crud.InsertCursor(poly_tmp, show_progress=True, **kk)
 
-        # now fix the polylines in source to polygons in temp layer
-        print('\nConverting polyline to polygons ...')
-        with _crud.UpdateCursor(poly_tmp, [src_oid_tmp], load_shape=True) as UpdCur:
-            for R in UpdCur:
-                with _crud.SearchCursor(source, [src_oid], load_shape=True, where_clause="%s='%s'" % (src_oid, R[src_oid_tmp])) as SrcCur:
-                    for sRow in SrcCur:
-                        poly = _geom.polyline_to_polygon(sRow.Shape)
-                        break
-                R['SHAPE@'] = poly
-                UpdCur.updateRow(R)
+            # now fix the polylines in source to polygons in temp layer
+            print('\nConverting polyline to polygons ...')
+            PP = _iolib.PrintProgress(maximum=get_row_count(poly_tmp), init_msg='Converting to polygons ...')
+            with _crud.UpdateCursor(poly_tmp, [src_oid_tmp], load_shape=True) as UpdCur:
+                for row_upd in UpdCur:
+                    with _crud.SearchCursor(source_exploded, [src_oid_exploded], load_shape=True, where_clause="%s=%s" % (src_oid_exploded, row_upd[src_oid_tmp])) as SrcCur:
+                        for sRow in SrcCur:
+                            poly = _geom.polyline_to_polygon(sRow.Shape)  # polyline_to_polygon can return
+                            break
+                    row_upd.SHAPEat = poly
+                    UpdCur.updateRow(row_upd)
+                    PP.increment()
 
-        # copy all the date in ediable fields
-        flds_to_transfer = _struct.fc_fields_editable(source, full_name=False, exclude_shape=True)
-        fields_copy_by_join(poly_tmp, src_oid_tmp, source, src_oid, flds_to_transfer, show_progress=True)
+            if repair_geometry:
+                print('\nRepairing geometry ...')
+                _arcpy.management.RepairGeometry(in_features=poly_tmp, delete_null="DELETE_NULL", validation_method="ESRI")
 
-        # finally clear up this field
-        _struct.DeleteField(poly_tmp, src_oid_tmp)
+            # copy all the date in ediable fields
+            flds_to_transfer = _struct.fc_fields_editable(source, full_name=False, exclude_shape=True)
+            fields_copy_by_join(poly_tmp, src_oid_tmp, source_exploded, src_oid_exploded, flds_to_transfer, show_progress=True)
 
-        # final export
-        print('\nExporting from tmp to %s' % dest)
-        _struct.ExportFeatures(poly_tmp, dest)
+            # finally clear up this field
+            _struct.DeleteField(poly_tmp, src_oid_tmp)
+
+            # final export
+            print('\nExporting from tmp to %s' % dest)
+            _struct.ExportFeatures(poly_tmp, dest)
+        finally:
+            with _fuckit:
+                _struct.Delete(poly_tmp)
 
 
 

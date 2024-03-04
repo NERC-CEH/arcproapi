@@ -223,6 +223,22 @@ def memory_lyr_get(workspace='in_memory') -> str:
     return '%s/%s' % (workspace, _stringslib.rndstr(from_=string.ascii_lowercase))
 
 
+def memory_lyr_copy_to(fname: str) -> str:
+    """
+    Export a feature class to in_memory and return the
+    in_memory layer ref.
+
+    Args:
+        fname: fname
+
+    Returns:
+        Path to the created in_memory layer, which is a copy of fname fc
+    """
+    tmp = memory_lyr_get()
+    ExportFeatures(_path.normpath(fname), tmp)
+    return tmp
+
+
 def field_alter(fname: str, field_name: str, **kwargs) -> bool:
     """
     Just delegates to alter field, but checks if it exists first.

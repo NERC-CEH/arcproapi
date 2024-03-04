@@ -207,18 +207,33 @@ def polyline_to_polygon(polyline: arcpy.Polyline) -> (arcpy.Polygon, None, tuple
     line: _arcpy.Array
     out = []
     for line in polyline:
-        out += arcpy.Polygon(line.add(line[0]))
+        if points_equal(line[0], line[-1]):
+            out += [arcpy.Polygon(line)]
+        else:
+            line.add(line[0])
+            out += [arcpy.Polygon(line)]
+
     if not out:
         return None
 
     if len(out) == 1:
         return out[0]
-
     return out
 
 
+def points_equal(pt1: _arcpy.Point, pt2: _arcpy.Point) -> bool:
+    """
+    Are two points equal.
+    pt1 == pt2 doesnt work.
 
+    Args:
+        pt1: arcpy.Point instance
+        pt2: arcpy.Point instance
 
+    Returns:
+        bool
+    """
+    return pt1.X == pt2.X and pt1.Y == pt2.Y and pt1.Z == pt2.Z
 
 
 def point_from_list(lst) -> _arcpy.Point:
