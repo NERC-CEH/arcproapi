@@ -1490,7 +1490,7 @@ def fields_copy_by_join(fc_dest: str, fc_dest_key_col: str, fc_src: str, fc_src_
     if isinstance(cols_to_copy, str):
         cols_to_copy = [cols_to_copy.lower()]
     else:
-        cols_to_copy = list(map(str, cols_to_copy))
+        cols_to_copy = list(map(str.lower, cols_to_copy))
 
     if isinstance(rename_to, str):
         rename_to = [rename_to]
@@ -1519,8 +1519,8 @@ def fields_copy_by_join(fc_dest: str, fc_dest_key_col: str, fc_src: str, fc_src_
         if field_has_duplicates(fc_src, fc_src_key_col):
             raise _errors.DataFieldValuesNotUnique('Field values in "%s", field %s must be unique.' % (fc_src, fc_src_key_col))
 
-    # join_list may now be out of order with rename_to
-    join_list_temp = [f for f in _arcpy.ListFields(fc_src) if f.name.lower() in map(str.lower, cols_to_copy)]
+    # join_list may now be out of order with rename_to. NB join_list_temp is a list of Field instances, not a string
+    join_list_temp = [f for f in _arcpy.ListFields(fc_src) if f.name.lower() in cols_to_copy]
     if len(join_list_temp) != len(cols_to_copy):
         raise ValueError(
             'Expected %s fields in source, got %s. Check the names of the columns you have asked to copy. Field name comparisons are case sensitive here.' % (len(cols_to_copy), len(join_list_temp)))
@@ -2330,6 +2330,7 @@ class Spatial(_MixinNameSpace):  # noqa
             _struct.CreateFeatureclass(_common.gdb_from_fname(poly_tmp), _path.basename(poly_tmp), geometry_type='POLYGON', spatial_reference=_arcpy.Describe(source).spatialReference)
             _struct.AddField(poly_tmp, src_oid_tmp, 'LONG', field_is_nullable=False)
 
+            # Copy oids from the exploded source, to the temporary layer
             ins_rows = []
             with _crud.SearchCursor(source_exploded, [src_oid_exploded]) as SC:
                 for row in SC:
@@ -2338,7 +2339,7 @@ class Spatial(_MixinNameSpace):  # noqa
             kk = {src_oid_tmp: ins_rows}
             _crud.InsertCursor(poly_tmp, show_progress=True, **kk)
 
-            # now fix the polylines in source to polygons in temp layer
+            # Now find the polyline in source_exploded by iterating over poly_tmp and looking up on the oid from exploded source that we just wrote out
             print('\nConverting polyline to polygons ...')
             PP = _iolib.PrintProgress(maximum=get_row_count(poly_tmp), init_msg='Converting to polygons ...')
             with _crud.UpdateCursor(poly_tmp, [src_oid_tmp], load_shape=True) as UpdCur:
@@ -3079,7 +3080,7 @@ class Validation:
 
         return df
 
-    def near(self, is_near_fnames: (str, list[str]), threshhold: (float, int), is_near_filters: (str, list[str], None) = None, keep_cols: (tuple[str], None) = None, thresh_error_test='>=',
+    def near(self, is_near_fnames: (str, list[str]), threshhold: (float, int), is_near_filters: (str, list[str], None) = None, keep_cols: (tuple[str], None) = None, thresh_error_test='>',
              raise_exception: bool = False, **kwargs) -> tuple[bool, (_pd.DataFrame, None)]:
         """
         Check if shapes are within "threshold" of any shapes in "is_near_frames".
@@ -3105,7 +3106,7 @@ class Validation:
 
             thresh_error_test:
                 Conditional statement text defining the threshhold boundary condition test.
-                Examples include '==', '<=', '>'. If records match the test, this is the exception condition is met.
+                Examples include '==', '<=', '>'. If records match the test, this is the *exception* condition is met.
                 The default is ">=", hence any record that is >= threshhold from any feature in in_near_names is an exception.
 
             keep_cols:
