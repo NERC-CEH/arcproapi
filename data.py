@@ -1246,7 +1246,7 @@ def duplicate_rows(src: str, dest: str, cols_for_func: (str, list[str]), func, k
         for row in SC:
             n = int(func(*list(row)[0:len(cols_for_func)]))
             if n and n > 0:
-                rows_to_dup += [[row[-2], row[-1], n]] # oid, keyfield, dups
+                rows_to_dup += [[row[-2], row[-1], n]]  # oid, keyfield, dups
                 out += [list(row)[-1]]
 
                 # Now read the data row, for insertion later - index matches with "out". Getting from src, as I don't trust nested SearchCursors on same source.
@@ -1774,7 +1774,7 @@ def field_apply_and_add(fname: str, in_fields: (list[str], str), new_field: str,
     if not field_type and not allow_edit:
         raise ValueError('allow_edit was False and no field_type was specified')
 
-    if field_type and field_type.lower() not in ['text', 'float', 'short', 'date', 'datetime']:
+    if field_type and field_type.lower() not in ['text', 'float', 'short', 'date', 'datetime', 'long']:
         raise ValueError("field_type only supports ['TEXT', 'FLOAT', 'REAL', 'SHORT', 'LONG', 'DATE', 'DATETIME'].")
     fname = _path.normpath(fname)
 
