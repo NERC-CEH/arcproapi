@@ -2211,7 +2211,7 @@ def features_copy2(source: str, dest: str, where_clause: str = '*', fixed_values
         return 0
 
     if show_progress:
-        PP = _iolib.PrintProgress(maximum=n * 2, init_msg='\nImporting rows to %s' % source)
+        PP = _iolib.PrintProgress(maximum=n * 2, init_msg='\nImporting rows from %s to %s' % (source, dest))
 
     # Important thing here is that we are building the src and dest cols with matching indexes in the list
     # Excepting that dest_cols has the fixed_value columns that will be set appended to the end of the dest col list
