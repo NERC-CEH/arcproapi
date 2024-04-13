@@ -11,7 +11,7 @@ import funclite.log as _log
 
 import arcproapi.errors as _errors
 import arcproapi.common as _common
-
+import arcproapi.structure as _struct
 from arcproapi import mp as _mp  # arcpy.mapping/arcpy.mp
 
 
@@ -409,7 +409,7 @@ class Map:
             for name in wildcard_or_list:
                 self.layer_clear_filters(name, clear_definition_query=clear_definition_query, clear_selection=clear_selection)
 
-    def features_show(self, lyrname: str, feat_col: str = '', fid: (str, int, float) = '', override_where: str = ''):
+    def features_show(self, lyrname: str, feat_col: str = '', fid: (str, int, float) = '', override_where: str = '', check_feat_col_exists: bool = True):
         """
         Show features in layer lyrname.
         Clears any selected features and removes the definition
@@ -420,14 +420,26 @@ class Map:
             feat_col (str): Name of column in the layer
             fid (int, float, str): A value or iterable to search for in field feat_col
             override_where (str): provide a custom where statement to pass to the definition query, overriding feat_col and fid.
+            check_feat_col_exists: Check if feat_col exists - features_show does not fail with a bad feat_col
+
+        Raises:
+            errors.DisplayFeatureClassNotFound: If check_feat_col_exists is True, but "lyrname" does not exist in the map layers
 
         Returns: None
         """
-
+        # If you are here checking why squares arn't showing in your maps, double check you havent got subsequent code which hides the squares, e.g. another call to definition_query_set
+        # Also make sure the zoom isnt too high!
         def _f(v):
             if isinstance(v, str):
                 return "'%s'" % v
             return str(v)
+
+        # check if feat_col exists. This is because we get no raised error if the field does not exist
+        # we just get the features not showing on the exported map
+        # which can lead to a lengthy debug to understand why!
+        if check_feat_col_exists and feat_col:
+            if not _arcpy.Exists(self.Layers[lyrname].dataSource):
+                raise _errors.DisplayFeatureClassNotFound('Feature class "%s" not in project map as layer "%s"' % (self.Layers[lyrname].dataSource, feat_col))
 
         if override_where:
             sql = override_where

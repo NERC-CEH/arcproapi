@@ -1,6 +1,8 @@
 """
 Helper functions for working with geometries
 """
+import math as _math
+
 import hashlib as _hashlib
 import copy as _copy
 
@@ -13,8 +15,68 @@ import arcproapi.errors as _errors  # noqa
 #################
 # Classes first #
 #################
+class _Shape:
+    def as_list(self):
+        """Return shape polygon as list of lists
 
-class Square:
+        Examples:
+
+            >>> C = Circle([0,0], 1)
+            >>> C.as_list
+            [[1.212,1.111], ...]
+        """
+        return list_from_polygon(self.Polygon)
+
+
+    def as_geometry(self, **kwargs) -> _arcpy.Geometry:
+        """
+        Get instance as a Geometry instance.
+        This is consumed by the InsertCursor
+
+        Args:
+            kwargs: passed to arcpy.Geometry init
+
+        Returns:
+            arcpy.Geometry: Geometry instance of square points
+        """
+        return _arcpy.Geometry('polygon', _arcpy.Array([self.pt_x1y1, self.pt_x1y2, self.pt_x2y2, self.pt_x2y1, self.pt_x1y1]), **kwargs)
+
+    def as_array(self) -> _arcpy.Array:
+        """get as an arcpy Array instance
+
+        Returns:
+            arcpy.Array: Array instance of square points
+        """
+        return _arcpy.Array([self.pt_x1y1, self.pt_x1y2, self.pt_x2y2, self.pt_x2y1, self.pt_x1y1])
+
+
+
+class Circle(_Shape):
+    """ Stuff around circles ... to expand
+
+    Credit:
+        QFSW at https://stackoverflow.com/a/42879185/5585800 for the core point derivation
+    """
+    def __init__(self, origin: (list, _arcpy.Point) = (0, 0), radius: float = 1, step_size: float = 0.1):
+        if isinstance(origin, (list, tuple)):
+            self.pt_x1y1 = _arcpy.Point(*origin)
+        else:
+            self.pt_x1y1 = _copy.copy(origin)  # deepcopy fails (ESRI object doesnt support necessary interfaces), this just copies the pointer. We dont manipulate origin anyway
+        self._radius = radius
+        self._step_size = step_size
+        self._radius = radius
+
+        positions = []
+        t = 0
+        while t < 2 * _math.pi:
+            positions.append((self._radius * _math.cos(t) + self.pt_x1y1.X, self._radius * _math.sin(t) + self.pt_x1y1.Y))
+            t += self._step_size
+
+        self.Polygon = polygon_from_list(positions)
+
+
+
+class Square(_Shape):
     """
     Create an arcpy Polygon instance representation of a square
     with origin at origin, with sides of length side_length.
@@ -43,42 +105,9 @@ class Square:
         self.pt_x1y2 = _arcpy.Point(self.pt_x1y1.X, self.pt_x1y1.Y + side_length)
         self.pt_x2y2 = _arcpy.Point(self.pt_x1y1.X + side_length, self.pt_x1y1.Y + side_length)
         self.pt_x2y1 = _arcpy.Point(self.pt_x1y1.X + side_length, self.pt_x1y1.Y)
+        self.points: list[_arcpy.Point] = [self.pt_x1y1, self.pt_x1y2, self.pt_x2y2, self.pt_x2y1, self.pt_x1y1]
 
-        self.Polygon = _arcpy.Polygon(_arcpy.Array([self.pt_x1y1, self.pt_x1y2, self.pt_x2y2, self.pt_x2y1, self.pt_x1y1]))
-
-
-    def as_list(self) -> list:
-        """Return square polygon as list of lists
-
-        Examples:
-            >>> Sq = Square([0,0], 1)
-            >>> Sq.as_list
-            [[0,0], [0, 1], [1, 1], [1, 0], [0, 0]]
-        """
-        return list_from_polygon(self.Polygon)
-
-    def as_geometry(self, **kwargs) -> _arcpy.Geometry:
-        """
-        Get instance as a Geometry instance.
-        This is consumed by the InsertCursor
-
-        Args:
-            kwargs: passed to arcpy.Geometry init
-
-        Returns:
-            arcpy.Geometry: Geometry instance of square points
-        """
-        return _arcpy.Geometry('polygon', _arcpy.Array([self.pt_x1y1, self.pt_x1y2, self.pt_x2y2, self.pt_x2y1, self.pt_x1y1]), **kwargs)
-
-    def as_array(self) -> _arcpy.Array:
-        """get as an arcpy Array instance
-
-        Returns:
-            arcpy.Array: Array instance of square points
-        """
-        return _arcpy.Array([self.pt_x1y1, self.pt_x1y2, self.pt_x2y2, self.pt_x2y1, self.pt_x1y1])
-
-
+        self.Polygon = _arcpy.Polygon(_arcpy.Array(self.points))
 
 
 
