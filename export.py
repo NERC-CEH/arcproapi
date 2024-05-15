@@ -252,7 +252,11 @@ def excel_sheets_to_gdb(xlsx: str, gdb: str, match_sheet: (list, tuple, str) = (
 
     TODO: Add another function to support listobjects
     """
+
+
+
     xlsx = _path.normpath(xlsx)
+
     # Lets construct the list of sheets then close excel to avoid any potential "read only/file in use" moans
     if isinstance(match_sheet, str):
         match_sheet = [match_sheet]
@@ -265,20 +269,20 @@ def excel_sheets_to_gdb(xlsx: str, gdb: str, match_sheet: (list, tuple, str) = (
         workbook = xl.books.open(xlsx, read_only=True)
         sheet: _xlwings.Sheet
         for sheet in workbook.sheets:
-            if exclude_sheet or match_sheet:
-                if not _baselib.list_member_in_str(sheet.name, match_sheet, ignore_case=True):  # always true of match is empty/None
+            if match_sheet:
+                if not sheet.name.lower() in map(str.lower, match_sheet):
                     continue
 
-                if _baselib.list_member_in_str(sheet.name, exclude_sheet, ignore_case=True):
+            if exclude_sheet:
+                if sheet.name.lower() in map(str.lower, exclude_sheet):
                     continue
-
             sheets += [sheet.name]
 
     if show_progress:
         PP = _iolib.PrintProgress(iter_=sheets, init_msg='Importing worksheets ...')
 
     added = []
-    for sheet in sheets:
+    for i, sheet in enumerate(sheets):
         # The out_table is based on the input Excel file name
         # an underscore (_) separator followed by the sheet name
         safe_name = _arcpy.ValidateTableName(sheet, gdb)
@@ -287,6 +291,7 @@ def excel_sheets_to_gdb(xlsx: str, gdb: str, match_sheet: (list, tuple, str) = (
             _struct.fc_delete2(_iolib.fixp(gdb, out_table))
 
         _arcpy.conversion.ExcelToTable(xlsx, out_table, sheet)
+
         added += out_table
         if show_progress:
             PP.increment()  # noqa
