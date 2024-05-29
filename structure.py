@@ -295,7 +295,7 @@ def fields_delete_not_in(fname, not_in):
         not_in (iter): iterable of field names to keep
 
     Examples:
-        >>> fields_delete_not_in('c:\lyr.shp', ('cola', 'colb'))
+        >>> fields_delete_not_in('c:/lyr.shp', ('cola', 'colb'))
 
     Notes:
         ArcGISPro now supports this natively, see management.DeleteField
@@ -907,7 +907,7 @@ def fcs_list_all(gdb, wild: str = '*', ftype: str = 'All', rel: bool = False):
 
     Examples:
         >>> # Return relative paths for fc
-        >>> gdb_ = r'C:\TEMP\test.gdb'
+        >>> gdb_ = 'C:/TEMP/test.gdb'
         >>> for fc in getFCPaths(gdb_, rel=True):  # noqa
         >>>     pass
     """
@@ -1030,15 +1030,15 @@ def field_list(fname, cols_exclude=(), oid=True, shape=True, objects=False, func
         (list): An iterable of col names or fields
 
     Examples:
-        >>> field_list(r'C:\Temp\Counties.shp', ['STATE_FIPS', 'COUNTY_CODE'], objects=True)
+        >>> field_list('C:/Temp/Counties.shp', ['STATE_FIPS', 'COUNTY_CODE'], objects=True)
         [<Field1>, <Field2>, ...]
 
         strings not objects please
-        >>> field_list(r'C:\Temp\Counties.shp', ['STATE_FIPS', 'COUNTY_CODE'], objects=False)
+        >>> field_list('C:/Temp/Counties.shp', ['STATE_FIPS', 'COUNTY_CODE'], objects=False)
         ['OBJECTID', 'STATE', ....]
 
         Passing kwarg type='OID'
-        >>> field_list(r'C:\Temp\Counties.shp', ['STATE_FIPS', 'COUNTY_CODE'], objects=False, type='OID')
+        >>> field_list('C:/Temp/Counties.shp', ['STATE_FIPS', 'COUNTY_CODE'], objects=False, type='OID')
         ['OBJECTID']
     """
 
@@ -1116,7 +1116,7 @@ def field_exists(fname: str, field_name: str, case_insensitive: bool = True) -> 
         bool: Does it exist?
 
     Examples:
-        >>> field_exists('C:\my.gdb\coutries', 'country_name')
+        >>> field_exists('C:/my.gdb/coutries', 'country_name')
         True
     """
     fname = _path.normpath(fname)
@@ -1321,10 +1321,10 @@ def fields_get(fname: str, wild_card: str = '*', field_type: str = 'All', no_err
         I've seen this function fail with no-good-reason when not qualifying with the full source path. failures observed where fname IN ['squares']
 
     Examples:
-        >>> fields_get(r'C:\Temp\Counties.shp', 'county_*', no_error_on_multiple=True)
+        >>> fields_get('C:/Temp/Counties.shp', 'county_*', no_error_on_multiple=True)
         ['COUNTY_CODE', 'COUNTY_FIPS']
         \nError raised on multiple matches
-        >>> fields_get(r'C:\Temp\Counties.shp', 'county_*', no_error_on_multiple=False)
+        >>> fields_get('C:/Temp/Counties.shp', 'county_*', no_error_on_multiple=False)
         Traceback (most recent call last):
             File: ....
         StructMultipleFieldMatches ...
@@ -1608,7 +1608,7 @@ def fc_schema_copy(template: str, new: str, sr: str = ''):
 
     Examples:
 
-        >>> fc_schema_copy(r'C:\Temp\soils_city.shp', r'C:\Temp\soils_county.shp')
+        >>> fc_schema_copy('C:/Temp/soils_city.shp', 'C:/Temp/soils_county.shp')
     """
     path, name = _path.split(new)
     desc = _arcpy.Describe(template)
@@ -1710,9 +1710,9 @@ def field_copy_definition(fc_src: str, fc_dest: str, source_field_name: str, ren
 
     Examples:
         Copy myfield to dest.shp
-        >>> field_copy_definition('C:\src.shp', 'C:\dest.shp', 'myfield')
+        >>> field_copy_definition('C:/src.shp', 'C:/dest.shp', 'myfield')
         \nCopy myfield to dest.shp, renaming to mynewfield
-        >>> field_copy_definition('C:\src.shp', 'C:\dest.shp', 'myfield', rename_as='mynewfield')
+        >>> field_copy_definition('C:/src.shp', 'C:/dest.shp', 'myfield', rename_as='mynewfield')
     """
     fc_dest = _path.normpath(fc_dest)
     fc_src = _path.normpath(fc_src)
