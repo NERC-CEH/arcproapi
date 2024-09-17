@@ -178,7 +178,7 @@ def polygon_from_extent(ext: _arcpy.Extent):
     Examples:
         Circular example for illustration
         >>> poly = polygon_from_extent(arcpy.da.SearchCursor('C:/my.gdb/countries', ['SHAPE@']).next()[0].extent)  # noqa
-        >>> arcpy.CopyFeatures_management(poly, r'C:\Temp\Project_boundary.shp')  # noqa
+        >>> arcpy.CopyFeatures_management(poly, r'C:/Temp/Project_boundary.shp')  # noqa
     """
     array = _arcpy.Array()
     array.add(ext.lowerLeft)
