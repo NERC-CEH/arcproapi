@@ -1737,7 +1737,7 @@ field_apply_func = field_recalculate  # noqa For convieniance. Original func lef
 
 
 def field_apply_and_add(fname: str, in_fields: (list[str], str), new_field: str, func, field_type: (str, None) = None, field_length: (int, None) = None, allow_edit: bool = False,
-                        show_progress: bool = True, **kwargs) -> int:
+                        show_progress: bool = True, where=None, **kwargs) -> int:
     """ Add the square type based on sq_id.
 
     Args:
@@ -1749,6 +1749,7 @@ def field_apply_and_add(fname: str, in_fields: (list[str], str), new_field: str,
         field_length: length of field (for text fields
         allow_edit (bool): Allow editing. i.e. use a field that currently exists.
         show_progress (bool): Show progress
+        where: where clause
         **kwargs: passed to ESRIs AddField
 
     Raises:
@@ -1788,7 +1789,7 @@ def field_apply_and_add(fname: str, in_fields: (list[str], str), new_field: str,
         if _struct.field_exists(fname, new_field):
             raise ValueError('Field "%s" already exists and allow_edit was False.' % new_field)
         _struct.AddField(fname, new_field, field_type, field_length=field_length, **kwargs)
-    i = field_recalculate(fname, in_fields, new_field, func, show_progress=show_progress)
+    i = field_recalculate(fname, in_fields, new_field, func, show_progress=show_progress, where_clause=where)
     return i
 
 
