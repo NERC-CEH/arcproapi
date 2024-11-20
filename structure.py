@@ -2457,7 +2457,7 @@ gdb_fc_or_table_exists = gdb_table_or_fc_exists
 
 
 @_decs.environ_persist
-def gdb_tables_and_fcs_list(gdb: str, full_path: bool = False, include_dataset: bool = True) -> tuple:
+def gdb_tables_and_fcs_list(gdb: str, full_path: bool = False, include_dataset: bool = True, merge: bool = False) -> tuple:
     """
     Get a tuple containing 2 lists, of feature classes and tables in a geodatabase.
     First list is names of feature classes, second list is names of tables.
@@ -2468,6 +2468,7 @@ def gdb_tables_and_fcs_list(gdb: str, full_path: bool = False, include_dataset: 
         gdb (str): Path to file geodatabase
         full_path (bool): Return as full path, i.e. with the gdb path prepended
         include_dataset (bool): Include the dataset. If full_path is True, the dataset will always be included. Only feature classes can be members of datasets.
+        merge: Merge into a single tuple
 
     Returns:
         list: A depth-2 tuple, of feature class names and table names, i.e. ([feature classes], [tables])
@@ -2480,13 +2481,20 @@ def gdb_tables_and_fcs_list(gdb: str, full_path: bool = False, include_dataset: 
 
         Get list of tables and features
 
-        >>> gdb_tables_and_fcs_list('C:/my.gdb')
+        >>> gdb_tables_and_fcs_list('C:/my.gdb')  # noqa
         [['coutries', 'roads'], ['population', 'junctions']]
 
         Using full_path=True
 
-        >>> gdb_tables_and_fcs_list('C:/my.gdb', full_path=True)
+        >>> gdb_tables_and_fcs_list('C:/my.gdb', full_path=True)  # noqa
         [['C:/my.gdb/coutries', 'C:/my.gdb/roads'], ['C:/my.gdb/population', 'C:/my.gdb/junctions']]
+
+
+        Using merge, return a single list with tables and fcs merged
+
+        >>> gdb_tables_and_fcs_list('C:/my.gdb', full_path=False, merge=True)  # noqa
+        ['coutries', 'roads', 'population', 'junctions']
+
     """
     gdb = _path.normpath(gdb)
     # if not _common.is_gdb(gdb):
@@ -2512,6 +2520,8 @@ def gdb_tables_and_fcs_list(gdb: str, full_path: bool = False, include_dataset: 
                 tbls.append(_iolib.fixp(_arcpy.env.workspace, tbl))
             else:
                 tbls.append(tbl)
+    if merge:
+        return fcs + tbls
     return fcs, tbls  # noqa
 
 

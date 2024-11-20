@@ -570,6 +570,14 @@ class CRUD:
             fail_on_not_exists (bool): Raise an error if this should be an update
             kwargs: Field/value pairs to insert/update
 
+        Raises:
+            errors.UpdateCursorGotMultipleRecords: If > 1 records matched search dict
+            errors.UpsertExpectedInsertButHadMatchedRow: If fail on exists is true, and > 0 records match search dict
+            arcpy.RuntimeError: If a runtime error occurs it is raised, but gives some qualifying advice
+
+
+
+
         Returns: (int, None): None if update, returns new OID if a record was inserted.
 
         Notes:
@@ -579,7 +587,7 @@ class CRUD:
             Update speed can be increased by skipping checks, i.e. fail_on_multi=False, fail_on_not_exists=False
 
         Examples:
-            >>> with CRUD('c:/my.gdb', enable_transactions=True) as C:
+            >>> with CRUD('c:/my.gdb/orders', enable_transactions=True) as C:
             >>>     C.upsert({'orderid':1, 'supplier':'Widget Company'}, orderid=1, supplier='Foo Company')
             >>>     C.upsert({'ordernr':'A1234', 'value':12.35, 'n':5})  # simplified insert
             #

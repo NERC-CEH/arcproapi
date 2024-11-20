@@ -1685,8 +1685,6 @@ def field_recalculate(fc: str, arg_cols: (str, list, tuple), col_to_update: str,
         Set field "coord_sum" to be the product of fields easting, northing, elevation for all rows in Bangor.
         >>> f1 = lambda x, y, z: x + y + z
         >>> field_recalculate('c:/my.shp', ['easting','northing', 'elevation'], 'coord_sum', f1, where_clause='town="bangor"')
-
-    TODO: Test/Debug field_recalculate
     """
     isedit = False
     fc = _path.normpath(fc)

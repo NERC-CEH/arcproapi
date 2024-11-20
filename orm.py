@@ -2,7 +2,11 @@
 """Various functions to help create ORM/CRUD classes to work
 with feature classes and tables
 
-See test/test_orm for examples of use"""
+See test/test_orm for examples of use
+
+
+# TODO: The handling of read-only fields may have room for improvement and needs checking. We want to be able to access values, but not write them.
+"""
 
 import os.path as _path
 from copy import deepcopy as _deepcopy
@@ -123,7 +127,7 @@ def class_def(fname: str, composite_key_cols: (str, list), workspace: str,
     init_args = []
     members = []
     for fld in _struct.field_list(fname, objects=True):  # type:_arcpy.Field
-        if fld.baseName.lower() not in map(str.lower, exclude):
+        if fld.baseName.lower() not in map(str.lower, exclude):  # noqa
             init_args.append('%s=None' % fld.baseName)
 
             members.append('%s=%s' % (fld.baseName, fld.baseName))
@@ -139,7 +143,7 @@ def class_def(fname: str, composite_key_cols: (str, list), workspace: str,
     #  loop init line over multiple rows...
     for v in [init_args[x] for x in range(3, len(init_args), 3)]:
         with _fuckit:
-            init_args[init_args.index(v)] = '\n%s' % init_args[init_args.index(v)]
+            init_args[init_args.index(v)] = '\n%s' % init_args[init_args.index(v)]  # noqa
 
     init_str = init_str.replace('#', ', '.join(init_args))
     hdr = class_dec + init_str + super_
@@ -147,18 +151,26 @@ def class_def(fname: str, composite_key_cols: (str, list), workspace: str,
 
 
 # TODO: Fix class_def and class_def2 up to automatically include the readonly spatial and management fields so that the values are loaded when reading values in
-def class_def2(fname: str, composite_key_cols: (list, tuple), workspace: (str, None),
-               exclude: (tuple, list, None) = ('Shape_Length', 'Shape_Area', 'created_date', 'last_edited_date')
+def class_def2(fname: str, composite_key_cols: (list, tuple),
+               for_module: bool = False,
+               exclude: (tuple, list, None) = ('Shape_Length', 'Shape_Area', 'created_date', 'last_edited_date')  # noqa
                ) -> str:
     """
     Create a static class definition from a feature class.
     Used to quickly make class definitions to include in code.
     Also copies text to clipboard.
 
+    The class now asumes the module it is copied to, has a GDB global defined.
+
     Args:
         fname (str): feature class/table
-        composite_key_cols (list, tuple): candidate primary key. i.e. Unique key for table. OBJECTID is the obvious candidate
-        workspace (str, None): The workspace
+
+        composite_key_cols (list, tuple):
+            candidate primary key. i.e. Unique key for table. OBJECTID is the obvious candidate.
+            Passing an empty list or tuple will set the OID field to the correct OID for fname.
+
+        for_module: If this is for module generation, pass True. Otherwise constructs the string for cutting and pasting directly into the PyCharm IDE
+
         exclude (tuple, list, None): Fields to exclude from the class definition, these would be the read only ones. If read only cols are included, read operations will include them however, **Add/Updates will likely fail**
 
     Returns:
@@ -166,19 +178,20 @@ def class_def2(fname: str, composite_key_cols: (list, tuple), workspace: (str, N
     """
 
     fname = fname
+    if composite_key_cols == () or composite_key_cols == []:
+        composite_key_cols = _struct.field_oid(fname)
+
     if isinstance(composite_key_cols, list):
         composite_key_cols = str(composite_key_cols)
     elif isinstance(composite_key_cols, str) and '(' not in composite_key_cols and ')' not in composite_key_cols and \
             '[' not in composite_key_cols and ']' not in composite_key_cols:
         composite_key_cols = "['%s']" % composite_key_cols
 
-    if not workspace:
-        workspace = _common.gdb_from_fname(fname)
 
     class_dec = 'class %s(_orm.ORM):\n\t"""class %s"""' % (_make_class_name(fname), _make_class_name(fname))
     class_dec = class_dec + '\n\tfname = %s' % ("'%s'" % fname)
     class_dec = class_dec + '\n\tcomposite_key_cols = %s' % composite_key_cols
-    class_dec = class_dec + '\n\tworkspace = %s  # %s' % (workspace, "****DONT FORGET TO CHECK THE WORKSPACE****")
+    class_dec = class_dec + '\n\tworkspace = GDB  # ****DONT FORGET TO DEFINE GDB AS A MODULE GLOBAL****'
     class_dec = class_dec + '\n'
 
     init_str = '\tdef __init__(self, enable_transactions=False, lazy_load=True, #):\n'
@@ -188,9 +201,9 @@ def class_def2(fname: str, composite_key_cols: (list, tuple), workspace: (str, N
 
     fld_list_for_FieldList = []
     for fld in _struct.field_list(fname, shape=True, objects=True):  # type:_arcpy.Field
-        if fld.baseName.lower() not in map(str.lower, exclude):
+        if fld.baseName.lower() not in map(str.lower, exclude):  # noqa
             init_args.append('%s=None' % fld.baseName)
-            members.append('\t\tself.%s = %s' % (fld.baseName, fld.baseName))
+            members.append('self.%s = %s' % (fld.baseName, fld.baseName))
             fld_list_for_FieldList += [fld.baseName]
         else:
             # bit of a kludge, should detect the name of fields used in tracking, but need a quick fix. Note we dont want these as passed arguments as they are read only
@@ -219,12 +232,15 @@ def class_def2(fname: str, composite_key_cols: (list, tuple), workspace: (str, N
     # Build the FieldList enumeration helper
     class_dec += '\n\tclass Fields(_Enum):\n'
     for i, fld in enumerate(fld_list_for_FieldList):
-        class_dec += '\n\t\t%s = %s' % (fld, i)
+        if i == 0:
+            class_dec += '\t\t%s = %s' % (fld, i)
+        else:
+            class_dec += '\n\t\t%s = %s' % (fld, i)
     class_dec += '\n\n'
 
     # super delegation ... obviously
-    super_ = ('\t\tsuper().__init__(%s, %s, %s, %s)' %
-              ('%s.fname' % _make_class_name(fname),
+    super_ = ('%ssuper().__init__(%s, %s, %s, %s)' %
+              ('' if for_module else '\t\t', '%s.fname' % _make_class_name(fname),
                '%s.composite_key_cols' % _make_class_name(fname),
                '%s.workspace' % _make_class_name(fname),
                'enable_log=False, enable_transactions=enable_transactions, lazy_load=lazy_load'
@@ -241,11 +257,11 @@ def class_def2(fname: str, composite_key_cols: (list, tuple), workspace: (str, N
     #  loop init line over multiple rows...
     for v in [init_args[x] for x in range(3, len(init_args), 3)]:
         with _fuckit:
-            init_args[init_args.index(v)] = '\n%s' % init_args[init_args.index(v)]
+            init_args[init_args.index(v)] = '\n%s%s' % ('\t\t' if for_module else '',  init_args[init_args.index(v)]) # noqa  ** ADDED \t\t
 
     # finally build the whole definintion
     init_str = init_str.replace('#', ', '.join(init_args))
-    memb_str = '\n\t\t'.join(members)
+    memb_str = '%s%s' % ('\n\t\t', '\n\t\t'.join(members))
     hdr = class_dec + init_str + memb_str
 
     return hdr
@@ -290,8 +306,91 @@ def _make_class_name(fname: str, split_: str = '_') -> str:
     """get class name"""
     if '/' in fname or '\\' in fname:
         _, fname, _ = _iolib.get_file_parts(fname)
-    fname = ''.join(map(str.capitalize, fname.split(split_)))
+    fname = ''.join(map(str.capitalize, fname.split(split_)))  # noqa
     return fname
+
+
+def orm_def_to_clip(gdb: str, save_as: str = '', ignore: tuple[str] = ()) -> str:
+    """
+    Copy a new module ORM definition for the given geodatabase.
+
+    Tested with file geodatabases. Will need aa
+
+    This makes calls to class_def_to_clip for each fc/table
+
+    Args:
+        gdb: Path to gdb
+        save_as: save as this file
+        ignore: Tuple of fcs or tables to ignore. Case insensitive.
+
+    Raises:
+        FileNotFoundError: If a file geodb was passed, and it does not exist
+        FileExistsError: If save_as is specified, but the file already exists
+
+    Returns:
+        The definition as string
+    """
+    gdb = _path.normpath(gdb)
+    save_as = _path.normpath(save_as)
+
+    if _common.is_gdb(gdb) and not _iolib.folder_exists(gdb):
+        raise FileNotFoundError('File geodatabase "%s" not found.' % gdb)
+
+    if save_as and _iolib.file_exists(save_as):
+        raise FileExistsError('File "%s" already exists.' % save_as)
+
+    # module doc
+    build = ['"""\n', 'orm for %s\nDont forget define the GDB path to global variable GDB.' % gdb, '\n"""\n\n\n']
+
+    # imports
+    build += ['import string # noqa\n']
+    build += ['from warnings import warn as _warn # noqa\n']
+    build += ['import os.path as _path # noqa\n']
+    build += ['from enum import Enum as _Enum\n']
+    build += ['\n']
+    build += ['import pandas as _pd  # noqa\n']
+    build += ['import pandas as pd # noqa exposed like this for dataframe aggregate funcs, and dont want to refactor _pd refs in this module\n']
+    build += ['import xlwings as xlwings # noqa\n']
+    build += ['import numpy as np # noqa exposed like this for dataframe aggregate funcs and dont want to refactor _np\n']
+    build += ['\n']
+    build += ['import arcproapi.orm as _orm\n']
+    build += ['from arcproapi.orm import EnumLogAction # noqa\n']
+    build += ['import arcproapi.meta as _meta # noqa\n']
+    build += ['import arcproapi.structure as _arcstruct # noqa\n']
+    build += ['import arcproapi.conversion as conversion # noqa no underscore as callers may want to use it to pass conversion funcs\n']
+    build += ['\n']
+    build += ['import funclite.stringslib as _stringslib # noqa\n']
+    build += ['from funclite.baselib import DictKwarg # noqa Helper function, a wrapper around dict which has a method to yield kwargs\n']
+    build += ['import funclite.baselib as _baselib  # noqa\n']
+    build += ['from funclite.baselib import classproperty as _classproperty # noqa\n']
+    build += ['import funclite.iolib as _iolib # noqa\n']
+    build += ['import funclite.pandaslib as _pandaslib  # noqa\n']
+    build += ['from funclite.pandaslib import GroupBy # noqa use to expose functions used in dataframe aggregates\n\n\n']
+
+    build += ["GDB = r'%s'\n\n\n" % gdb]
+
+    build += ['_sort_list_set = lambda lst: sorted(list(set(lst)))\n\n\n']
+
+    lst = _struct.gdb_tables_and_fcs_list(gdb, full_path=True, merge=True)
+    PP = _iolib.PrintProgress(iter_=lst, init_msg='\nBuilding class definitions fcs/tables ...')
+
+    for v in lst:
+        if v.lower() in map(str.lower, ignore):  # noqa
+            continue
+        s = class_def2(v, composite_key_cols=[], for_module=True)
+        build += [s]
+        build += ['\n\n\n']
+        PP.increment()
+
+    out = ''.join(build)
+    _clip.copy(out)
+    print('\nCopied to clipboard')
+
+    if save_as:
+        _iolib.write_to_file(out, full_file_path=save_as)
+        print('\nSaved to "%s"' % save_as)
+
+    return out
 
 
 class ORM(_crud.CRUD):
@@ -422,7 +521,7 @@ class ORM(_crud.CRUD):
         # include empty and is the member None, or '' or 0 etc
         d = {k.lower(): v for k, v in members.items() if include_empty or v}
         if exclude:
-            d = {k: v for k, v in d.items() if k.lower() not in map(str.lower, exclude)}
+            d = {k: v for k, v in d.items() if k.lower() not in map(str.lower, exclude)}  # noqa
 
         s = '\n'.join(['%s: %s' % (k, v) for k, v in d.items()])
 
@@ -845,7 +944,7 @@ class ORM(_crud.CRUD):
 
         if action == EnumLogAction.add: return
 
-        if 'action' in map(str.lower, self.db_cols_as_list):
+        if 'action' in map(str.lower, self.db_cols_as_list):  # noqa
             raise _errors.ORMLogActionTableHasActionCol("Cannot support ORM per-record logs. "
                                                         "The feature class %s has an 'action' column. "
                                                         " Rename the existing action column and add another one." % self._fname)
@@ -967,7 +1066,7 @@ class ORM(_crud.CRUD):
     @property
     def _OID(self) -> int:
         """get the OID value, **not** the field name"""
-        return self.__dict__.get(self.oid_col, None)
+        return self.__dict__.get(self.oid_col, None)  # noqa
 
     @_OID.setter
     def _OID(self, value: int):
@@ -1056,7 +1155,7 @@ class ORM(_crud.CRUD):
             assert isinstance(Obj, ORM)
             d = Obj.members_as_dict()
             for k, v in d.items():
-                if k.lower() in map(str.lower, skip):
+                if k.lower() in map(str.lower, skip):  # noqa
                     continue
                 dd[k].append(v)
         df = _pd.DataFrame.from_dict(dd, **kwargs)
@@ -1166,5 +1265,7 @@ class ORM(_crud.CRUD):
 if __name__ == '__main__':
     """ Quick test/debug calls
     """
-    ORM.log_table_create(r'S:\SPECIAL-ACL\ERAMMP2 Survey Restricted\current\data\GIS\erammp_current.gdb\address_crn_lpis_sq')
+    # ORM.log_table_create(r'S:\SPECIAL-ACL\ERAMMP2 Survey Restricted\current\data\GIS\erammp_current.gdb\address_crn_lpis_sq')
+    orm_def_to_clip(r'\\nerctbctdb\shared\shared\SPECIAL-ACL\ERAMMP2 Survey Restricted\common\data\GIS\erammp_current_template.gdb',
+                    save_as=r'C:\development\erammp-python\erammp\orm_erammp_current_template.py')
     pass
