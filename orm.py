@@ -177,7 +177,7 @@ def class_def2(fname: str, composite_key_cols: (list, tuple),
         str: The class def
     """
 
-    fname = fname
+    fname = _path.normpath(fname)
     if composite_key_cols == () or composite_key_cols == []:
         composite_key_cols = _struct.field_oid(fname)
 
@@ -187,9 +187,8 @@ def class_def2(fname: str, composite_key_cols: (list, tuple),
             '[' not in composite_key_cols and ']' not in composite_key_cols:
         composite_key_cols = "['%s']" % composite_key_cols
 
-
     class_dec = 'class %s(_orm.ORM):\n\t"""class %s"""' % (_make_class_name(fname), _make_class_name(fname))
-    class_dec = class_dec + '\n\tfname = %s' % ("'%s'" % fname)
+    class_dec = class_dec + '\n\tfname = _path.join(GDB, "%s")' % _path.basename(fname)
     class_dec = class_dec + '\n\tcomposite_key_cols = %s' % composite_key_cols
     class_dec = class_dec + '\n\tworkspace = GDB  # ****DONT FORGET TO DEFINE GDB AS A MODULE GLOBAL****'
     class_dec = class_dec + '\n'
