@@ -216,15 +216,16 @@ def class_def2(fname: str, composite_key_cols: (list, tuple),
                 fld_list_for_FieldList += [fld.baseName]
 
     # Writing the domain_use property, so we are prompted to added it manually
+    # For some reason the comment needs inserting with spaces for indents, \t doesnt get fixed automatically to spaces in pycharm
     class_dec += '\n\n'
     class_dec += ('\t@_classproperty\n'
                   '\tdef domain_use(cls) -> dict[_Enum, list]:  # noqa\n'
-                  '\t\t"""\n'
-                  '\t\tGet a dictionary of where the domain is used.\n'
-                  '\t\tNote that it returns the actual Enum class, and not the enum name as a string.\n\n'
-                  '\t\tReturns:\n'
-                  '\t\t\tdict[Enum, list]: A dictionary of the domain use. {Enum1:[field11, field12, ...], Enum2:[field21, field22, ...]}\n'
-                  '\t\t"""\n'
+                  '        """\n'
+                  '        Get a dictionary of where the domain is used.\n'
+                  '        Note that it returns the actual Enum class, and not the enum name as a string.\n\n'
+                  '        Returns:\n'
+                  '        dict[Enum, list]: A dictionary of the domain use. {Enum1:[field11, field12, ...], Enum2:[field21, field22, ...]}\n'
+                  '        """\n'
                   '\t\treturn {}  # noqa\n'
                   )
 
