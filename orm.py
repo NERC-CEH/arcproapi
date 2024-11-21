@@ -1265,6 +1265,6 @@ if __name__ == '__main__':
     """ Quick test/debug calls
     """
     # ORM.log_table_create(r'S:\SPECIAL-ACL\ERAMMP2 Survey Restricted\current\data\GIS\erammp_current.gdb\address_crn_lpis_sq')
-    orm_def_to_clip(r'\\nerctbctdb\shared\shared\SPECIAL-ACL\ERAMMP2 Survey Restricted\common\data\GIS\erammp_current_template.gdb',
-                    save_as=r'C:\development\erammp-python\erammp\orm_erammp_current_template.py')
+    orm_def_to_clip(r'\\nerctbctdb\shared\shared\SPECIAL-ACL\ERAMMP2 Survey Restricted\common\data\GIS\third_party_os.gdb',
+                    save_as=r'C:\development\erammp-python\erammp\orm_tp_os.py')
     pass
