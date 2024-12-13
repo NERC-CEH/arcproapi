@@ -445,6 +445,9 @@ class ORM(_crud.CRUD):
         self._XX_update_read_check = update_read_check
         self._XX_fname = fname
         self._XX_enable_transaction = enable_transactions
+
+        self._XX_describe = None  # will contain arcpy.Describe dictionary for the current instance
+
         super().__init__(fname, workspace, enable_transactions)
         if self._has_col_name_clash():
             raise _errors.FeatureClassMemberNamingClash('The feature class or table %s has a column '
@@ -1042,6 +1045,61 @@ class ORM(_crud.CRUD):
             str: The feature class/table name
         """
         return self._XX_fname
+
+    @property
+    def is_table(self) -> bool:
+        """
+        Is it a table?
+        """
+        if not self._XX_describe:
+            self._XX_describe = _arcpy.da.Describe(self._XX_fname)
+        return self._XX_describe.get('datasetType') == 'Table'
+
+    @property
+    def is_feature_class(self) -> bool:
+        """
+        Is it a feature class
+        """
+        if not self._XX_describe:
+            self._XX_describe = _arcpy.da.Describe(self._XX_fname)
+        return self._XX_describe.get('datasetType') == 'FeatureClass'
+
+    @property
+    def is_polygon(self) -> bool:
+        """
+        Is it a polygon feature class
+        """
+        if not self._XX_describe:
+            self._XX_describe = _arcpy.da.Describe(self._XX_fname)
+        return self._XX_describe.get('shapeType') == 'Polygon'
+
+    @property
+    def is_point(self) -> bool:
+        """
+        Is it a polygon feature class
+        """
+        if not self._XX_describe:
+            self._XX_describe = _arcpy.da.Describe(self._XX_fname)
+        return self._XX_describe.get('shapeType') == 'Point'
+
+    @property
+    def is_polyline(self) -> bool:
+        """
+        Is it a polygon feature class
+        """
+        if not self._XX_describe:
+            self._XX_describe = _arcpy.da.Describe(self._XX_fname)
+        return self._XX_describe.get('shapeType') == 'Polyline'
+
+
+    @property
+    def describe_dict(self) -> dict:
+        """
+        Gets the dictionary result of arcpy.da.Descrive on the table/fc
+        """
+        if not self._XX_describe:
+            self._XX_describe = _arcpy.da.Describe(self._XX_fname)
+        return self._XX_describe
 
     @property
     # leave as is despite having oid_col_from_db property

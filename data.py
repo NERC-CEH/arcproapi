@@ -789,6 +789,7 @@ def key_info(parent: str, parent_field: str, child: str, child_field: str, as_oi
         child (str): Child entity
         child_field (str): key field in the child
         as_oids (bool): Get unique oids instead of distinct values
+        none_if_orphaned: return None if there were any orphaned keys
 
     Returns:
         dict: dict{'parent_only': [..], 'both': [..], 'child_only': [..]
@@ -824,8 +825,7 @@ def key_info(parent: str, parent_field: str, child: str, child_field: str, as_oi
     where = _sql.query_where_in(child_field, child_values)
     child_oids = field_values(child, 'OID@', where=where)
 
-    d = _baselib.list_sym_diff(parent_oids, child_oids, rename_keys=('parent_only', 'both', 'child_only'))
-    return d
+    return _baselib.list_sym_diff(parent_oids, child_oids, rename_keys=('parent_only', 'both', 'child_only'))
 
 
 def table_as_pandas(fname, cols=(), where='', null_value=_np.NaN, **kwargs):
@@ -2136,6 +2136,8 @@ def features_copy2(source: str, dest: str, where_clause: str = '*', fixed_values
     Fixed_values only are supported, the rows written to dest will match the number of rows matching the where_clause in source.
 
     If you get an error, double check field names and field types between the source and dest.
+
+    Errors will also be generated when working with any tables or feature classes that require a transaction section to change. For example, tables in relationships.
 
     Args:
         source (str): path to source feature class/table

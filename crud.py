@@ -91,7 +91,7 @@ class SearchCursor(_da.SearchCursor):
 
         fn = list(fn_cpy)
         fn += ['OID@']
-        if self.OIDField.lower() not in map(str.lower, fn):
+        if self.OIDField.lower() not in map(str.lower, fn):  # noqa
             fn_cpy += [self.OIDField]
 
         super().__init__(fname, fn_cpy, **kwargs)
@@ -102,7 +102,7 @@ class SearchCursor(_da.SearchCursor):
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        super().__exit__()
+        super().__exit__(exc_type, exc_val, exc_tb)
 
     def __str__(self):
         """object instance description"""
@@ -236,6 +236,8 @@ class InsertCursor(_da.InsertCursor):
 
     The InsertCursor method is pretty straight forward, but this is provided for completeness - it marginally eases the call to insert rows.
 
+    The insert occurs immediately on instance creation.
+
     Args:
         fname (str): name of feature class or table
 
@@ -247,6 +249,7 @@ class InsertCursor(_da.InsertCursor):
 
     Examples:
 
+        Insert immediately, then get the number of inserted rows
         >>> Cur = InsertCursor('c:/my.gdb/mytable', country=['UK','France'], population=[56e6, 45e6])
         >>> Cur.inserted_n
         2
@@ -362,7 +365,7 @@ class _Row:
         Examples:
             >>> with SearchCursor('c:/my.gdb/mytable', ['OBJECTID'], where_clause='OBJECTID=10', load_shape=True) as Cur:
             >>>     for R in Cur:
-            >>>         for Fld in R.fields():
+            >>>         for Fld in R.fields():  # noqa
             >>>             print(Fld)
 
         """
@@ -630,7 +633,7 @@ class CRUD:
                 with _da.UpdateCursor(self._fname, cols, where_clause=where) as Cur:
                     for row in Cur:
                         for j in range(len(cols)):
-                            row[j] = values[j]
+                            row[j] = values[j]  # noqa
                         try:
                             Cur.updateRow(row)
                         except RuntimeError as r:
@@ -759,7 +762,7 @@ class CRUD:
         with _da.UpdateCursor(self._fname, cols, where_clause=where) as Cur:
             for row in Cur:
                 for j in range(len(cols)):
-                    row[j] = values[j]
+                    row[j] = values[j]  # noqa
 
                 try:
                     Cur.updateRow(row)

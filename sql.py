@@ -23,6 +23,9 @@ def query_where_in(field_name: str, values: (tuple, str, list), datasource: str 
         override_field_delim (str): override the field delim
         exclude_none (bool): Exclude None values from the where. The None value can cause an error to be raised when using the where for da.<Cursor>, with an error that misdirects you to think the columns are invalid.
 
+    Raises:
+        UserWarning: If values has no elements. This is because the query will be invalid, and debugging at this stage is easier
+
     Returns:
             str: the query string
 
@@ -37,6 +40,9 @@ def query_where_in(field_name: str, values: (tuple, str, list), datasource: str 
         >>> query_where_in('ID', (123,345), 'c:/temp/my.gdb')
         '"ID" IN (123, 345)'
     """
+    if not values:
+        raise UserWarning('No values passed to query_where_in. The query will be invalid.')
+
     if isinstance(values, str): values = [values]
     if exclude_none:
         values = [v for v in values if v is not None]
