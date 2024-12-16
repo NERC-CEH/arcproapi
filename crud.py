@@ -611,7 +611,7 @@ class CRUD:
         for i, v in enumerate(cols):
             if v.lower() == 'shape':
                 cols[cols.index(v)] = 'Shape@'
-
+                break
         exists = False
         if fail_on_not_exists:
             if isinstance(search_dict, dict):
@@ -650,8 +650,8 @@ class CRUD:
                         Cur = _da.InsertCursor(self._fname, cols)
                         i = Cur.insertRow(values)
                 except RuntimeError as r:
-                    raise RuntimeError('Runtime errors in arcpy cursor operations are usually the result of incorrect column names, mismatched data types, '
-                                       'string truncation or locking issues.') from r
+                        raise RuntimeError('This runtime error in an arcpy cursor operation was probably a result of mismatched data types, '
+                                           'string truncation or locking issues.\nColumn names were checked and appear correct.') from r
                 finally:
                     with _fuckit:
                         del Cur

@@ -951,7 +951,7 @@ class ORM(_crud.CRUD):
             raise _errors.ORMLogActionTableHasActionCol("Cannot support ORM per-record logs. "
                                                         "The feature class %s has an 'action' column. "
                                                         " Rename the existing action column and add another one." % self._fname)
-        # TODO: This still isnt working right, might be an error in table structure
+
         with ORM(self._fname, self._XX_composite_key_cols, self._workspace, enable_transactions=True) as CurRow:
             # load primary key and/or composite key to get the current record
             CurRow._OID = self._OID
@@ -969,8 +969,8 @@ class ORM(_crud.CRUD):
             except Exception as e:
                 with _fuckit:
                     d = _struct.fcs_field_sym_diff(self._fname, fname)
-                    if d['a_notin_b']:
-                        raise _errors.ORMLogTableColumnMismatch('Columns %s in %s but not in %s. Add them.' % (str(d['a_notin_b']), self._fname, fname)) from e
+                if d['a_notin_b']:
+                    raise _errors.ORMLogTableColumnMismatch('Columns %s in %s but not in %s. Add them.' % (str(d['a_notin_b']), self._fname, fname)) from e
                 raise e
 
     def _clear_members(self) -> None:
